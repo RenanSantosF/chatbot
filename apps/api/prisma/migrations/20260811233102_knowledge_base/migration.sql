@@ -1,3 +1,9 @@
+-- Extensão pgvector: precisa estar no histórico de migrations (não só
+-- aplicada manualmente uma vez), senão o banco-sombra do `migrate dev` e
+-- qualquer ambiente novo (produção incluída) falham ao tentar criar a
+-- coluna vector(768) abaixo.
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- CreateEnum
 CREATE TYPE "KnowledgeDocumentStatus" AS ENUM ('PROCESSING', 'READY', 'FAILED');
 

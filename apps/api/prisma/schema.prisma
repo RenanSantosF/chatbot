@@ -48,6 +48,8 @@ model Tenant {
   aiInstructions     AiInstruction[]
   knowledgeDocuments KnowledgeDocument[]
   knowledgeChunks    KnowledgeChunk[]
+  aiTools            AiTool[]
+  tasks              Task[]
 
   @@map("tenants")
 }
@@ -141,6 +143,7 @@ model Conversation {
   customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   assignedUser User?     @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
   messages     Message[]
+  tasks        Task[]
 
   @@index([tenantId, status])
   @@index([customerId])
@@ -286,4 +289,54 @@ model KnowledgeChunk {
   @@index([tenantId])
   @@index([documentId])
   @@map("knowledge_chunks")
+}
+
+enum AiToolPermission {
+  ALLOW
+  DENY
+  REQUIRES_APPROVAL
+}
+
+// Configuração de uma ferramenta nativa pra este tenant. `key` casa com a
+// implementação fixa no registro (ver AiToolsService) — o catálogo de
+// ferramentas em si é código, só a permissão/liga-desliga é por tenant.
+model AiTool {
+  id         String           @id @default(uuid())
+  tenantId   String
+  key        String
+  enabled    Boolean          @default(false)
+  permission AiToolPermission @default(REQUIRES_APPROVAL)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@map("ai_tools")
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+}
+
+// Tarefa de acompanhamento pra equipe humana — criada pela ferramenta
+// createTask da IA, ou (no futuro) manualmente por um atendente.
+model Task {
+  id             String     @id @default(uuid())
+  tenantId       String
+  conversationId String?
+  title          String
+  description    String?
+  status         TaskStatus @default(OPEN)
+  createdByAi    Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([conversationId])
+  @@map("tasks")
 }
