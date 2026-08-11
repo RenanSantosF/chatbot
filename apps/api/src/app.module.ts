@@ -8,6 +8,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CustomersModule } from './modules/customers/customers.module';
+import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
@@ -23,6 +24,7 @@ import { UsersModule } from './modules/users/users.module';
     ConversationsModule,
     RealtimeModule,
     AiModule,
+    KnowledgeModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

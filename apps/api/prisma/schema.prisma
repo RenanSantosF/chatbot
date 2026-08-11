@@ -40,12 +40,14 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  users          User[]
-  customers      Customer[]
-  conversations  Conversation[]
-  messages       Message[]
-  aiSettings     AiSettings?
-  aiInstructions AiInstruction[]
+  users              User[]
+  customers          Customer[]
+  conversations      Conversation[]
+  messages           Message[]
+  aiSettings         AiSettings?
+  aiInstructions     AiInstruction[]
+  knowledgeDocuments KnowledgeDocument[]
+  knowledgeChunks    KnowledgeChunk[]
 
   @@map("tenants")
 }
@@ -235,4 +237,53 @@ model AiInstruction {
 
   @@index([tenantId, active])
   @@map("ai_instructions")
+}
+
+enum KnowledgeDocumentStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+// Um documento enviado (PDF, DOCX, TXT, CSV, XLSX). O texto extraído vira
+// KnowledgeChunk — este model só guarda metadado e status do processamento,
+// não o arquivo original (ver decisão de arquitetura no KnowledgeService).
+model KnowledgeDocument {
+  id           String                  @id @default(uuid())
+  tenantId     String
+  title        String
+  fileName     String
+  mimeType     String
+  status       KnowledgeDocumentStatus @default(PROCESSING)
+  errorMessage String?
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chunks KnowledgeChunk[]
+
+  @@index([tenantId])
+  @@map("knowledge_documents")
+}
+
+// Pedaço de texto extraído + embedding pra busca semântica (pgvector). O
+// campo embedding é Unsupported porque o Prisma Client não modela o tipo
+// `vector` nativamente — toda leitura/escrita dele passa por SQL raw
+// (ver KnowledgeService), o que também significa que a extensão central de
+// isolamento por tenant NÃO protege essas queries automaticamente: todo
+// SQL raw aqui precisa filtrar tenantId manualmente, sempre.
+model KnowledgeChunk {
+  id         String                      @id @default(uuid())
+  tenantId   String
+  documentId String
+  content    String
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime                    @default(now())
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([documentId])
+  @@map("knowledge_chunks")
 }

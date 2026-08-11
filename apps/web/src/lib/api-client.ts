@@ -8,11 +8,15 @@ import { ApiError, parseErrorMessage } from "./api-error";
  * mesma origem, sem CORS e com o cookie de sessão anexado automaticamente.
  */
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  // FormData (upload de arquivo) define o próprio Content-Type com boundary
+  // — deixar o navegador cuidar disso, nunca fixar "application/json" nesse caso.
+  const isFormData = options.body instanceof FormData;
+
   const res = await fetch(`/api${path}`, {
     ...options,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...options.headers,
     },
   });

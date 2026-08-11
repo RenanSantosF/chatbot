@@ -27,3 +27,23 @@ export interface AiProvider {
 }
 
 export const AI_PROVIDER = Symbol('AI_PROVIDER');
+
+export type EmbeddingTaskType = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
+
+export interface AiEmbedInput {
+  texts: string[];
+  apiKey: string;
+  taskType: EmbeddingTaskType;
+}
+
+/**
+ * Capacidade separada de AiProvider de propósito: nem todo provedor de chat
+ * necessariamente oferece embeddings sob a mesma conta/API (ex: Anthropic
+ * não tem endpoint de embedding próprio) — então isso é um contrato à
+ * parte, implementado por quem realmente suporta.
+ */
+export interface AiEmbeddingProvider {
+  embed(input: AiEmbedInput): Promise<number[][]>;
+}
+
+export const AI_EMBEDDING_PROVIDER = Symbol('AI_EMBEDDING_PROVIDER');

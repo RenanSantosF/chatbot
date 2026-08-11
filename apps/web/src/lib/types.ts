@@ -86,6 +86,18 @@ export interface AiSettings {
   apiKeyPreview: string | null;
 }
 
+export type KnowledgeDocumentStatus = "PROCESSING" | "READY" | "FAILED";
+
+export interface KnowledgeDocument {
+  id: string;
+  title: string;
+  fileName: string;
+  mimeType: string;
+  status: KnowledgeDocumentStatus;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
 export interface AiInstruction {
   id: string;
   title: string;

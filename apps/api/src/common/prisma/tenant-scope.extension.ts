@@ -13,6 +13,11 @@ const TENANT_SCOPED_MODELS = new Set([
   'Message',
   'AiSettings',
   'AiInstruction',
+  'KnowledgeDocument',
+  // KnowledgeChunk não entra aqui: seu campo de embedding é Unsupported,
+  // então toda leitura/escrita dele já é SQL raw (ver KnowledgeService),
+  // que não passa pela extensão de query do Prisma de jeito nenhum — o
+  // isolamento desse model é 100% manual, sempre filtrando tenantId no SQL.
 ]);
 
 const WHERE_SCOPED_OPERATIONS = new Set([
