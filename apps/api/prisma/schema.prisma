@@ -1,5 +1,5 @@
-// Prisma schema — Fase 1: multi-tenancy + auth
-// Novos módulos (customers, conversations, ai, etc.) entram nas próximas fases.
+// Prisma schema — Fase 1 (multi-tenancy + auth) e Fase 2 (clientes, conversas, mensagens).
+// Novos módulos (ai, knowledge, queues, etc.) entram nas próximas fases.
 
 generator client {
   provider     = "prisma-client"
@@ -40,7 +40,10 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  users User[]
+  users         User[]
+  customers     Customer[]
+  conversations Conversation[]
+  messages      Message[]
 
   @@map("tenants")
 }
@@ -57,7 +60,8 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedConversations Conversation[]
 
   // Email é único globalmente (não só por tenant): simplifica o login, que não
   // exige saber a qual empresa o usuário pertence antes de autenticar.
@@ -65,4 +69,113 @@ model User {
   @@unique([email])
   @@index([tenantId])
   @@map("users")
+}
+
+model Customer {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  phone      String
+  email      String?
+  externalId String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  // Telefone é a chave de identificação de um cliente dentro de um tenant
+  // (é por onde ele chega pelo WhatsApp), mas o mesmo telefone pode ser
+  // cliente de várias empresas diferentes na plataforma.
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@map("customers")
+}
+
+enum ConversationChannel {
+  INTERNAL
+  WHATSAPP
+}
+
+enum ConversationStatus {
+  OPEN
+  WAITING_CUSTOMER
+  WAITING_AGENT
+  RESOLVED
+  CLOSED
+}
+
+enum ConversationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum AiMode {
+  AI_ACTIVE
+  HUMAN_ACTIVE
+  AI_ASSIST
+  PAUSED
+}
+
+model Conversation {
+  id             String               @id @default(uuid())
+  tenantId       String
+  customerId     String
+  channel        ConversationChannel  @default(INTERNAL)
+  status         ConversationStatus   @default(OPEN)
+  assignedUserId String?
+  aiMode         AiMode               @default(AI_ACTIVE)
+  priority       ConversationPriority @default(NORMAL)
+  lastMessageAt  DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedUser User?     @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  messages     Message[]
+
+  @@index([tenantId, status])
+  @@index([customerId])
+  @@index([assignedUserId])
+  @@map("conversations")
+}
+
+enum MessageSenderType {
+  CUSTOMER
+  AI
+  AGENT
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  LOCATION
+  OTHER
+}
+
+model Message {
+  id             String            @id @default(uuid())
+  tenantId       String
+  conversationId String
+  senderType     MessageSenderType
+  senderId       String?
+  content        String
+  messageType    MessageType       @default(TEXT)
+  metadata       Json?
+  createdAt      DateTime          @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([conversationId, createdAt])
+  @@map("messages")
 }

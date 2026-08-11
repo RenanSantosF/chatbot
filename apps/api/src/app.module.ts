@@ -4,11 +4,22 @@ import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { RolesGuard } from './common/auth/roles.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, TenantsModule, UsersModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    TenantsModule,
+    UsersModule,
+    CustomersModule,
+    ConversationsModule,
+    RealtimeModule,
+  ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

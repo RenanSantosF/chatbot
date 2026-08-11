@@ -19,11 +19,15 @@ export class TenantPrismaService {
     private readonly prisma: PrismaService,
   ) {}
 
-  get db() {
+  get tenantId(): string {
     const tenantId = this.request.user?.tenantId;
     if (!tenantId) {
       throw new UnauthorizedException('Nenhum tenant autenticado nesta requisição.');
     }
-    return applyTenantScope(this.prisma.client, tenantId);
+    return tenantId;
+  }
+
+  get db() {
+    return applyTenantScope(this.prisma.client, this.tenantId);
   }
 }

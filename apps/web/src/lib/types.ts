@@ -27,3 +27,49 @@ export interface TeamMember {
   avatar: string | null;
   createdAt: string;
 }
+
+export type ConversationStatus = "OPEN" | "WAITING_CUSTOMER" | "WAITING_AGENT" | "RESOLVED" | "CLOSED";
+export type AiMode = "AI_ACTIVE" | "HUMAN_ACTIVE" | "AI_ASSIST" | "PAUSED";
+export type ConversationPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+export type MessageSenderType = "CUSTOMER" | "AI" | "AGENT" | "SYSTEM";
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  senderType: MessageSenderType;
+  senderId: string | null;
+  content: string;
+  messageType: string;
+  createdAt: string;
+}
+
+export interface AssignedUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  status: ConversationStatus;
+  aiMode: AiMode;
+  priority: ConversationPriority;
+  lastMessageAt: string | null;
+  createdAt: string;
+  customer: Customer;
+  assignedUser: AssignedUser | null;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  messages: ConversationMessage[];
+}

@@ -61,6 +61,11 @@ export class AuthController {
     return { ok: true };
   }
 
+  @Get('socket-token')
+  socketToken(@CurrentUser() user: RequestUser) {
+    return { token: this.authService.issueSocketToken(user) };
+  }
+
   @Get('me')
   async me(@CurrentUser() user: RequestUser) {
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } });

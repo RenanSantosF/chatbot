@@ -5,7 +5,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
-import type { JwtPayload } from './auth.types';
+import type { JwtPayload, RequestUser } from './auth.types';
 
 const PASSWORD_SALT_ROUNDS = 12;
 
@@ -34,6 +34,14 @@ export class AuthService {
 
   private issueToken(payload: JwtPayload): string {
     return this.jwt.sign(payload);
+  }
+
+  /** Token de curta duração pro handshake do websocket (ver GET /auth/socket-token). */
+  issueSocketToken(user: RequestUser): string {
+    return this.jwt.sign(
+      { sub: user.userId, tenantId: user.tenantId, role: user.role },
+      { expiresIn: '1h' },
+    );
   }
 
   /**
