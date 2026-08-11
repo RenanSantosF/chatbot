@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Put } from '@nestjs/common';
 import { Roles } from '../../common/auth/roles.decorator';
 import { AiSettingsService } from './ai-settings.service';
 import { UpdateAiSettingsDto } from './dto/update-ai-settings.dto';
@@ -16,5 +16,11 @@ export class AiSettingsController {
   @Roles('OWNER', 'ADMIN')
   update(@Body() dto: UpdateAiSettingsDto) {
     return this.aiSettingsService.update(dto);
+  }
+
+  @Delete('api-key')
+  @Roles('OWNER', 'ADMIN')
+  clearApiKey() {
+    return this.aiSettingsService.clearApiKey();
   }
 }

@@ -190,17 +190,29 @@ enum AiTone {
   WARM
 }
 
-// Identidade e comportamento da IA — uma linha por tenant (1:1). Criada com
-// valores padrão junto do tenant no registro (ver AuthService.register).
+// Provedores de LLM suportados. Cada um novo (OpenAI, Anthropic...) só
+// precisa de um adapter em modules/ai/providers — não muda esse enum de
+// lugar nenhum além do binding de DI.
+enum AiProviderKind {
+  GEMINI
+}
+
+// Identidade, comportamento e credencial de IA — uma linha por tenant
+// (1:1). Criada com valores padrão junto do tenant no registro (ver
+// AuthService.register). Cada empresa usa a própria API key: nunca
+// compartilhado entre tenants, nunca em texto puro (ver EncryptionService).
 model AiSettings {
-  id                 String   @id @default(uuid())
-  tenantId           String   @unique
-  active             Boolean  @default(true)
-  aiName             String   @default("Assistente")
-  tone               AiTone   @default(PROFESSIONAL)
+  id                 String         @id @default(uuid())
+  tenantId           String         @unique
+  active             Boolean        @default(true)
+  aiName             String         @default("Assistente")
+  tone               AiTone         @default(PROFESSIONAL)
   customInstructions String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  provider           AiProviderKind @default(GEMINI)
+  apiKeyEncrypted    String?
+  model              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

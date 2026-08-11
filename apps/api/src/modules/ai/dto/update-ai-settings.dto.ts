@@ -27,4 +27,11 @@ export class UpdateAiSettingsDto {
   @IsString()
   @MaxLength(4000)
   customInstructions?: string;
+
+  /** Chave nova pra salvar (criptografada). Omitir mantém a chave atual. */
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(200)
+  apiKey?: string;
 }

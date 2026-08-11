@@ -7,6 +7,9 @@ export interface AiMessage {
 export interface AiGenerateInput {
   systemPrompt: string;
   history: AiMessage[];
+  /** Credencial do TENANT, nunca uma chave compartilhada da plataforma. */
+  apiKey: string;
+  model?: string;
 }
 
 export interface AiGenerateResult {

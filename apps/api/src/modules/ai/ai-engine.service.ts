@@ -1,7 +1,19 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiContextBuilder } from './ai-context-builder.service';
 import { AI_PROVIDER, type AiProvider } from './providers/ai-provider.interface';
+
+interface ResolvedCredentials {
+  apiKey: string;
+  model?: string;
+}
+
+type SettingsWithCredentials = {
+  active: boolean;
+  apiKeyEncrypted: string | null;
+  model: string | null;
+} | null;
 
 /**
  * O "cérebro": decide se responde e, se sim, o quê. Nunca escreve no banco
@@ -16,18 +28,42 @@ export class AiEngineService {
   constructor(
     private readonly contextBuilder: AiContextBuilder,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly encryption: EncryptionService,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
   ) {}
 
   /**
+   * A chave configurada pelo tenant em Configurações > IA sempre tem
+   * prioridade — cada empresa paga e usa a própria conta. A variável de
+   * ambiente é só uma conveniência pra desenvolvimento local, nunca deve
+   * ser usada em produção como chave compartilhada entre tenants.
+   */
+  private resolveCredentials(settings: SettingsWithCredentials): ResolvedCredentials | null {
+    if (settings?.apiKeyEncrypted) {
+      return { apiKey: this.encryption.decrypt(settings.apiKeyEncrypted), model: settings.model ?? undefined };
+    }
+    if (process.env.GEMINI_API_KEY) {
+      return { apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL };
+    }
+    return null;
+  }
+
+  /**
    * Retorna o texto da resposta, ou null quando a IA não deve responder
-   * (desligada pelo tenant, ou falha na chamada ao provedor — nesse caso o
-   * atendimento simplesmente fica visível pra um humano assumir, em vez de
-   * quebrar o recebimento da mensagem do cliente).
+   * (desligada pelo tenant, sem API key configurada, ou falha na chamada ao
+   * provedor — nesses casos o atendimento simplesmente fica visível pra um
+   * humano assumir, em vez de quebrar o recebimento da mensagem do
+   * cliente).
    */
   async generateReply(conversationId: string): Promise<string | null> {
     const settings = await this.tenantPrisma.db.aiSettings.findFirst();
     if (settings && !settings.active) {
+      return null;
+    }
+
+    const credentials = this.resolveCredentials(settings);
+    if (!credentials) {
+      this.logger.warn(`Tenant ${this.tenantPrisma.tenantId} sem API key de IA configurada.`);
       return null;
     }
 
@@ -39,7 +75,7 @@ export class AiEngineService {
     }
 
     try {
-      const result = await this.provider.generateReply(context);
+      const result = await this.provider.generateReply({ ...context, ...credentials });
       return result.content;
     } catch (error) {
       this.logger.warn(
@@ -56,8 +92,14 @@ export class AiEngineService {
    * silêncio educado.
    */
   async simulate(message: string): Promise<string> {
+    const settings = await this.tenantPrisma.db.aiSettings.findFirst();
+    const credentials = this.resolveCredentials(settings);
+    if (!credentials) {
+      throw new Error('Nenhuma API key de IA configurada. Adicione uma em Configurações > IA.');
+    }
+
     const context = await this.contextBuilder.buildStandalone(message);
-    const result = await this.provider.generateReply(context);
+    const result = await this.provider.generateReply({ ...context, ...credentials });
     return result.content;
   }
 }

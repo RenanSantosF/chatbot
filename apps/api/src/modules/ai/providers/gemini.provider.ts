@@ -11,25 +11,10 @@ function toGeminiRole(role: AiMessage['role']): 'user' | 'model' {
 @Injectable()
 export class GeminiProvider implements AiProvider {
   private readonly logger = new Logger(GeminiProvider.name);
-  private readonly model = process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
-  private client: GoogleGenAI | null = null;
 
-  /** Lazy: não derruba o boot da aplicação se a chave ainda não foi configurada. */
-  private getClient(): GoogleGenAI {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        'GEMINI_API_KEY não configurada. Defina essa variável de ambiente pra IA responder de verdade.',
-      );
-    }
-    if (!this.client) {
-      this.client = new GoogleGenAI({ apiKey });
-    }
-    return this.client;
-  }
-
-  async generateReply({ systemPrompt, history }: AiGenerateInput): Promise<AiGenerateResult> {
-    const client = this.getClient();
+  async generateReply({ systemPrompt, history, apiKey, model }: AiGenerateInput): Promise<AiGenerateResult> {
+    const client = new GoogleGenAI({ apiKey });
+    const resolvedModel = model ?? DEFAULT_MODEL;
 
     const contents = history.map((message) => ({
       role: toGeminiRole(message.role),
@@ -38,7 +23,7 @@ export class GeminiProvider implements AiProvider {
 
     try {
       const response = await client.models.generateContent({
-        model: this.model,
+        model: resolvedModel,
         contents,
         config: { systemInstruction: systemPrompt },
       });
@@ -50,7 +35,10 @@ export class GeminiProvider implements AiProvider {
 
       return { content: text };
     } catch (error) {
-      this.logger.error(`Falha ao chamar o Gemini (${this.model})`, error instanceof Error ? error.stack : error);
+      this.logger.error(
+        `Falha ao chamar o Gemini (${resolvedModel})`,
+        error instanceof Error ? error.stack : error,
+      );
       throw error;
     }
   }

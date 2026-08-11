@@ -82,6 +82,8 @@ export interface AiSettings {
   aiName: string;
   tone: AiTone;
   customInstructions: string | null;
+  hasApiKey: boolean;
+  apiKeyPreview: string | null;
 }
 
 export interface AiInstruction {

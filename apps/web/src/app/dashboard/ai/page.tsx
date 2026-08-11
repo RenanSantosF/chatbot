@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ApiKeyCard } from "@/components/ai-settings/api-key-card";
 import { IdentityForm } from "@/components/ai-settings/identity-form";
 import { InstructionsManager } from "@/components/ai-settings/instructions-manager";
 import { Simulator } from "@/components/ai-settings/simulator";
@@ -43,6 +44,7 @@ export default function AiSettingsPage() {
       ) : (
         <>
           <IdentityForm settings={settings} onUpdated={setSettings} />
+          <ApiKeyCard settings={settings} onUpdated={setSettings} />
           <InstructionsManager instructions={instructions} onChange={setInstructions} />
           <Simulator />
         </>
