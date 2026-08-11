@@ -6,7 +6,14 @@ import type { PrismaClient } from '../../../generated/prisma/client';
  * próximas fases e passa a ser protegida automaticamente — ninguém precisa
  * lembrar de escrever `where: { tenantId }` em cada query do sistema.
  */
-const TENANT_SCOPED_MODELS = new Set(['User', 'Customer', 'Conversation', 'Message']);
+const TENANT_SCOPED_MODELS = new Set([
+  'User',
+  'Customer',
+  'Conversation',
+  'Message',
+  'AiSettings',
+  'AiInstruction',
+]);
 
 const WHERE_SCOPED_OPERATIONS = new Set([
   'findMany',

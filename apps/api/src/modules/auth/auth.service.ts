@@ -85,6 +85,8 @@ export class AuthService {
         },
       });
 
+      await tx.aiSettings.create({ data: { tenantId: tenant.id } });
+
       return { tenant, user };
     });
 

@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { AiMode, ConversationStatus } from '../../../generated/prisma/client';
+import type {
+  AiMode,
+  ConversationStatus,
+  MessageSenderType,
+} from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { AiEngineService } from '../ai/ai-engine.service';
 import { CustomersService } from '../customers/customers.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
@@ -17,6 +22,7 @@ export class ConversationsService {
     private readonly prisma: TenantPrismaService,
     private readonly customers: CustomersService,
     private readonly realtime: RealtimeGateway,
+    private readonly aiEngine: AiEngineService,
   ) {}
 
   async list(filter: { status?: ConversationStatus; assignedUserId?: string }) {
@@ -45,28 +51,43 @@ export class ConversationsService {
     return this.requireConversation(id);
   }
 
-  async sendAgentMessage(conversationId: string, agentId: string, content: string) {
-    await this.requireConversation(conversationId);
-
+  /**
+   * Grava uma mensagem (de quem for) e atualiza a conversa de forma
+   * consistente: quando quem fala é o cliente, a conversa fica OPEN
+   * (esperando alguém/algo responder); quando quem fala é a empresa
+   * (atendente ou IA), fica WAITING_CUSTOMER. Emite os dois eventos de
+   * tempo real sempre da mesma forma, então painel nunca fica desatualizado
+   * não importa qual caminho gerou a mensagem.
+   */
+  private async persistMessage(
+    conversationId: string,
+    data: { senderType: MessageSenderType; senderId?: string; content: string },
+  ) {
     const message = await this.prisma.db.message.create({
-      data: {
-        tenantId: this.prisma.tenantId,
-        conversationId,
-        senderType: 'AGENT',
-        senderId: agentId,
-        content,
-      },
+      data: { tenantId: this.prisma.tenantId, conversationId, ...data },
     });
+
+    const status: ConversationStatus = data.senderType === 'CUSTOMER' ? 'OPEN' : 'WAITING_CUSTOMER';
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
-      data: { lastMessageAt: message.createdAt, status: 'WAITING_CUSTOMER' },
+      data: { lastMessageAt: message.createdAt, status },
       include: conversationInclude,
     });
 
     this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', { conversationId, message });
     this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
 
+    return { message, conversation };
+  }
+
+  async sendAgentMessage(conversationId: string, agentId: string, content: string) {
+    await this.requireConversation(conversationId);
+    const { message } = await this.persistMessage(conversationId, {
+      senderType: 'AGENT',
+      senderId: agentId,
+      content,
+    });
     return message;
   }
 
@@ -112,8 +133,9 @@ export class ConversationsService {
   /**
    * Recebe uma mensagem de cliente vinda de qualquer canal: encontra ou cria
    * o cliente pelo telefone, reaproveita uma conversa em aberto ou cria uma
-   * nova, grava a mensagem. É o mesmo caminho que o webhook do WhatsApp vai
-   * chamar na Fase 7.
+   * nova, grava a mensagem — e, se a IA estiver ativa nessa conversa, deixa
+   * ela responder antes de devolver. É o mesmo caminho que o webhook do
+   * WhatsApp vai chamar na Fase 7.
    */
   async receiveInbound(input: { customerPhone: string; customerName: string; content: string }) {
     const customer = await this.customers.findOrCreateByPhone({
@@ -132,27 +154,21 @@ export class ConversationsService {
       });
     }
 
-    const message = await this.prisma.db.message.create({
-      data: {
-        tenantId: this.prisma.tenantId,
-        conversationId: conversation.id,
-        senderType: 'CUSTOMER',
-        content: input.content,
-      },
+    const inbound = await this.persistMessage(conversation.id, {
+      senderType: 'CUSTOMER',
+      content: input.content,
     });
 
-    const updated = await this.prisma.db.conversation.update({
-      where: { id: conversation.id },
-      data: { lastMessageAt: message.createdAt, status: 'OPEN' },
-      include: conversationInclude,
-    });
+    let latestConversation = inbound.conversation;
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId: conversation.id,
-      message,
-    });
-    this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', updated);
+    if (conversation.aiMode === 'AI_ACTIVE') {
+      const reply = await this.aiEngine.generateReply(conversation.id);
+      if (reply) {
+        const aiTurn = await this.persistMessage(conversation.id, { senderType: 'AI', content: reply });
+        latestConversation = aiTurn.conversation;
+      }
+    }
 
-    return { conversation: updated, message };
+    return { conversation: latestConversation, message: inbound.message };
   }
 }

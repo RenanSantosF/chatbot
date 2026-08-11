@@ -8,3 +8,5 @@ onlyBuiltDependencies:
   - prisma
   - unrs-resolver
   - sharp
+  - "@google/genai"
+  - protobufjs

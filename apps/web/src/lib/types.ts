@@ -73,3 +73,22 @@ export interface ConversationSummary {
 export interface ConversationDetail extends ConversationSummary {
   messages: ConversationMessage[];
 }
+
+export type AiTone = "PROFESSIONAL" | "FRIENDLY" | "CASUAL" | "OBJECTIVE" | "WARM";
+
+export interface AiSettings {
+  id: string;
+  active: boolean;
+  aiName: string;
+  tone: AiTone;
+  customInstructions: string | null;
+}
+
+export interface AiInstruction {
+  id: string;
+  title: string;
+  content: string;
+  priority: number;
+  active: boolean;
+  createdAt: string;
+}

@@ -40,10 +40,12 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  users         User[]
-  customers     Customer[]
-  conversations Conversation[]
-  messages      Message[]
+  users          User[]
+  customers      Customer[]
+  conversations  Conversation[]
+  messages       Message[]
+  aiSettings     AiSettings?
+  aiInstructions AiInstruction[]
 
   @@map("tenants")
 }
@@ -178,4 +180,47 @@ model Message {
   @@index([tenantId])
   @@index([conversationId, createdAt])
   @@map("messages")
+}
+
+enum AiTone {
+  PROFESSIONAL
+  FRIENDLY
+  CASUAL
+  OBJECTIVE
+  WARM
+}
+
+// Identidade e comportamento da IA — uma linha por tenant (1:1). Criada com
+// valores padrão junto do tenant no registro (ver AuthService.register).
+model AiSettings {
+  id                 String   @id @default(uuid())
+  tenantId           String   @unique
+  active             Boolean  @default(true)
+  aiName             String   @default("Assistente")
+  tone               AiTone   @default(PROFESSIONAL)
+  customInstructions String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ai_settings")
+}
+
+// Instrução em linguagem natural que o dono ensina pra IA (ver seção
+// "Ensinar a IA" do produto). Entram no prompt ordenadas por prioridade.
+model AiInstruction {
+  id        String   @id @default(uuid())
+  tenantId  String
+  title     String
+  content   String
+  priority  Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active])
+  @@map("ai_instructions")
 }
