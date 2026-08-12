@@ -137,6 +137,7 @@ export interface AiSettings {
   customInstructions: string | null;
   hasApiKey: boolean;
   apiKeyPreview: string | null;
+  model: string | null;
 }
 
 export type KnowledgeDocumentStatus = "PROCESSING" | "READY" | "FAILED";

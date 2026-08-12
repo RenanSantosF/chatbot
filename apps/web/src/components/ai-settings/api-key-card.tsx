@@ -19,6 +19,8 @@ export function ApiKeyCard({
   const [editing, setEditing] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
+  const [model, setModel] = useState(settings.model ?? "");
+  const [savingModel, setSavingModel] = useState(false);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -37,6 +39,23 @@ export function ApiKeyCard({
       toast.error(err instanceof ApiError ? err.message : "Não deu pra salvar a chave.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveModel(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingModel(true);
+    try {
+      const updated = await apiFetch<AiSettings>("/ai/settings", {
+        method: "PUT",
+        body: JSON.stringify({ model: model || undefined }),
+      });
+      onUpdated(updated);
+      toast.success("Modelo salvo.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Não deu pra salvar o modelo.");
+    } finally {
+      setSavingModel(false);
     }
   }
 
@@ -102,6 +121,37 @@ export function ApiKeyCard({
             </Button>
           </div>
         )}
+
+        <form onSubmit={handleSaveModel} className="mt-4 flex flex-col gap-2 border-t pt-4">
+          <label htmlFor="ai-model" className="text-sm font-medium">
+            Modelo do Gemini
+          </label>
+          <p className="text-xs text-muted-foreground">
+            O Google descontinua modelos de vez em quando — se a IA parar de responder e o motivo for
+            algo como &ldquo;model is no longer available&rdquo;, troque aqui pelo nome atual (confira em{" "}
+            <a
+              href="https://ai.google.dev/gemini-api/docs/models"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              ai.google.dev/gemini-api/docs/models
+            </a>
+            ), sem precisar de deploy.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              id="ai-model"
+              placeholder="gemini-2.5-flash"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="max-w-xs"
+            />
+            <Button type="submit" size="sm" variant="outline" disabled={savingModel}>
+              {savingModel ? "Salvando..." : "Salvar modelo"}
+            </Button>
+          </div>
+        </form>
       </CardContent>
     </Card>
   );
