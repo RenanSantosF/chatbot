@@ -57,7 +57,9 @@ export function WhatsAppSettingsCard({
   async function handleSubscribe() {
     setSubscribing(true);
     try {
-      await apiFetch("/whatsapp/settings/subscribe", { method: "POST" });
+      const updated = await apiFetch<WhatsAppSettings>("/whatsapp/settings/subscribe", { method: "POST" });
+      onUpdated(updated);
+      setWabaId(updated.wabaId ?? "");
       toast.success("Recebimento de mensagens ativado! Manda uma mensagem de teste pra confirmar.");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Não deu pra ativar o recebimento.");
@@ -139,7 +141,7 @@ export function WhatsAppSettingsCard({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="wabaId" className="text-xs">
-                ID da conta comercial do WhatsApp (WABA ID, opcional por enquanto)
+                ID da conta comercial do WhatsApp (opcional — a gente descobre sozinho ao ativar)
               </Label>
               <Input
                 id="wabaId"
@@ -206,7 +208,8 @@ export function WhatsAppSettingsCard({
               <p className="text-sm font-medium">Recebimento de mensagens não ativado?</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Se o webhook está configurado mas mensagens reais não chegam, o app pode não estar
-                inscrito na sua WABA. Preencha o WABA ID acima (em &ldquo;Editar&rdquo;) e clica aqui.
+                inscrito na sua conta do WhatsApp. Clica aqui — a gente descobre e ativa automaticamente,
+                sem precisar preencher nada.
               </p>
               <Button size="sm" className="mt-2" disabled={subscribing} onClick={handleSubscribe}>
                 {subscribing ? "Ativando..." : "Ativar recebimento de mensagens"}

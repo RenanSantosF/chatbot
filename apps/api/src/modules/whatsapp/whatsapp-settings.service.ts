@@ -111,12 +111,50 @@ export class WhatsappSettingsService {
   }
 
   /**
+   * O token que o tenant colou já "sabe" a que WABA ele pertence — a Meta
+   * expõe isso via debug_token (granular_scopes), então não precisamos
+   * pedir esse ID pro usuário caçar na própria UI da Meta, que muda de
+   * lugar com frequência e é confuso de achar pelo celular.
+   */
+  private async discoverWabaId(accessToken: string): Promise<string | null> {
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      return null;
+    }
+
+    const body: unknown = await response.json().catch(() => null);
+    const scopes =
+      body &&
+      typeof body === 'object' &&
+      'data' in body &&
+      body.data &&
+      typeof body.data === 'object' &&
+      'granular_scopes' in body.data &&
+      Array.isArray(body.data.granular_scopes)
+        ? (body.data.granular_scopes as Array<{
+            scope?: string;
+            target_ids?: string[];
+          }>)
+        : [];
+
+    const whatsappScope = scopes.find(
+      (scope) =>
+        scope.scope === 'whatsapp_business_messaging' ||
+        scope.scope === 'whatsapp_business_management',
+    );
+
+    return whatsappScope?.target_ids?.[0] ?? null;
+  }
+
+  /**
    * Salvar a URL do webhook no app não é suficiente pra receber mensagens
    * de verdade — o app também precisa estar inscrito na WABA (WhatsApp
    * Business Account) especificamente. Isso normalmente acontece sozinho no
    * fluxo guiado da Meta, mas fica pra trás quando os campos são
    * preenchidos manualmente. Este endpoint chama a Graph API pra fazer essa
-   * inscrição diretamente, sem precisar de terminal.
+   * inscrição diretamente, sem precisar de terminal — e descobre o WABA ID
+   * sozinho a partir do token se ainda não estiver salvo.
    */
   async subscribeApp() {
     const current = await this.getRaw();
@@ -125,14 +163,24 @@ export class WhatsappSettingsService {
         'Conecte o WhatsApp primeiro (Phone number ID, token e App Secret).',
       );
     }
-    if (!current.wabaId) {
-      throw new BadRequestException(
-        'Falta o ID da conta comercial do WhatsApp (WABA ID). Preencha esse campo e salve antes de ativar.',
-      );
-    }
 
     const accessToken = this.encryption.decrypt(current.accessTokenEncrypted);
-    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${current.wabaId}/subscribed_apps`;
+    let wabaId = current.wabaId;
+
+    if (!wabaId) {
+      wabaId = await this.discoverWabaId(accessToken);
+      if (!wabaId) {
+        throw new BadRequestException(
+          'Não consegui descobrir o ID da conta comercial do WhatsApp a partir do token. Confira se o token de acesso está certo e tem a permissão whatsapp_business_management.',
+        );
+      }
+      await this.prisma.db.whatsAppSettings.update({
+        where: { id: current.id },
+        data: { wabaId },
+      });
+    }
+
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${wabaId}/subscribed_apps`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -156,7 +204,7 @@ export class WhatsappSettingsService {
       );
     }
 
-    return { subscribed: true };
+    return this.toPublic({ ...current, wabaId });
   }
 
   async disconnect() {
