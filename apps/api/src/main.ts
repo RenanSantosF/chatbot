@@ -5,7 +5,10 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true preserva o corpo bruto da requisição (além do JSON já
+  // parseado) — necessário pra validar a assinatura X-Hub-Signature-256 do
+  // webhook do WhatsApp, que é calculada sobre os bytes exatos recebidos.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.use(cookieParser());
   app.enableCors({
@@ -23,7 +26,7 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
-  // eslint-disable-next-line no-console
+
   console.log(`API rodando em http://localhost:${port}/api`);
 }
 bootstrap();

@@ -52,8 +52,30 @@ model Tenant {
   tasks              Task[]
   queues             Queue[]
   queueMembers       QueueMember[]
+  whatsappSettings   WhatsAppSettings?
 
   @@map("tenants")
+}
+
+model WhatsAppSettings {
+  id                   String   @id @default(uuid())
+  tenantId             String   @unique
+  // ID do número na Cloud API da Meta — chega em todo webhook recebido
+  // (value.metadata.phone_number_id) e é como identificamos de qual tenant
+  // é uma mensagem antes mesmo de saber o tenantId, já que o webhook é
+  // único pra plataforma inteira. Por isso é globalmente único, não só
+  // único por tenant.
+  phoneNumberId        String   @unique
+  displayPhoneNumber   String?
+  wabaId               String?
+  accessTokenEncrypted String
+  appSecretEncrypted   String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_settings")
 }
 
 model User {

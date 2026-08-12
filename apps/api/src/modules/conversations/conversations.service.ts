@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
   AiMode,
+  ConversationChannel,
   ConversationStatus,
   MessageSenderType,
 } from '../../../generated/prisma/client';
@@ -8,8 +9,13 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
 import { CustomersService } from '../customers/customers.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
 
-const OPEN_STATUSES: ConversationStatus[] = ['OPEN', 'WAITING_CUSTOMER', 'WAITING_AGENT'];
+const OPEN_STATUSES: ConversationStatus[] = [
+  'OPEN',
+  'WAITING_CUSTOMER',
+  'WAITING_AGENT',
+];
 
 const conversationInclude = {
   customer: true,
@@ -24,13 +30,20 @@ export class ConversationsService {
     private readonly customers: CustomersService,
     private readonly realtime: RealtimeGateway,
     private readonly aiEngine: AiEngineService,
+    private readonly whatsapp: WhatsappSenderService,
   ) {}
 
-  async list(filter: { status?: ConversationStatus; assignedUserId?: string; queueId?: string }) {
+  async list(filter: {
+    status?: ConversationStatus;
+    assignedUserId?: string;
+    queueId?: string;
+  }) {
     return this.prisma.db.conversation.findMany({
       where: {
         ...(filter.status ? { status: filter.status } : {}),
-        ...(filter.assignedUserId ? { assignedUserId: filter.assignedUserId } : {}),
+        ...(filter.assignedUserId
+          ? { assignedUserId: filter.assignedUserId }
+          : {}),
         ...(filter.queueId ? { queueId: filter.queueId } : {}),
       },
       include: conversationInclude,
@@ -41,7 +54,10 @@ export class ConversationsService {
   private async requireConversation(id: string) {
     const conversation = await this.prisma.db.conversation.findFirst({
       where: { id },
-      include: { ...conversationInclude, messages: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        ...conversationInclude,
+        messages: { orderBy: { createdAt: 'asc' } },
+      },
     });
     if (!conversation) {
       throw new NotFoundException('Conversa não encontrada.');
@@ -69,7 +85,8 @@ export class ConversationsService {
       data: { tenantId: this.prisma.tenantId, conversationId, ...data },
     });
 
-    const status: ConversationStatus = data.senderType === 'CUSTOMER' ? 'OPEN' : 'WAITING_CUSTOMER';
+    const status: ConversationStatus =
+      data.senderType === 'CUSTOMER' ? 'OPEN' : 'WAITING_CUSTOMER';
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
@@ -77,13 +94,34 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', { conversationId, message });
-    this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+      conversationId,
+      message,
+    });
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      conversation,
+    );
+
+    // Só ecoa pro WhatsApp respostas da empresa (IA ou atendente) — mensagens
+    // do próprio cliente óbvio não, e mensagens SYSTEM (ex: aviso de
+    // transferência de fila) são notas internas pro time, não pro cliente.
+    if (
+      conversation.channel === 'WHATSAPP' &&
+      (data.senderType === 'AI' || data.senderType === 'AGENT')
+    ) {
+      await this.whatsapp.sendText(conversation.customer.phone, data.content);
+    }
 
     return { message, conversation };
   }
 
-  async sendAgentMessage(conversationId: string, agentId: string, content: string) {
+  async sendAgentMessage(
+    conversationId: string,
+    agentId: string,
+    content: string,
+  ) {
     await this.requireConversation(conversationId);
     const { message } = await this.persistMessage(conversationId, {
       senderType: 'AGENT',
@@ -98,11 +136,19 @@ export class ConversationsService {
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
-      data: { assignedUserId: userId, aiMode: 'HUMAN_ACTIVE', status: 'WAITING_AGENT' },
+      data: {
+        assignedUserId: userId,
+        aiMode: 'HUMAN_ACTIVE',
+        status: 'WAITING_AGENT',
+      },
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      conversation,
+    );
     return conversation;
   }
 
@@ -115,7 +161,11 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      conversation,
+    );
     return conversation;
   }
 
@@ -128,7 +178,11 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      conversation,
+    );
     return conversation;
   }
 
@@ -139,7 +193,12 @@ export class ConversationsService {
    * ela responder antes de devolver. É o mesmo caminho que o webhook do
    * WhatsApp vai chamar na Fase 7.
    */
-  async receiveInbound(input: { customerPhone: string; customerName: string; content: string }) {
+  async receiveInbound(input: {
+    customerPhone: string;
+    customerName: string;
+    content: string;
+    channel?: ConversationChannel;
+  }) {
     const customer = await this.customers.findOrCreateByPhone({
       phone: input.customerPhone,
       name: input.customerName,
@@ -152,7 +211,11 @@ export class ConversationsService {
 
     if (!conversation) {
       conversation = await this.prisma.db.conversation.create({
-        data: { tenantId: this.prisma.tenantId, customerId: customer.id, channel: 'INTERNAL' },
+        data: {
+          tenantId: this.prisma.tenantId,
+          customerId: customer.id,
+          channel: input.channel ?? 'INTERNAL',
+        },
       });
     }
 
@@ -166,7 +229,10 @@ export class ConversationsService {
     if (conversation.aiMode === 'AI_ACTIVE') {
       const reply = await this.aiEngine.generateReply(conversation.id);
       if (reply) {
-        const aiTurn = await this.persistMessage(conversation.id, { senderType: 'AI', content: reply });
+        const aiTurn = await this.persistMessage(conversation.id, {
+          senderType: 'AI',
+          content: reply,
+        });
         latestConversation = aiTurn.conversation;
       }
     }

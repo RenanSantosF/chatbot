@@ -14,6 +14,8 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.module';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { UsersModule } from './modules/users/users.module';
     KnowledgeModule,
     TasksModule,
     QueuesModule,
+    WhatsappModule,
+    WhatsappWebhookModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

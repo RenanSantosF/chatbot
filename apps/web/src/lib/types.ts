@@ -159,3 +159,13 @@ export interface AiInstruction {
   active: boolean;
   createdAt: string;
 }
+
+export interface WhatsAppSettings {
+  connected: boolean;
+  phoneNumberId: string | null;
+  displayPhoneNumber: string | null;
+  wabaId: string | null;
+  hasAccessToken: boolean;
+  hasAppSecret: boolean;
+  webhookUrl: string;
+}

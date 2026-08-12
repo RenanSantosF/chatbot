@@ -36,7 +36,11 @@ export class ConversationsController {
     @Body() dto: SendMessageDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.conversationsService.sendAgentMessage(id, user.userId, dto.content);
+    return this.conversationsService.sendAgentMessage(
+      id,
+      user.userId,
+      dto.content,
+    );
   }
 
   @Post(':id/assign')
