@@ -54,6 +54,7 @@ model Tenant {
   queueMembers       QueueMember[]
   routingRules       RoutingRule[]
   rolePermissions    RolePermission[]
+  collectionFields   CollectionField[]
   whatsappSettings   WhatsAppSettings?
 
   @@map("tenants")
@@ -238,15 +239,69 @@ model Message {
   // os webhooks de status depois encontram a linha certa pra atualizar.
   externalId     String?
   metadata       Json?
+  // Resposta citada: no WhatsApp o cliente pode responder uma mensagem
+  // específica, e sem isso a conversa perde o fio quando ele responde algo
+  // de cinco mensagens atrás.
+  replyToId      String?
+  // Reações (emoji) na mensagem, como {"👍": ["5511..."]}. Guardadas na
+  // própria mensagem reagida, não como mensagem nova — é assim que a Meta
+  // manda e é assim que faz sentido exibir.
+  reactions      Json?
   createdAt      DateTime          @default(now())
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo      Message?     @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      Message[]    @relation("MessageReply")
 
   @@index([tenantId])
   @@index([conversationId, createdAt])
   @@index([externalId])
   @@map("messages")
+}
+
+// Tipo do dado que a IA precisa coletar — o tipo é o que permite validar
+// e, no futuro, formatar (CPF, telefone) em vez de aceitar texto solto.
+enum CollectionFieldType {
+  TEXT
+  EMAIL
+  PHONE
+  DOCUMENT
+  DATE
+  NUMBER
+}
+
+// Onde o valor coletado é gravado. NAME e EMAIL sobem pro cadastro do
+// cliente (deixando o contato com o nome de verdade em vez do que veio do
+// perfil do WhatsApp); METADATA fica no bolso livre do cliente.
+enum CollectionFieldTarget {
+  NAME
+  EMAIL
+  METADATA
+}
+
+// Campo que a IA é obrigada a coletar antes de transferir ou encerrar.
+// Diferente das instruções em texto livre: aqui o sistema sabe o que
+// falta e cobra, em vez de torcer pra o modelo lembrar.
+model CollectionField {
+  id          String                @id @default(uuid())
+  tenantId    String
+  key         String
+  label       String
+  description String?
+  type        CollectionFieldType   @default(TEXT)
+  target      CollectionFieldTarget @default(METADATA)
+  required    Boolean               @default(true)
+  order       Int                   @default(0)
+  active      Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@index([tenantId, active])
+  @@map("collection_fields")
 }
 
 enum AiTone {

@@ -70,6 +70,15 @@ export interface ConversationMessage {
   messageType: MessageType;
   metadata: MessageMetadata | null;
   status: MessageStatus;
+  /** Emoji -> quem reagiu (telefone do cliente ou "agent"). */
+  reactions: Record<string, string[]> | null;
+  replyToId: string | null;
+  replyTo: {
+    id: string;
+    content: string;
+    senderType: MessageSenderType;
+    messageType: MessageType;
+  } | null;
   createdAt: string;
 }
 
@@ -241,4 +250,19 @@ export interface RoutingRule {
 export interface PermissionMatrix {
   catalog: { group: string; items: { key: string; label: string }[] }[];
   roles: { role: string; permissions: Record<string, boolean> }[];
+}
+
+export type CollectionFieldType = "TEXT" | "EMAIL" | "PHONE" | "DOCUMENT" | "DATE" | "NUMBER";
+export type CollectionFieldTarget = "NAME" | "EMAIL" | "METADATA";
+
+export interface CollectionField {
+  id: string;
+  key: string;
+  label: string;
+  description: string | null;
+  type: CollectionFieldType;
+  target: CollectionFieldTarget;
+  required: boolean;
+  order: number;
+  active: boolean;
 }

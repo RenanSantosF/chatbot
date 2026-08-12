@@ -7,6 +7,7 @@ import { CryptoModule } from './common/crypto/crypto.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CollectionModule } from './modules/collection/collection.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
@@ -30,6 +31,7 @@ import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.modul
     UsersModule,
     CustomersModule,
     ConversationsModule,
+    CollectionModule,
     RealtimeModule,
     AiModule,
     KnowledgeModule,

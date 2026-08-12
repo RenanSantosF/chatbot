@@ -4,13 +4,12 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select-field";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
-import type { ConversationPriority, ConversationStatus, ConversationSummary } from "@/lib/types";
+import type { ConversationPriority, ConversationStatus } from "@/lib/types";
 
 export interface InboxFilters {
   status: ConversationStatus | "ALL";
   priority: ConversationPriority | "ALL";
   scope: "ALL" | "MINE" | "UNREAD" | "UNASSIGNED";
-  sort: "recent" | "priority";
   search: string;
 }
 
@@ -18,9 +17,18 @@ export const DEFAULT_FILTERS: InboxFilters = {
   status: "ALL",
   priority: "ALL",
   scope: "ALL",
-  sort: "recent",
   search: "",
 };
+
+/** Contagens vindas do servidor — refletem a base inteira, não a página. */
+export interface FilterCounts {
+  total: number;
+  unread: number;
+  mine: number;
+  unassigned: number;
+  status: Partial<Record<ConversationStatus, number>>;
+  priority: Partial<Record<ConversationPriority, number>>;
+}
 
 const STATUS_ORDER: ConversationStatus[] = [
   "OPEN",
@@ -37,34 +45,6 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   RESOLVED: "Resolvidas",
   CLOSED: "Fechadas",
 };
-
-/**
- * As contagens saem da lista completa (antes de qualquer filtro) de
- * propósito: um seletor que mostra "(0)" só depois de você escolher a
- * opção não ajuda ninguém a decidir pra onde ir.
- */
-export function buildFilterCounts(conversations: ConversationSummary[], currentUserId: string | null) {
-  const status = {} as Record<ConversationStatus, number>;
-  for (const key of STATUS_ORDER) status[key] = 0;
-  const priority = {} as Record<ConversationPriority, number>;
-  for (const key of PRIORITY_ORDER) priority[key] = 0;
-
-  let mine = 0;
-  let unread = 0;
-  let unassigned = 0;
-
-  for (const conversation of conversations) {
-    status[conversation.status] += 1;
-    priority[conversation.priority] += 1;
-    if (currentUserId && conversation.assignedUser?.id === currentUserId) mine += 1;
-    if (conversation.unreadCount > 0) unread += 1;
-    if (!conversation.assignedUser) unassigned += 1;
-  }
-
-  return { total: conversations.length, status, priority, mine, unread, unassigned };
-}
-
-export type FilterCounts = ReturnType<typeof buildFilterCounts>;
 
 export function InboxFilterBar({
   value,
@@ -90,7 +70,7 @@ export function InboxFilterBar({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <SelectField
           label="Situação"
           value={value.status}
@@ -100,7 +80,7 @@ export function InboxFilterBar({
             ...STATUS_ORDER.map((status) => ({
               value: status,
               label: STATUS_LABEL[status],
-              count: counts.status[status],
+              count: counts.status[status] ?? 0,
             })),
           ]}
         />
@@ -113,7 +93,7 @@ export function InboxFilterBar({
             ...PRIORITY_ORDER.map((priority) => ({
               value: priority,
               label: PRIORITY_META[priority].label,
-              count: counts.priority[priority],
+              count: counts.priority[priority] ?? 0,
             })),
           ]}
         />
@@ -126,15 +106,6 @@ export function InboxFilterBar({
             { value: "UNREAD", label: "Não lidas", count: counts.unread },
             { value: "MINE", label: "Minhas", count: counts.mine },
             { value: "UNASSIGNED", label: "Sem dono", count: counts.unassigned },
-          ]}
-        />
-        <SelectField
-          label="Ordenar"
-          value={value.sort}
-          onChange={(next) => set("sort", next as InboxFilters["sort"])}
-          options={[
-            { value: "recent", label: "Mais recentes" },
-            { value: "priority", label: "Urgentes primeiro" },
           ]}
         />
       </div>

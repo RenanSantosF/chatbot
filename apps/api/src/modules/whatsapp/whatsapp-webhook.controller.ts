@@ -51,6 +51,18 @@ function parseInboundMessage(
       : null;
   }
 
+  if (message.type === 'contacts' && message.contacts?.length) {
+    const names = message.contacts
+      .map((contact) => contact.name?.formatted_name)
+      .filter(Boolean)
+      .join(', ');
+    return {
+      content: names ? `Contato compartilhado: ${names}` : 'Contato compartilhado',
+      messageType: 'OTHER',
+      metadata: { contacts: message.contacts } as Prisma.InputJsonValue,
+    };
+  }
+
   if (message.type === 'location' && message.location) {
     const { latitude, longitude, name, address } = message.location;
     const label = [name, address].filter(Boolean).join(' — ');
@@ -216,6 +228,17 @@ export class WhatsappWebhookController {
     for (const message of messages) {
       if (!message.from) continue;
 
+      // Reação não é mensagem nova: ela modifica a mensagem reagida, então
+      // sai do laço antes de virar uma linha no histórico.
+      if (message.type === 'reaction' && message.reaction?.message_id) {
+        await this.conversationsService.applyReaction(
+          message.reaction.message_id,
+          message.reaction.emoji ?? '',
+          message.from,
+        );
+        continue;
+      }
+
       const parsed = parseInboundMessage(message);
       if (!parsed) {
         this.logger.warn(`Tipo de mensagem não suportado: ${message.type}`);
@@ -229,6 +252,8 @@ export class WhatsappWebhookController {
         messageType: parsed.messageType,
         metadata: parsed.metadata,
         channel: 'WHATSAPP',
+        externalId: message.id,
+        replyToExternalId: message.context?.id,
       });
       this.logger.log(
         `Mensagem ${parsed.messageType} processada pro tenant ${settings.tenantId} (de ${message.from}).`,

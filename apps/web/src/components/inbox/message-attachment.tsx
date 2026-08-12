@@ -2,6 +2,7 @@
 
 import { Download, FileText, MapPin, Play } from "lucide-react";
 import { useState } from "react";
+import { ImageLightbox } from "./image-lightbox";
 import type { ConversationMessage } from "@/lib/types";
 
 /**
@@ -22,6 +23,7 @@ function humanSize(bytes?: number): string {
 
 export function MessageAttachment({ message }: { message: ConversationMessage }) {
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
   const meta = message.metadata;
 
   if (message.messageType === "LOCATION" && meta?.latitude !== undefined) {
@@ -44,15 +46,30 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
 
   if (message.messageType === "IMAGE" && !failed) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={url}
-          alt={message.content || "Imagem recebida"}
-          onError={() => setFailed(true)}
-          className="max-h-64 w-auto max-w-full rounded-md object-cover"
-        />
-      </a>
+      <>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Abrir imagem"
+          className="block cursor-zoom-in overflow-hidden rounded-md"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={message.content || "Imagem recebida"}
+            onError={() => setFailed(true)}
+            className="max-h-64 w-auto max-w-full object-cover transition-transform duration-200 hover:scale-[1.02]"
+          />
+        </button>
+        {open ? (
+          <ImageLightbox
+            src={url}
+            alt={message.content || "Imagem recebida"}
+            fileName={meta.fileName}
+            onClose={() => setOpen(false)}
+          />
+        ) : null}
+      </>
     );
   }
 

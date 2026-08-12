@@ -1,4 +1,4 @@
-import { Check, CheckCheck, TriangleAlert } from "lucide-react";
+import { Check, CheckCheck, Reply, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
@@ -40,14 +40,24 @@ function DeliveryTicks({ status }: { status: MessageStatus }) {
   return (
     <span
       title={status === "READ" ? "Lida" : "Entregue"}
-      className={cn(status === "READ" ? "text-sky-300" : "opacity-70")}
+      className={cn(status === "READ" ? "text-sky-500" : "opacity-60")}
     >
       <CheckCheck className="size-3.5" />
     </span>
   );
 }
 
-export function MessageBubble({ message }: { message: ConversationMessage }) {
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏"];
+
+export function MessageBubble({
+  message,
+  onReply,
+  onReact,
+}: {
+  message: ConversationMessage;
+  onReply?: (message: ConversationMessage) => void;
+  onReact?: (messageId: string, emoji: string) => Promise<void>;
+}) {
   if (message.senderType === "SYSTEM") {
     return (
       <p className="self-center rounded-full bg-muted/80 px-3 py-1 text-center text-xs text-muted-foreground shadow-xs">
@@ -57,16 +67,70 @@ export function MessageBubble({ message }: { message: ConversationMessage }) {
   }
 
   const fromCustomer = message.senderType === "CUSTOMER";
+  const reactions = Object.entries(message.reactions ?? {}).filter(
+    ([, who]) => Array.isArray(who) && who.length > 0,
+  );
 
   return (
+    <div className={cn("group/msg relative flex max-w-[75%] flex-col", fromCustomer ? "self-start" : "self-end")}>
+      {onReply || onReact ? (
+        <div
+          className={cn(
+            "absolute -top-3 z-10 flex items-center gap-0.5 rounded-full border bg-popover px-1 py-0.5 opacity-0 shadow-sm transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
+            fromCustomer ? "left-2" : "right-2",
+          )}
+        >
+          {onReact
+            ? QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  title={`Reagir com ${emoji}`}
+                  onClick={() => void onReact(message.id, emoji)}
+                  className="rounded-full px-1 text-sm leading-none transition-transform hover:scale-125"
+                >
+                  {emoji}
+                </button>
+              ))
+            : null}
+          {onReply ? (
+            <button
+              type="button"
+              title="Responder"
+              aria-label="Responder esta mensagem"
+              onClick={() => onReply(message)}
+              className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Reply className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
     <div
       className={cn(
-        "flex max-w-[75%] flex-col gap-0.5 rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm duration-200 ease-out animate-in fade-in",
+        "flex flex-col gap-0.5 rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm duration-200 ease-out animate-in fade-in",
         fromCustomer
-          ? "self-start rounded-bl-sm bg-card text-card-foreground ring-1 ring-foreground/5 slide-in-from-left-2"
-          : "self-end rounded-br-sm bg-primary text-primary-foreground slide-in-from-right-2",
+          ? "rounded-bl-sm bg-card text-card-foreground ring-1 ring-foreground/5 slide-in-from-left-2"
+          : "rounded-br-sm bg-[#d9fdd3] text-neutral-900 slide-in-from-right-2 dark:bg-[#005c4b] dark:text-neutral-50",
       )}
     >
+      {message.replyTo ? (
+        <div
+          className={cn(
+            "mb-1 rounded-md border-l-2 px-2 py-1 text-xs",
+            fromCustomer
+              ? "border-primary/60 bg-black/5 dark:bg-white/10"
+              : "border-primary-foreground/60 bg-black/10",
+          )}
+        >
+          <p className="font-medium opacity-80">
+            {message.replyTo.senderType === "CUSTOMER" ? "Cliente" : "Você"}
+          </p>
+          <p className="line-clamp-2 opacity-70">{message.replyTo.content || "Anexo"}</p>
+        </div>
+      ) : null}
+
       {message.messageType !== "TEXT" ? <MessageAttachment message={message} /> : null}
       {message.content ? (
         <span className="whitespace-pre-wrap break-words">{message.content}</span>
@@ -74,13 +138,28 @@ export function MessageBubble({ message }: { message: ConversationMessage }) {
       <span
         className={cn(
           "flex items-center justify-end gap-1 text-[10px] leading-none",
-          fromCustomer ? "text-muted-foreground" : "text-primary-foreground/80",
+          fromCustomer ? "text-muted-foreground" : "text-neutral-600 dark:text-neutral-300",
         )}
       >
         {message.senderType === "AI" ? <span className="font-medium">IA</span> : null}
         <span>{timeLabel(message.createdAt)}</span>
         {fromCustomer ? null : <DeliveryTicks status={message.status} />}
       </span>
+    </div>
+
+      {reactions.length > 0 ? (
+        <div className={cn("-mt-1.5 flex gap-1", fromCustomer ? "self-start pl-2" : "self-end pr-2")}>
+          {reactions.map(([emoji, who]) => (
+            <span
+              key={emoji}
+              className="flex items-center gap-0.5 rounded-full border bg-popover px-1.5 py-0.5 text-[11px] shadow-xs"
+            >
+              {emoji}
+              {who.length > 1 ? <span className="text-muted-foreground">{who.length}</span> : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

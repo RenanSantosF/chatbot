@@ -75,9 +75,14 @@ function NotificationsButton() {
   }
 
   return (
-    <Button size="sm" variant="ghost" onClick={enableNotifications} title="Receber aviso de mensagem nova">
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      onClick={enableNotifications}
+      aria-label="Ativar avisos de mensagem nova"
+      title="Ativar avisos de mensagem nova"
+    >
       <BellRing className="size-4" />
-      <span className="hidden sm:inline">Ativar avisos</span>
     </Button>
   );
 }
@@ -239,9 +244,14 @@ function Shell({
             <ConnectionBadge />
             <NotificationsButton />
             <ThemeToggle />
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={handleLogout}
+              aria-label="Sair da conta"
+              title="Sair"
+            >
               <LogOut className="size-4" />
-              <span className="hidden sm:inline">Sair</span>
             </Button>
           </div>
         </header>

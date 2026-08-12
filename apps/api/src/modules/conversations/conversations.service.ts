@@ -65,6 +65,20 @@ const conversationInclude = {
   queue: { select: { id: true, key: true, name: true } },
 } as const;
 
+// A mensagem citada vem junto, mas só com o essencial pra desenhar a
+// tarjinha de citação — sem isso a tela teria que caçar a original, que
+// pode nem estar na página carregada.
+const messageInclude = {
+  replyTo: {
+    select: {
+      id: true,
+      content: true,
+      senderType: true,
+      messageType: true,
+    },
+  },
+} as const;
+
 @Injectable()
 export class ConversationsService {
   constructor(
@@ -76,6 +90,16 @@ export class ConversationsService {
     private readonly media: WhatsappMediaService,
   ) {}
 
+  /**
+   * Sempre ordenada por mensagem mais recente — é o que todo mensageiro faz
+   * e o que a memória muscular espera. Prioridade é filtro, não ordenação:
+   * uma conversa urgente de ontem embaixo de uma normal de agora só
+   * confunde quem está atendendo.
+   *
+   * Paginação por cursor (e não offset) porque a lista muda embaixo do
+   * usuário o tempo todo: com offset, uma conversa que sobe pro topo faria
+   * a página seguinte repetir ou pular itens.
+   */
   async list(filter: {
     status?: ConversationStatus;
     assignedUserId?: string;
@@ -83,9 +107,15 @@ export class ConversationsService {
     customerId?: string;
     priority?: ConversationPriority;
     unreadOnly?: boolean;
-    sort?: 'recent' | 'priority';
+    unassignedOnly?: boolean;
+    search?: string;
+    cursor?: string;
+    limit?: number;
   }) {
-    return this.prisma.db.conversation.findMany({
+    const take = Math.min(Math.max(filter.limit ?? 30, 1), 100);
+    const search = filter.search?.trim();
+
+    const items = await this.prisma.db.conversation.findMany({
       where: {
         ...(filter.status ? { status: filter.status } : {}),
         ...(filter.assignedUserId
@@ -95,16 +125,107 @@ export class ConversationsService {
         ...(filter.customerId ? { customerId: filter.customerId } : {}),
         ...(filter.priority ? { priority: filter.priority } : {}),
         ...(filter.unreadOnly ? { unreadCount: { gt: 0 } } : {}),
+        ...(filter.unassignedOnly ? { assignedUserId: null } : {}),
+        ...(search
+          ? {
+              customer: {
+                is: {
+                  OR: [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { phone: { contains: search } },
+                  ],
+                },
+              },
+            }
+          : {}),
       },
       include: conversationInclude,
-      // A ordenação por prioridade aproveita a ordem do enum no banco
-      // (LOW < NORMAL < HIGH < URGENT), então desc põe urgente no topo e
-      // usa a mensagem mais recente como desempate.
-      orderBy:
-        filter.sort === 'priority'
-          ? [{ priority: 'desc' }, { lastMessageAt: 'desc' }]
-          : { lastMessageAt: 'desc' },
+      orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
+      take: take + 1,
+      ...(filter.cursor ? { cursor: { id: filter.cursor }, skip: 1 } : {}),
     });
+
+    // Pedimos um a mais só pra saber se existe próxima página, sem precisar
+    // de um count() separado.
+    const hasMore = items.length > take;
+    const page = hasMore ? items.slice(0, take) : items;
+
+    return {
+      items: page,
+      nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+    };
+  }
+
+  /** Contadores de cada filtro, calculados no banco pra não depender da página carregada. */
+  async counts(userId: string) {
+    const [total, unread, mine, unassigned, byStatus, byPriority] =
+      await Promise.all([
+        this.prisma.db.conversation.count(),
+        this.prisma.db.conversation.count({ where: { unreadCount: { gt: 0 } } }),
+        this.prisma.db.conversation.count({ where: { assignedUserId: userId } }),
+        this.prisma.db.conversation.count({ where: { assignedUserId: null } }),
+        this.prisma.db.conversation.groupBy({
+          by: ['status'],
+          _count: { _all: true },
+        }),
+        this.prisma.db.conversation.groupBy({
+          by: ['priority'],
+          _count: { _all: true },
+        }),
+      ]);
+
+    return {
+      total,
+      unread,
+      mine,
+      unassigned,
+      status: Object.fromEntries(
+        byStatus.map((row) => [row.status, row._count._all]),
+      ),
+      priority: Object.fromEntries(
+        byPriority.map((row) => [row.priority, row._count._all]),
+      ),
+    };
+  }
+
+  /**
+   * Mensagens de uma conversa, da mais nova pra mais velha e com cursor —
+   * é assim que a rolagem infinita pra cima funciona sem carregar cinco
+   * anos de histórico na primeira abertura. A tela reverte a ordem.
+   */
+  async listMessages(
+    conversationId: string,
+    options: { cursor?: string; limit?: number } = {},
+  ) {
+    await this.requireConversationExists(conversationId);
+    const take = Math.min(Math.max(options.limit ?? 40, 1), 100);
+
+    const items = await this.prisma.db.message.findMany({
+      where: { conversationId },
+      include: messageInclude,
+      orderBy: { createdAt: 'desc' },
+      take: take + 1,
+      ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
+    });
+
+    const hasMore = items.length > take;
+    const page = hasMore ? items.slice(0, take) : items;
+
+    return {
+      items: [...page].reverse(),
+      nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+    };
+  }
+
+  private async requireConversationExists(id: string) {
+    const exists = await this.prisma.db.conversation.findFirst({
+      where: { id },
+      select: { id: true },
+    });
+    if (!exists) {
+      throw new NotFoundException('Conversa não encontrada.');
+    }
+    return exists;
   }
 
   private async requireConversation(id: string) {
@@ -127,23 +248,56 @@ export class ConversationsService {
    * não inundar o painel com atualizações a cada clique.
    */
   async getById(id: string) {
-    const conversation = await this.requireConversation(id);
-    if (conversation.unreadCount === 0) {
-      return conversation;
-    }
-
-    const updated = await this.prisma.db.conversation.update({
+    const conversation = await this.prisma.db.conversation.findFirst({
       where: { id },
-      data: { unreadCount: 0 },
       include: conversationInclude,
     });
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
-      'conversation.updated',
-      updated,
-    );
+    if (!conversation) {
+      throw new NotFoundException('Conversa não encontrada.');
+    }
 
-    return { ...conversation, unreadCount: 0 };
+    // Só a página mais recente: uma conversa de meses não pode travar a
+    // abertura carregando tudo. O resto sobe conforme a pessoa rola.
+    const messages = await this.listMessages(id);
+
+    if (conversation.unreadCount > 0) {
+      const updated = await this.prisma.db.conversation.update({
+        where: { id },
+        data: { unreadCount: 0 },
+        include: conversationInclude,
+      });
+      this.realtime.emitToTenant(
+        this.prisma.tenantId,
+        'conversation.updated',
+        updated,
+      );
+      // Avisa a Meta que a empresa leu — é o que acende o tique azul no
+      // aparelho do cliente, igual ao WhatsApp de verdade.
+      void this.markConversationRead(id);
+    }
+
+    return {
+      ...conversation,
+      unreadCount: 0,
+      messages: messages.items,
+      messagesCursor: messages.nextCursor,
+    };
+  }
+
+  /**
+   * Marca a última mensagem recebida como lida na Meta. Falha aqui é
+   * silenciosa de propósito: não conseguir acender o tique azul não pode
+   * atrapalhar quem está abrindo a conversa.
+   */
+  private async markConversationRead(conversationId: string) {
+    const lastInbound = await this.prisma.db.message.findFirst({
+      where: { conversationId, senderType: 'CUSTOMER', externalId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      select: { externalId: true },
+    });
+    if (lastInbound?.externalId) {
+      await this.whatsapp.markAsRead(lastInbound.externalId);
+    }
   }
 
   async setPriority(conversationId: string, priority: ConversationPriority) {
@@ -177,6 +331,8 @@ export class ConversationsService {
       content: string;
       messageType?: MessageType;
       metadata?: Prisma.InputJsonValue;
+      externalId?: string;
+      replyToId?: string;
     },
   ) {
     const before = await this.prisma.db.conversation.findFirst({
@@ -186,6 +342,7 @@ export class ConversationsService {
 
     const message = await this.prisma.db.message.create({
       data: { tenantId: this.prisma.tenantId, conversationId, ...data },
+      include: messageInclude,
     });
 
     const fromCustomer = data.senderType === 'CUSTOMER';
@@ -241,9 +398,17 @@ export class ConversationsService {
       conversation.channel === 'WHATSAPP' &&
       (data.senderType === 'AI' || data.senderType === 'AGENT')
     ) {
+      const quoted = data.replyToId
+        ? await this.prisma.db.message.findFirst({
+            where: { id: data.replyToId },
+            select: { externalId: true },
+          })
+        : null;
+
       const externalId = await this.whatsapp.sendText(
         conversation.customer.phone,
         data.content,
+        quoted?.externalId,
       );
       if (externalId) {
         await this.prisma.db.message.update({
@@ -286,14 +451,112 @@ export class ConversationsService {
     conversationId: string,
     agentId: string,
     content: string,
+    replyToId?: string,
   ) {
-    await this.requireConversation(conversationId);
+    await this.requireConversationExists(conversationId);
     const { message } = await this.persistMessage(conversationId, {
       senderType: 'AGENT',
       senderId: agentId,
       content,
+      replyToId,
     });
     return message;
+  }
+
+  /**
+   * Reação vinda do cliente. Fica gravada na mensagem reagida (não vira
+   * mensagem nova) — emoji vazio significa "removeu a reação", que é como
+   * a Meta representa desfazer.
+   */
+  async applyReaction(externalId: string, emoji: string, from: string) {
+    const message = await this.prisma.db.message.findFirst({
+      where: { externalId },
+      select: { id: true, conversationId: true, reactions: true },
+    });
+    if (!message) return;
+
+    const current =
+      message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions)
+        ? ({ ...message.reactions } as Record<string, string[]>)
+        : {};
+
+    // Uma pessoa tem no máximo uma reação por mensagem: tira das outras
+    // antes de colocar na nova.
+    for (const key of Object.keys(current)) {
+      current[key] = (current[key] ?? []).filter((who) => who !== from);
+      if (current[key].length === 0) delete current[key];
+    }
+    if (emoji) {
+      current[emoji] = [...(current[emoji] ?? []), from];
+    }
+
+    const updated = await this.prisma.db.message.update({
+      where: { id: message.id },
+      data: { reactions: current as Prisma.InputJsonValue },
+      include: messageInclude,
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
+      conversationId: message.conversationId,
+      message: updated,
+    });
+  }
+
+  /** Reação enviada por um atendente pelo painel. */
+  async reactToMessage(conversationId: string, messageId: string, emoji: string) {
+    const conversation = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      include: { customer: true },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Conversa não encontrada.');
+    }
+
+    const message = await this.prisma.db.message.findFirst({
+      where: { id: messageId, conversationId },
+      select: { externalId: true },
+    });
+    if (message?.externalId && conversation.channel === 'WHATSAPP') {
+      await this.whatsapp.sendReaction(
+        conversation.customer.phone,
+        message.externalId,
+        emoji,
+      );
+    }
+
+    return this.applyReactionLocal(messageId, emoji, 'agent');
+  }
+
+  private async applyReactionLocal(messageId: string, emoji: string, who: string) {
+    const message = await this.prisma.db.message.findFirst({
+      where: { id: messageId },
+      select: { id: true, conversationId: true, reactions: true },
+    });
+    if (!message) {
+      throw new NotFoundException('Mensagem não encontrada.');
+    }
+
+    const current =
+      message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions)
+        ? ({ ...message.reactions } as Record<string, string[]>)
+        : {};
+    for (const key of Object.keys(current)) {
+      current[key] = (current[key] ?? []).filter((entry) => entry !== who);
+      if (current[key].length === 0) delete current[key];
+    }
+    if (emoji) current[emoji] = [...(current[emoji] ?? []), who];
+
+    const updated = await this.prisma.db.message.update({
+      where: { id: message.id },
+      data: { reactions: current as Prisma.InputJsonValue },
+      include: messageInclude,
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
+      conversationId: message.conversationId,
+      message: updated,
+    });
+    return updated;
   }
 
   /**
@@ -441,6 +704,8 @@ export class ConversationsService {
     channel?: ConversationChannel;
     messageType?: MessageType;
     metadata?: Prisma.InputJsonValue;
+    externalId?: string;
+    replyToExternalId?: string;
   }) {
     const customer = await this.customers.findOrCreateByPhone({
       phone: input.customerPhone,
@@ -462,11 +727,22 @@ export class ConversationsService {
       });
     }
 
+    // A citação chega como o wamid da mensagem original; traduzimos pro id
+    // interno pra a tela conseguir montar a tarjinha sem consultar a Meta.
+    const replyTo = input.replyToExternalId
+      ? await this.prisma.db.message.findFirst({
+          where: { externalId: input.replyToExternalId },
+          select: { id: true },
+        })
+      : null;
+
     const inbound = await this.persistMessage(conversation.id, {
       senderType: 'CUSTOMER',
       content: input.content,
       messageType: input.messageType,
       metadata: input.metadata,
+      externalId: input.externalId,
+      replyToId: replyTo?.id,
     });
 
     let latestConversation = inbound.conversation;

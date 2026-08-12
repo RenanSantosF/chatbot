@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { AiTone } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { CollectionService } from '../collection/collection.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import type { AiMessage } from './providers/ai-provider.interface';
 
@@ -38,6 +39,7 @@ export class AiContextBuilder {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly knowledge: KnowledgeService,
+    private readonly collection: CollectionService,
   ) {}
 
   private buildSystemPrompt(params: {
@@ -48,6 +50,7 @@ export class AiContextBuilder {
     instructions: { title: string; content: string }[];
     relevantChunks: RelevantChunk[];
     customerMemory: Record<string, string>;
+    pendingFields: string[];
   }): string {
     const lines = [
       `Você é ${params.aiName}, a assistente de atendimento da empresa "${params.tenantName}".`,
@@ -71,6 +74,14 @@ export class AiContextBuilder {
       for (const instruction of params.instructions) {
         lines.push(`- ${instruction.title}: ${instruction.content}`);
       }
+    }
+
+    if (params.pendingFields.length > 0) {
+      lines.push(
+        '',
+        `Dados que a empresa exige coletar e que ainda faltam: ${params.pendingFields.join(', ')}.`,
+        'Peça esses dados naturalmente ao longo da conversa (um ou dois por vez, nunca todos de uma vez) e registre cada um com a ferramenta collectCustomerData assim que o cliente informar. Sem eles você não consegue transferir o atendimento.',
+      );
     }
 
     const memoryEntries = Object.entries(params.customerMemory);
@@ -100,6 +111,7 @@ export class AiContextBuilder {
   private async buildIdentityPrompt(
     relevantChunks: RelevantChunk[],
     customerMemory: Record<string, string> = {},
+    pendingFields: string[] = [],
   ): Promise<string> {
     const tenantId = this.tenantPrisma.tenantId;
 
@@ -122,6 +134,7 @@ export class AiContextBuilder {
       // Com a memória desligada, o que já estava guardado também para de ser
       // usado — não é só a gravação nova que fica bloqueada.
       customerMemory: settings?.memoryMode === 'NONE' ? {} : customerMemory,
+      pendingFields,
     });
   }
 
@@ -164,12 +177,13 @@ export class AiContextBuilder {
 
     const ordered = messages.reverse();
     const lastCustomerMessage = [...ordered].reverse().find((message) => message.senderType === 'CUSTOMER');
-    const [relevantChunks, customerMemory] = await Promise.all([
+    const [relevantChunks, customerMemory, pendingFields] = await Promise.all([
       lastCustomerMessage ? this.searchKnowledgeSafely(lastCustomerMessage.content) : Promise.resolve([]),
       this.loadCustomerMemory(conversationId),
+      this.collection.missingRequired(conversationId),
     ]);
 
-    const systemPrompt = await this.buildIdentityPrompt(relevantChunks, customerMemory);
+    const systemPrompt = await this.buildIdentityPrompt(relevantChunks, customerMemory, pendingFields);
 
     const history: AiMessage[] = ordered
       .filter((message) => message.senderType !== 'SYSTEM')

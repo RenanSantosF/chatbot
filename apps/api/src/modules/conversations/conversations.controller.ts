@@ -34,23 +34,56 @@ export class ConversationsController {
     @Query('customerId') customerId: string | undefined,
     @Query('priority') priority: ConversationPriority | undefined,
     @Query('unread') unread: string | undefined,
-    @Query('sort') sort: 'recent' | 'priority' | undefined,
+    @Query('unassigned') unassigned: string | undefined,
+    @Query('search') search: string | undefined,
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.list({
       status,
       assignedUserId: mine === 'true' ? user.userId : undefined,
+      unassignedOnly: unassigned === 'true',
       queueId,
       customerId,
       priority,
       unreadOnly: unread === 'true',
-      sort,
+      search,
+      cursor,
+      limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  @Get('counts')
+  counts(@CurrentUser() user: RequestUser) {
+    return this.conversationsService.counts(user.userId);
   }
 
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.conversationsService.getById(id);
+  }
+
+  /** Páginas anteriores do histórico — usado pela rolagem infinita pra cima. */
+  @Get(':id/messages')
+  listMessages(
+    @Param('id') id: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.conversationsService.listMessages(id, {
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  @Post(':id/messages/:messageId/reaction')
+  react(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body('emoji') emoji: string,
+  ) {
+    return this.conversationsService.reactToMessage(id, messageId, emoji ?? '');
   }
 
   @Post(':id/messages')
@@ -63,6 +96,7 @@ export class ConversationsController {
       id,
       user.userId,
       dto.content,
+      dto.replyToId,
     );
   }
 

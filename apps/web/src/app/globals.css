@@ -48,45 +48,43 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Superfícies estritamente neutras (cinza puro, croma 0) e o verde da
-   marca reservado só pro que é ação: botão primário, item ativo, badge de
-   não lida. Fundo levemente tingido de verde deixava tudo com aparência
-   de "tema", não de ferramenta. */
+/* Cinzas do WhatsApp Web: fundo levemente mais quente que branco puro,
+   painel branco, e o verde da marca só em ação (botão, badge, balão de
+   saída). O tom de fundo #f7f5f3 é o que dá a sensação de "casa" sem
+   deixar a tela lavada. */
 :root {
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.16 0 0);
+  --background: oklch(0.972 0.002 85);
+  --foreground: oklch(0.19 0.005 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0 0);
+  --card-foreground: oklch(0.19 0.005 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0 0);
-  --primary: oklch(0.52 0.12 163);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.22 0 0);
-  --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0.955 0 0);
-  --accent-foreground: oklch(0.2 0 0);
+  --popover-foreground: oklch(0.19 0.005 260);
+  --primary: oklch(0.55 0.11 165);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.955 0.002 85);
+  --secondary-foreground: oklch(0.25 0.005 260);
+  --muted: oklch(0.958 0.002 85);
+  --muted-foreground: oklch(0.52 0.006 260);
+  --accent: oklch(0.945 0.003 85);
+  --accent-foreground: oklch(0.22 0.005 260);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.9 0 0);
-  --input: oklch(0.88 0 0);
-  /* Anel de foco neutro: a borda verde no input gritava e destoava do
-     resto. Foco precisa ser evidente, não colorido. */
-  --ring: oklch(0.55 0 0);
+  --border: oklch(0.905 0.003 85);
+  --input: oklch(0.885 0.003 85);
+  --ring: oklch(0.6 0.01 260);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.375rem;
-  --sidebar: oklch(0.975 0 0);
-  --sidebar-foreground: oklch(0.16 0 0);
-  --sidebar-primary: oklch(0.52 0.12 163);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.93 0 0);
-  --sidebar-accent-foreground: oklch(0.16 0 0);
-  --sidebar-border: oklch(0.9 0 0);
-  --sidebar-ring: oklch(0.55 0 0);
+  --sidebar: oklch(0.955 0.002 85);
+  --sidebar-foreground: oklch(0.19 0.005 260);
+  --sidebar-primary: oklch(0.55 0.11 165);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.905 0.004 85);
+  --sidebar-accent-foreground: oklch(0.17 0.005 260);
+  --sidebar-border: oklch(0.9 0.003 85);
+  --sidebar-ring: oklch(0.6 0.01 260);
 }
 
 /* Escuro neutro, sem tingimento: cinza-carvão puro (croma 0), do jeito
@@ -131,13 +129,13 @@
    textura de mensageiro sem competir com os balões. Como é embutido em
    data URI, não há requisição de rede nem risco de o padrão não carregar. */
 .chat-wallpaper {
-  background-color: oklch(0.955 0 0);
+  background-color: #efeae2;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M8 12c3-4 7-4 10 0'/%3E%3Cpath d='M40 6c2.5 3 2.5 6 0 9'/%3E%3Cpath d='M52 26c-3 2-6 1-8-2'/%3E%3Cpath d='M18 38c4-1 7 1 8 5'/%3E%3Cpath d='M44 48c-2 3-6 4-9 2'/%3E%3Cpath d='M6 54c3-3 7-3 10 0'/%3E%3Ccircle cx='30' cy='24' r='2.5'/%3E%3Ccircle cx='58' cy='42' r='2'/%3E%3Ccircle cx='12' cy='28' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: repeat;
 }
 
 .dark .chat-wallpaper {
-  background-color: oklch(0.15 0 0);
+  background-color: #0b141a;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23fff' stroke-opacity='0.05' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M8 12c3-4 7-4 10 0'/%3E%3Cpath d='M40 6c2.5 3 2.5 6 0 9'/%3E%3Cpath d='M52 26c-3 2-6 1-8-2'/%3E%3Cpath d='M18 38c4-1 7 1 8 5'/%3E%3Cpath d='M44 48c-2 3-6 4-9 2'/%3E%3Cpath d='M6 54c3-3 7-3 10 0'/%3E%3Ccircle cx='30' cy='24' r='2.5'/%3E%3Ccircle cx='58' cy='42' r='2'/%3E%3Ccircle cx='12' cy='28' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
 }
 

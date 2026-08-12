@@ -1,6 +1,6 @@
 "use client";
 
-import { MessagesSquare, Paperclip, SendHorizonal } from "lucide-react";
+import { MessagesSquare, Paperclip, SendHorizonal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,12 @@ export function ChatPanel({
   onReactivateAi,
   onChangePriority,
   onSendFile,
+  replyTo,
+  hasOlder,
+  onLoadOlder,
+  onReply,
+  onCancelReply,
+  onReact,
 }: {
   conversation: ConversationDetail | null;
   sending: boolean;
@@ -107,6 +113,12 @@ export function ChatPanel({
   onReactivateAi: () => Promise<void>;
   onChangePriority: (priority: ConversationPriority) => Promise<void>;
   onSendFile: (file: File) => Promise<void>;
+  replyTo: ConversationMessage | null;
+  hasOlder: boolean;
+  onLoadOlder: () => Promise<void>;
+  onReply: (message: ConversationMessage) => void;
+  onCancelReply: () => void;
+  onReact: (messageId: string, emoji: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -173,18 +185,41 @@ export function ChatPanel({
       </div>
 
       <div className="chat-wallpaper flex flex-1 flex-col gap-1.5 overflow-y-auto p-4">
+        {hasOlder ? (
+          <div className="flex justify-center pb-2">
+            <Button size="sm" variant="secondary" onClick={() => void onLoadOlder()}>
+              Carregar mensagens anteriores
+            </Button>
+          </div>
+        ) : null}
         {conversation.messages.map((message: ConversationMessage, index) => {
           const previous = conversation.messages[index - 1];
           const startsNewDay = !previous || !sameDay(previous.createdAt, message.createdAt);
           return (
             <div key={message.id} className="contents">
               {startsNewDay ? <DaySeparator label={dayLabel(message.createdAt)} /> : null}
-              <MessageBubble message={message} />
+              <MessageBubble message={message} onReply={onReply} onReact={onReact} />
             </div>
           );
         })}
         <div ref={bottomRef} />
       </div>
+
+      {replyTo ? (
+        <div className="flex items-center gap-2 border-t bg-muted/60 px-3 py-2">
+          <div className="min-w-0 flex-1 border-l-2 border-primary pl-2">
+            <p className="text-[11px] font-medium text-primary">
+              {replyTo.senderType === "CUSTOMER" ? "Cliente" : "Você"}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {replyTo.content || "Anexo"}
+            </p>
+          </div>
+          <Button size="icon-sm" variant="ghost" aria-label="Cancelar resposta" onClick={onCancelReply}>
+            <X className="size-4" />
+          </Button>
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t bg-card p-3">
         <input

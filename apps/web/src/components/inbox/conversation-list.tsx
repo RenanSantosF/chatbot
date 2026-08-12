@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageSquareDashed } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +38,9 @@ export function ConversationList({
   selectedId,
   liveUnread,
   loading,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   onSelect,
 }: {
   conversations: ConversationSummary[];
@@ -44,11 +48,33 @@ export function ConversationList({
   /** Não lidas que chegaram via socket depois do último carregamento. */
   liveUnread?: Record<string, number>;
   loading?: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   onSelect: (id: string) => void;
 }) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Rolagem infinita: um observador na última linha dispara a próxima
+  // página antes de a pessoa chegar no fim, então a lista parece não ter
+  // fim em vez de dar um solavanco de carregamento.
+  useEffect(() => {
+    const element = sentinelRef.current;
+    if (!element || !hasMore || !onLoadMore) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) onLoadMore();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore, conversations.length]);
+
   if (loading) {
     return (
-      <div className="flex flex-col divide-y">
+      <div className="flex flex-col divide-y overflow-y-auto">
         {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className="flex items-start gap-3 p-3">
             <Skeleton className="size-10 shrink-0 rounded-full" />
@@ -64,7 +90,7 @@ export function ConversationList({
 
   if (conversations.length === 0) {
     return (
-      <div className="p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <EmptyState
           icon={MessageSquareDashed}
           title="Nenhuma conversa aqui"
@@ -75,7 +101,8 @@ export function ConversationList({
   }
 
   return (
-    <div className="flex flex-col divide-y">
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex flex-col divide-y">
       {conversations.map((conversation) => {
         // O contador do banco é a verdade; o do socket cobre o intervalo
         // entre a última busca e agora, sem precisar refazer a lista.
@@ -158,6 +185,15 @@ export function ConversationList({
           </button>
         );
       })}
+      </div>
+
+      {hasMore ? (
+        <div ref={sentinelRef} className="flex justify-center py-3">
+          <span className="text-xs text-muted-foreground">
+            {loadingMore ? "Carregando..." : " "}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

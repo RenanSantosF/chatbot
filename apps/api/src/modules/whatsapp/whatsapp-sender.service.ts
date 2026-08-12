@@ -28,7 +28,11 @@ export class WhatsappSenderService {
    * qualquer falha) — é por esse id que os webhooks de status depois
    * encontram a mensagem pra marcar entregue/lida no painel.
    */
-  async sendText(to: string, body: string): Promise<string | null> {
+  async sendText(
+    to: string,
+    body: string,
+    replyToExternalId?: string | null,
+  ): Promise<string | null> {
     const settings = await this.prisma.db.whatsAppSettings.findFirst();
     if (!settings) {
       this.logger.warn(
@@ -56,6 +60,11 @@ export class WhatsappSenderService {
           to,
           type: 'text',
           text: { body },
+          // context faz a mensagem sair como resposta citada no aparelho
+          // do cliente, do mesmo jeito que o WhatsApp normal.
+          ...(replyToExternalId
+            ? { context: { message_id: replyToExternalId } }
+            : {}),
         }),
       });
 
@@ -135,6 +144,74 @@ export class WhatsappSenderService {
         `Erro de rede ao enviar mídia via WhatsApp: ${error instanceof Error ? error.message : error}`,
       );
       return null;
+    }
+  }
+
+  /**
+   * Acende o tique azul no aparelho do cliente. A Meta exige o wamid da
+   * mensagem recebida; não existe "marcar a conversa toda", marcar a mais
+   * recente já marca as anteriores.
+   */
+  async markAsRead(messageId: string): Promise<void> {
+    const settings = await this.prisma.db.whatsAppSettings.findFirst();
+    if (!settings) return;
+
+    const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            status: 'read',
+            message_id: messageId,
+          }),
+        },
+      );
+      if (!response.ok) {
+        this.logger.warn(
+          `Não deu pra marcar como lida (${response.status}): ${await response.text()}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Erro de rede ao marcar como lida: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  /** Reage a uma mensagem do cliente. Emoji vazio remove a reação. */
+  async sendReaction(to: string, messageId: string, emoji: string): Promise<void> {
+    const settings = await this.prisma.db.whatsAppSettings.findFirst();
+    if (!settings) return;
+
+    const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
+    try {
+      await fetch(
+        `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to,
+            type: 'reaction',
+            reaction: { message_id: messageId, emoji },
+          }),
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Erro ao enviar reação: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 

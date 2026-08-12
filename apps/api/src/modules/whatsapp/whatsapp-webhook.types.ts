@@ -27,6 +27,9 @@ export interface WhatsAppInboundMessage {
     address?: string;
   };
   contacts?: Array<{ name?: { formatted_name?: string } }>;
+  // Resposta citada: id da mensagem original na Meta.
+  context?: { id?: string; from?: string };
+  reaction?: { message_id?: string; emoji?: string };
 }
 
 export interface WhatsAppWebhookPayload {

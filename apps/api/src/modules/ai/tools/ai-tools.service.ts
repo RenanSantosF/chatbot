@@ -8,6 +8,7 @@ import type {
 import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
 import { QueuesService } from '../../queues/queues.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
+import { CollectionService } from '../../collection/collection.service';
 import { RoutingService } from '../../routing/routing.service';
 import type { AiToolCallResult, AiToolDeclaration } from '../providers/ai-provider.interface';
 
@@ -79,6 +80,7 @@ export class AiToolsService {
     private readonly realtime: RealtimeGateway,
     private readonly queues: QueuesService,
     private readonly routing: RoutingService,
+    private readonly collection: CollectionService,
   ) {}
 
   private readonly registry: BuiltInTool[] = [
@@ -162,6 +164,18 @@ export class AiToolsService {
         required: ['reason', 'summary'],
       },
       execute: async (args, ctx) => {
+        // Barreira de coleta: se a empresa exige dados e eles não estão
+        // gravados, a transferência não acontece. Devolver a lista do que
+        // falta (em vez de só recusar) faz a IA voltar e perguntar.
+        const missing = await this.collection.missingRequired(ctx.conversationId);
+        if (missing.length > 0) {
+          return {
+            status: 'blocked',
+            error: `Antes de transferir, colete e registre com collectCustomerData: ${missing.join(', ')}.`,
+            missing,
+          };
+        }
+
         const reason = String(args.reason ?? 'não informado');
         const summary = String(args.summary ?? '');
 
@@ -276,6 +290,30 @@ export class AiToolsService {
         return { status: 'saved', remembered: Object.keys(info) };
       },
     },
+    {
+      key: 'collectCustomerData',
+      name: 'Coletar dados do cliente',
+      description:
+        'Registra os dados que a empresa exige coletar. Chame assim que o cliente informar cada dado — não espere juntar tudo pro final. A resposta diz o que ainda falta.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          values: {
+            type: 'object',
+            description: 'Pares chave-valor com os dados coletados',
+            additionalProperties: { type: 'string' },
+          },
+        },
+        required: ['values'],
+      },
+      execute: async (args, ctx) => {
+        const values = toStringRecord(args.values);
+        if (Object.keys(values).length === 0) {
+          return { status: 'nothing_to_save' };
+        }
+        return this.collection.save(ctx.conversationId, values);
+      },
+    },
   ];
 
   /** NONE desliga a memória por completo — nem declarada pra IA ela é. */
@@ -346,9 +384,12 @@ export class AiToolsService {
 
     const enabledTools = this.registry.filter((tool) => enabledKeys.has(tool.key));
     const escalates = enabledKeys.has('transferToQueue');
-    const [queues, rules] = await Promise.all([
+    const [queues, rules, collectionFields] = await Promise.all([
       escalates ? this.prisma.db.queue.findMany() : Promise.resolve([]),
       escalates ? this.routing.listForAi() : Promise.resolve([]),
+      enabledKeys.has('collectCustomerData')
+        ? this.collection.describeForAi()
+        : Promise.resolve([]),
     ]);
 
     return enabledTools.map((tool) => {
@@ -363,6 +404,27 @@ export class AiToolsService {
               : `${tool.description} Pode registrar detalhes gerais úteis que aparecerem na conversa.`,
           parametersSchema: tool.parametersSchema,
         };
+      }
+
+      if (tool.key === 'collectCustomerData') {
+        if (collectionFields.length === 0) {
+          return { name: tool.key, description: tool.description, parametersSchema: tool.parametersSchema };
+        }
+        const schema = JSON.parse(JSON.stringify(tool.parametersSchema)) as {
+          properties: { values: { description: string; properties?: Record<string, unknown> } };
+        };
+        // Cada campo vira uma propriedade nomeada, então a IA usa a chave
+        // certa em vez de inventar ("cpf" vs "CPF" vs "documento").
+        schema.properties.values.properties = Object.fromEntries(
+          collectionFields.map((field) => [
+            field.key,
+            { type: 'string', description: `${field.label}${field.hint ? ` (${field.hint})` : ''}` },
+          ]),
+        );
+        schema.properties.values.description = `Dados a coletar: ${collectionFields
+          .map((field) => `${field.key} = ${field.label}${field.required ? ' (obrigatório)' : ''}`)
+          .join(' | ')}`;
+        return { name: tool.key, description: tool.description, parametersSchema: schema };
       }
 
       if (tool.key !== 'transferToQueue' || (queues.length === 0 && rules.length === 0)) {
