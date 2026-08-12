@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { Roles } from '../../common/auth/roles.decorator';
-import type { ConversationStatus } from '../../../generated/prisma/client';
+import type {
+  ConversationPriority,
+  ConversationStatus,
+} from '../../../generated/prisma/client';
 import type { RequestUser } from '../auth/auth.types';
 import { ConversationsService } from './conversations.service';
 import { SendMessageDto } from './dto/send-message.dto';
+import { SetPriorityDto } from './dto/set-priority.dto';
 import { SimulateInboundDto } from './dto/simulate-inbound.dto';
 
 @Controller('conversations')
@@ -17,6 +21,9 @@ export class ConversationsController {
     @Query('mine') mine: string | undefined,
     @Query('queueId') queueId: string | undefined,
     @Query('customerId') customerId: string | undefined,
+    @Query('priority') priority: ConversationPriority | undefined,
+    @Query('unread') unread: string | undefined,
+    @Query('sort') sort: 'recent' | 'priority' | undefined,
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.list({
@@ -24,6 +31,9 @@ export class ConversationsController {
       assignedUserId: mine === 'true' ? user.userId : undefined,
       queueId,
       customerId,
+      priority,
+      unreadOnly: unread === 'true',
+      sort,
     });
   }
 
@@ -53,6 +63,11 @@ export class ConversationsController {
   @Post(':id/resolve')
   resolve(@Param('id') id: string) {
     return this.conversationsService.resolve(id);
+  }
+
+  @Post(':id/priority')
+  setPriority(@Param('id') id: string, @Body() dto: SetPriorityDto) {
+    return this.conversationsService.setPriority(id, dto.priority);
   }
 
   @Post(':id/reactivate-ai')

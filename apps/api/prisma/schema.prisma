@@ -52,6 +52,7 @@ model Tenant {
   tasks              Task[]
   queues             Queue[]
   queueMembers       QueueMember[]
+  routingRules       RoutingRule[]
   whatsappSettings   WhatsAppSettings?
 
   @@map("tenants")
@@ -87,12 +88,17 @@ model User {
   role         UserRole   @default(AGENT)
   avatar       String?
   status       UserStatus @default(ACTIVE)
+  // Conta criada pelo dono com senha temporária: o primeiro login obriga a
+  // pessoa a definir a própria senha, então a senha que o dono viu deixa
+  // de valer e ninguém além do titular a conhece.
+  mustChangePassword Boolean @default(false)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignedConversations Conversation[]
   queueMemberships      QueueMember[]
+  routingRules          RoutingRule[]
 
   // Email é único globalmente (não só por tenant): simplifica o login, que não
   // exige saber a qual empresa o usuário pertence antes de autenticar.
@@ -167,6 +173,11 @@ model Conversation {
   escalationReason  String?
   escalationSummary String?
   collectedData     Json?
+  // Não lidas da caixa compartilhada: sobe a cada mensagem do cliente e
+  // zera quando alguém abre a conversa. É por conversa e não por usuário
+  // porque o Inbox é de time — quando um atendente lê, a conversa está
+  // lida pra empresa, igual a uma caixa de e-mail compartilhada.
+  unreadCount       Int                  @default(0)
   lastMessageAt     DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
@@ -377,6 +388,39 @@ model AiTool {
   @@map("ai_tools")
 }
 
+// Regra de "quem atende o quê": o dono descreve o assunto em português e
+// escolhe o destino (uma pessoa específica ou uma fila). A descrição é o
+// que a IA lê pra escolher a regra certa — por isso ela é texto livre e
+// não uma lista fixa de categorias.
+model RoutingRule {
+  id          String   @id @default(uuid())
+  tenantId    String
+  key         String
+  name        String
+  // Quando usar esta regra, em linguagem natural. Vai pro prompt da IA.
+  subject     String
+  // Prioridade mínima pra regra valer. NORMAL (padrão) = vale sempre;
+  // URGENT = só entra quando a conversa foi classificada como urgente,
+  // que é como se monta um plantão sem atrapalhar o fluxo do dia a dia.
+  minPriority ConversationPriority @default(NORMAL)
+  // Destino: uma pessoa OU uma fila. Pessoa tem precedência quando os
+  // dois estão preenchidos.
+  targetUserId  String?
+  targetQueueId String?
+  active      Boolean  @default(true)
+  priorityOrder Int    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetUser  User?   @relation(fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetQueue Queue?  @relation(fields: [targetQueueId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, key])
+  @@index([tenantId, active])
+  @@map("routing_rules")
+}
+
 enum TaskStatus {
   OPEN
   DONE
@@ -424,6 +468,7 @@ model Queue {
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   members       QueueMember[]
   conversations Conversation[]
+  routingRules  RoutingRule[]
 
   @@unique([tenantId, key])
   @@map("queues")

@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { AiMemoryMode, AiToolPermission, Prisma } from '../../../../generated/prisma/client';
+import type {
+  AiMemoryMode,
+  AiToolPermission,
+  ConversationPriority,
+  Prisma,
+} from '../../../../generated/prisma/client';
 import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
 import { QueuesService } from '../../queues/queues.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
+import { RoutingService } from '../../routing/routing.service';
 import type { AiToolCallResult, AiToolDeclaration } from '../providers/ai-provider.interface';
 
 interface ToolExecutionContext {
@@ -36,6 +42,16 @@ const conversationInclude = {
  * plano de texto->texto, descartando o que não for escalar. Evita que a IA
  * enfie objetos aninhados na memória do cliente e quebre a exibição.
  */
+const PRIORITIES = new Set(['LOW', 'NORMAL', 'HIGH', 'URGENT']);
+
+/** O modelo às vezes devolve algo fora do enum; nesse caso vale o padrão. */
+function normalizePriority(value: unknown): ConversationPriority {
+  const candidate = String(value ?? '').toUpperCase();
+  return PRIORITIES.has(candidate)
+    ? (candidate as ConversationPriority)
+    : 'NORMAL';
+}
+
 function toStringRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
@@ -62,6 +78,7 @@ export class AiToolsService {
     private readonly prisma: TenantPrismaService,
     private readonly realtime: RealtimeGateway,
     private readonly queues: QueuesService,
+    private readonly routing: RoutingService,
   ) {}
 
   private readonly registry: BuiltInTool[] = [
@@ -135,16 +152,42 @@ export class AiToolsService {
               'Dados relevantes já coletados do cliente durante a conversa, como pares chave-valor (ex: {"idade": "58", "cidade": "São Paulo"})',
             additionalProperties: { type: 'string' },
           },
+          priority: {
+            type: 'string',
+            enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'],
+            description:
+              'Urgência do caso. URGENT só pra risco real (prazo vencendo hoje, emergência, cliente muito irritado); HIGH pra o que não pode esperar o dia seguinte; NORMAL no resto.',
+          },
         },
         required: ['reason', 'summary'],
       },
       execute: async (args, ctx) => {
-        const queueKeyArg = args.queueKey ? String(args.queueKey).trim() : null;
-        const queue = queueKeyArg ? await this.queues.findByKey(queueKeyArg) : null;
-        const assignedUserId = queue ? await this.queues.pickNextMember(queue.id) : null;
-
         const reason = String(args.reason ?? 'não informado');
         const summary = String(args.summary ?? '');
+
+        const priority = normalizePriority(args.priority);
+        // A regra de direcionamento tem precedência sobre a fila escolhida
+        // pela IA: ela é a decisão explícita do dono sobre quem atende o
+        // quê, então vence o palpite do modelo.
+        const routed = await this.routing.resolveTarget(
+          args.ruleKey ? String(args.ruleKey).trim() : null,
+          priority,
+        );
+
+        const queueKeyArg = args.queueKey ? String(args.queueKey).trim() : null;
+        const fallbackQueue =
+          !routed && queueKeyArg ? await this.queues.findByKey(queueKeyArg) : null;
+
+        const queue = routed
+          ? routed.queueId
+            ? await this.queues.findById(routed.queueId)
+            : null
+          : fallbackQueue;
+        const assignedUserId = routed
+          ? routed.assignedUserId
+          : fallbackQueue
+            ? await this.queues.pickNextMember(fallbackQueue.id)
+            : null;
         const collectedData =
           args.collectedData && typeof args.collectedData === 'object'
             ? (args.collectedData as Prisma.InputJsonValue)
@@ -155,9 +198,11 @@ export class AiToolsService {
             tenantId: this.prisma.tenantId,
             conversationId: ctx.conversationId,
             senderType: 'SYSTEM',
-            content: queue
-              ? `IA transferiu para a fila "${queue.name}": ${reason}`
-              : `IA solicitou atendimento humano: ${reason}`,
+            content: routed
+              ? `IA direcionou pela regra "${routed.ruleName}": ${reason}`
+              : queue
+                ? `IA transferiu para a fila "${queue.name}": ${reason}`
+                : `IA solicitou atendimento humano: ${reason}`,
           },
         });
 
@@ -166,6 +211,7 @@ export class AiToolsService {
           data: {
             aiMode: 'HUMAN_ACTIVE',
             status: 'WAITING_AGENT',
+            priority,
             queueId: queue?.id,
             assignedUserId: assignedUserId ?? undefined,
             escalationReason: reason,
@@ -177,7 +223,13 @@ export class AiToolsService {
 
         this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
 
-        return { status: 'transferred', queue: queue?.name ?? null, assigned: Boolean(assignedUserId) };
+        return {
+          status: 'transferred',
+          queue: queue?.name ?? null,
+          rule: routed?.ruleName ?? null,
+          priority,
+          assigned: Boolean(assignedUserId),
+        };
       },
     },
     {
@@ -293,7 +345,11 @@ export class AiToolsService {
     }
 
     const enabledTools = this.registry.filter((tool) => enabledKeys.has(tool.key));
-    const queues = enabledKeys.has('transferToQueue') ? await this.prisma.db.queue.findMany() : [];
+    const escalates = enabledKeys.has('transferToQueue');
+    const [queues, rules] = await Promise.all([
+      escalates ? this.prisma.db.queue.findMany() : Promise.resolve([]),
+      escalates ? this.routing.listForAi() : Promise.resolve([]),
+    ]);
 
     return enabledTools.map((tool) => {
       // O limite do que pode ser guardado vai na própria descrição da
@@ -309,17 +365,32 @@ export class AiToolsService {
         };
       }
 
-      if (tool.key !== 'transferToQueue' || queues.length === 0) {
+      if (tool.key !== 'transferToQueue' || (queues.length === 0 && rules.length === 0)) {
         return { name: tool.key, description: tool.description, parametersSchema: tool.parametersSchema };
       }
 
       const schema = JSON.parse(JSON.stringify(tool.parametersSchema)) as {
-        properties: { queueKey: { description: string; enum?: string[] } };
+        properties: Record<string, { description: string; enum?: string[] }>;
       };
-      schema.properties.queueKey.enum = queues.map((queue) => queue.key);
-      schema.properties.queueKey.description = `Fila mais apropriada: ${queues
-        .map((queue) => `${queue.key} (${queue.name})`)
-        .join(', ')}. Deixe vazio se nenhuma se aplicar.`;
+
+      if (queues.length > 0) {
+        schema.properties.queueKey.enum = queues.map((queue) => queue.key);
+        schema.properties.queueKey.description = `Fila mais apropriada: ${queues
+          .map((queue) => `${queue.key} (${queue.name})`)
+          .join(', ')}. Deixe vazio se nenhuma se aplicar.`;
+      }
+
+      // As regras entram como enum fechado com a descrição do assunto do
+      // lado — é isso que deixa a IA mandar "cobrança" pra pessoa certa
+      // sem nunca inventar uma regra que não existe.
+      if (rules.length > 0) {
+        schema.properties.ruleKey = {
+          enum: rules.map((rule) => rule.key),
+          description: `Regra de direcionamento que combina com o assunto: ${rules
+            .map((rule) => `${rule.key} (${rule.subject})`)
+            .join(' | ')}. Deixe vazio se nenhuma combinar.`,
+        };
+      }
 
       return { name: tool.key, description: tool.description, parametersSchema: schema };
     });

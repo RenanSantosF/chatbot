@@ -1,5 +1,6 @@
 "use client";
 
+import { UserPlus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,10 +81,15 @@ export function CreateMemberCard({ onCreated }: { onCreated: (member: TeamMember
   }
 
   if (!open) {
+    // O wrapper existe porque o pai é um flex-col: sem ele o botão estica
+    // pela largura toda do container.
     return (
-      <Button size="sm" onClick={() => setOpen(true)}>
-        Adicionar colaborador
-      </Button>
+      <div className="w-fit">
+        <Button size="sm" onClick={() => setOpen(true)}>
+          <UserPlus className="size-4" />
+          Adicionar colaborador
+        </Button>
+      </div>
     );
   }
 

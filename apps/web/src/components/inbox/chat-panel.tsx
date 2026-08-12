@@ -7,17 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
+import { avatarColor, initials } from "@/lib/avatar";
+import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
+import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
-import type { ConversationDetail, ConversationMessage } from "@/lib/types";
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
+import type { ConversationDetail, ConversationMessage, ConversationPriority } from "@/lib/types";
 
 /**
  * Rótulo do separador de dia, no mesmo espírito do WhatsApp: os dois dias
@@ -49,10 +43,48 @@ function sameDay(a: string, b: string): boolean {
 
 function DaySeparator({ label }: { label: string }) {
   return (
-    <div className="sticky top-0 z-10 flex justify-center py-1">
-      <span className="rounded-full bg-background/85 px-3 py-1 text-[11px] font-medium text-muted-foreground capitalize shadow-xs ring-1 ring-foreground/5 backdrop-blur-sm">
+    <div className="sticky top-0 z-10 flex justify-center py-1.5">
+      <span className="rounded-full bg-background/90 px-3 py-1 text-[11px] font-medium text-muted-foreground capitalize shadow-xs ring-1 ring-foreground/5 backdrop-blur-sm">
         {label}
       </span>
+    </div>
+  );
+}
+
+function PriorityPicker({
+  value,
+  onChange,
+}: {
+  value: ConversationPriority;
+  onChange: (priority: ConversationPriority) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border bg-background p-0.5">
+      {PRIORITY_ORDER.map((priority) => {
+        const meta = PRIORITY_META[priority];
+        const active = value === priority;
+        return (
+          <button
+            key={priority}
+            type="button"
+            title={`Prioridade ${meta.label.toLowerCase()}`}
+            aria-pressed={active}
+            onClick={() => onChange(priority)}
+            className={cn(
+              "flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors",
+              active
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <span
+              className={cn("size-1.5 rounded-full", active ? "bg-primary-foreground" : meta.dot)}
+              aria-hidden
+            />
+            {meta.short}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -64,6 +96,7 @@ export function ChatPanel({
   onAssign,
   onResolve,
   onReactivateAi,
+  onChangePriority,
 }: {
   conversation: ConversationDetail | null;
   sending: boolean;
@@ -71,6 +104,7 @@ export function ChatPanel({
   onAssign: () => Promise<void>;
   onResolve: () => Promise<void>;
   onReactivateAi: () => Promise<void>;
+  onChangePriority: (priority: ConversationPriority) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -81,7 +115,7 @@ export function ChatPanel({
 
   if (!conversation) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
+      <div className="chat-wallpaper flex flex-1 items-center justify-center p-6">
         <EmptyState
           icon={MessagesSquare}
           title="Nenhuma conversa aberta"
@@ -103,17 +137,20 @@ export function ChatPanel({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b bg-card px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-card px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <Avatar className="size-8 shrink-0">
-            <AvatarFallback className="text-xs">{initials(conversation.customer.name)}</AvatarFallback>
+          <Avatar className="size-9 shrink-0">
+            <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
+              {initials(conversation.customer.name)}
+            </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{conversation.customer.name}</p>
             <p className="truncate text-xs text-muted-foreground">{conversation.customer.phone}</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <PriorityPicker value={conversation.priority} onChange={onChangePriority} />
           {!isResolved && (
             <>
               <Button size="sm" variant="outline" onClick={onAssign}>
@@ -132,7 +169,7 @@ export function ChatPanel({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto bg-[#efeae2] p-4 dark:bg-[#0b141a]">
+      <div className="chat-wallpaper flex flex-1 flex-col gap-1.5 overflow-y-auto p-4">
         {conversation.messages.map((message: ConversationMessage, index) => {
           const previous = conversation.messages[index - 1];
           const startsNewDay = !previous || !sameDay(previous.createdAt, message.createdAt);

@@ -206,6 +206,17 @@ function Shell({
             </Button>
           </div>
         </header>
+        {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
+          <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
+            <span className="text-amber-800 dark:text-amber-300">
+              Você entrou com uma senha temporária.{" "}
+              <Link href="/dashboard/profile" className="font-medium underline underline-offset-4">
+                Defina sua própria senha
+              </Link>{" "}
+              pra ninguém mais conhecer seu acesso.
+            </span>
+          </div>
+        ) : null}
         <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
           <div
             key={pathname}

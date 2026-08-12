@@ -68,13 +68,28 @@ export class AuthController {
 
   @Get('me')
   async me(@CurrentUser() user: RequestUser) {
-    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } });
-    if (!tenant) {
+    const [tenant, account] = await Promise.all([
+      this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } }),
+      this.prisma.client.user.findUnique({
+        where: { id: user.userId },
+        select: { name: true, mustChangePassword: true },
+      }),
+    ]);
+    if (!tenant || !account) {
       throw new UnauthorizedException();
     }
 
     return {
-      user: { id: user.userId, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.userId,
+        // Vem do banco, não do JWT: o token carrega o nome de quando foi
+        // emitido, então sem isso o painel continuaria mostrando o nome
+        // antigo até a sessão expirar depois de uma edição de perfil.
+        name: account.name,
+        email: user.email,
+        role: user.role,
+        mustChangePassword: account.mustChangePassword,
+      },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };
   }

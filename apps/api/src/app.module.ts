@@ -12,6 +12,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { QueuesModule } from './modules/queues/queues.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { RoutingModule } from './modules/routing/routing.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
@@ -33,6 +34,7 @@ import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.modul
     MetricsModule,
     TasksModule,
     QueuesModule,
+    RoutingModule,
     WhatsappModule,
     WhatsappWebhookModule,
   ],

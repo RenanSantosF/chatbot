@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
   AiMode,
   ConversationChannel,
+  ConversationPriority,
   ConversationStatus,
   MessageSenderType,
   MessageStatus,
@@ -50,6 +51,9 @@ export class ConversationsService {
     assignedUserId?: string;
     queueId?: string;
     customerId?: string;
+    priority?: ConversationPriority;
+    unreadOnly?: boolean;
+    sort?: 'recent' | 'priority';
   }) {
     return this.prisma.db.conversation.findMany({
       where: {
@@ -59,9 +63,17 @@ export class ConversationsService {
           : {}),
         ...(filter.queueId ? { queueId: filter.queueId } : {}),
         ...(filter.customerId ? { customerId: filter.customerId } : {}),
+        ...(filter.priority ? { priority: filter.priority } : {}),
+        ...(filter.unreadOnly ? { unreadCount: { gt: 0 } } : {}),
       },
       include: conversationInclude,
-      orderBy: { lastMessageAt: 'desc' },
+      // A ordenação por prioridade aproveita a ordem do enum no banco
+      // (LOW < NORMAL < HIGH < URGENT), então desc põe urgente no topo e
+      // usa a mensagem mais recente como desempate.
+      orderBy:
+        filter.sort === 'priority'
+          ? [{ priority: 'desc' }, { lastMessageAt: 'desc' }]
+          : { lastMessageAt: 'desc' },
     });
   }
 
@@ -79,8 +91,44 @@ export class ConversationsService {
     return conversation;
   }
 
+  /**
+   * Abrir a conversa é o que marca ela como lida — é o gesto que significa
+   * "alguém viu isso". Só emite o evento quando havia algo pra zerar, pra
+   * não inundar o painel com atualizações a cada clique.
+   */
   async getById(id: string) {
-    return this.requireConversation(id);
+    const conversation = await this.requireConversation(id);
+    if (conversation.unreadCount === 0) {
+      return conversation;
+    }
+
+    const updated = await this.prisma.db.conversation.update({
+      where: { id },
+      data: { unreadCount: 0 },
+      include: conversationInclude,
+    });
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      updated,
+    );
+
+    return { ...conversation, unreadCount: 0 };
+  }
+
+  async setPriority(conversationId: string, priority: ConversationPriority) {
+    await this.requireConversation(conversationId);
+    const conversation = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: { priority },
+      include: conversationInclude,
+    });
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      conversation,
+    );
+    return conversation;
   }
 
   /**
@@ -99,12 +147,29 @@ export class ConversationsService {
       data: { tenantId: this.prisma.tenantId, conversationId, ...data },
     });
 
-    const status: ConversationStatus =
-      data.senderType === 'CUSTOMER' ? 'OPEN' : 'WAITING_CUSTOMER';
+    const fromCustomer = data.senderType === 'CUSTOMER';
+    // Nota interna do sistema (ex: aviso de transferência de fila) não muda
+    // de quem é a vez nem conta como mensagem a ler — antes ela empurrava a
+    // conversa pra "aguardando cliente" mesmo tendo acabado de cair no colo
+    // de um atendente.
+    const isSystemNote = data.senderType === 'SYSTEM';
+    const status: ConversationStatus | undefined = isSystemNote
+      ? undefined
+      : fromCustomer
+        ? 'OPEN'
+        : 'WAITING_CUSTOMER';
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
-      data: { lastMessageAt: message.createdAt, status },
+      data: {
+        lastMessageAt: message.createdAt,
+        ...(status ? { status } : {}),
+        ...(fromCustomer
+          ? { unreadCount: { increment: 1 } }
+          : isSystemNote
+            ? {}
+            : { unreadCount: 0 }),
+      },
       include: conversationInclude,
     });
 

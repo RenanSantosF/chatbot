@@ -22,6 +22,7 @@ const teamSelect = {
   role: true,
   status: true,
   avatar: true,
+  mustChangePassword: true,
   createdAt: true,
 } as const;
 
@@ -69,6 +70,10 @@ export class UsersService {
           passwordHash,
           role: dto.role,
           status: 'ACTIVE',
+          // A senha que o dono acabou de ver é descartável: no primeiro
+          // login o colaborador é obrigado a definir a dele, e a partir
+          // daí ninguém além dele conhece a senha da conta.
+          mustChangePassword: true,
         },
         select: teamSelect,
       });
@@ -141,7 +146,11 @@ export class UsersService {
    * trancaria o dono legítimo pra fora.
    */
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    const data: { name?: string; passwordHash?: string } = {};
+    const data: {
+      name?: string;
+      passwordHash?: string;
+      mustChangePassword?: boolean;
+    } = {};
 
     if (dto.name !== undefined) {
       data.name = dto.name;
@@ -160,6 +169,8 @@ export class UsersService {
         dto.newPassword,
         PASSWORD_SALT_ROUNDS,
       );
+      // Definiu a própria senha: a pendência do primeiro acesso morre aqui.
+      data.mustChangePassword = false;
     }
 
     if (Object.keys(data).length === 0) {

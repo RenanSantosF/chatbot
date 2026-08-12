@@ -11,12 +11,29 @@ import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import type { WhatsAppSettings } from "@/lib/types";
 
+// Versões "sem moldura" usadas quando o cartão é embutido dentro de outro:
+// mantêm o mesmo conteúdo sem duplicar borda, fundo e espaçamento.
+function EmbeddedFrame({ children }: { children?: React.ReactNode }) {
+  return <div className="flex flex-col gap-4">{children}</div>;
+}
+
+function EmbeddedHeader({ children }: { children?: React.ReactNode }) {
+  return <div className="flex flex-col gap-1">{children}</div>;
+}
+
+function EmbeddedBody({ children, className }: { children?: React.ReactNode; className?: string }) {
+  return <div className={className}>{children}</div>;
+}
+
 export function WhatsAppSettingsCard({
   settings,
   onUpdated,
+  embedded = false,
 }: {
   settings: WhatsAppSettings;
   onUpdated: (settings: WhatsAppSettings) => void;
+  /** Dentro de outro cartão (Configurações), sem a moldura própria. */
+  embedded?: boolean;
 }) {
   const [editing, setEditing] = useState(!settings.connected);
   const [phoneNumberId, setPhoneNumberId] = useState(settings.phoneNumberId ?? "");
@@ -78,9 +95,13 @@ export function WhatsAppSettingsCard({
     }
   }
 
+  const Frame = embedded ? EmbeddedFrame : Card;
+  const Header = embedded ? EmbeddedHeader : CardHeader;
+  const Body = embedded ? EmbeddedBody : CardContent;
+
   return (
-    <Card>
-      <CardHeader>
+    <Frame>
+      <Header>
         <div className="flex items-center justify-between">
           <CardTitle>WhatsApp</CardTitle>
           <Badge variant={settings.connected ? "default" : "outline"}>
@@ -91,8 +112,8 @@ export function WhatsAppSettingsCard({
           Cada empresa usa seu próprio app no Meta Developers e seu próprio número — as credenciais nunca
           são compartilhadas entre clientes da plataforma.
         </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      </Header>
+      <Body className="flex flex-col gap-4">
         <div className="rounded-lg border bg-muted/40 p-3 text-sm">
           <p className="font-medium">Antes de começar, no Meta Developers:</p>
           <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
@@ -217,7 +238,7 @@ export function WhatsAppSettingsCard({
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </Body>
+    </Frame>
   );
 }

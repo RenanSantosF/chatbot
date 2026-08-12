@@ -5,6 +5,8 @@ export interface SessionUser {
   name: string;
   email: string;
   role: UserRole;
+  /** Conta criada pelo dono cuja senha temporária ainda não foi trocada. */
+  mustChangePassword?: boolean;
 }
 
 export interface SessionTenant {
@@ -25,6 +27,7 @@ export interface TeamMember {
   role: UserRole;
   status: "ACTIVE" | "INVITED" | "DISABLED";
   avatar: string | null;
+  mustChangePassword?: boolean;
   createdAt: string;
 }
 
@@ -73,6 +76,7 @@ export interface ConversationSummary {
   status: ConversationStatus;
   aiMode: AiMode;
   priority: ConversationPriority;
+  unreadCount: number;
   lastMessageAt: string | null;
   createdAt: string;
   customer: Customer;
@@ -196,4 +200,25 @@ export interface WhatsAppSettings {
   hasAccessToken: boolean;
   hasAppSecret: boolean;
   webhookUrl: string;
+}
+
+export interface RoutingRuleTargetUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+}
+
+export interface RoutingRule {
+  id: string;
+  key: string;
+  name: string;
+  subject: string;
+  minPriority: ConversationPriority;
+  targetUserId: string | null;
+  targetQueueId: string | null;
+  active: boolean;
+  priorityOrder: number;
+  targetUser: RoutingRuleTargetUser | null;
+  targetQueue: ConversationQueue | null;
 }

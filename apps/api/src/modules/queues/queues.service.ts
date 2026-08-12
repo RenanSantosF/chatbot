@@ -107,4 +107,8 @@ export class QueuesService {
   async findByKey(key: string) {
     return this.prisma.db.queue.findFirst({ where: { key } });
   }
+
+  async findById(id: string) {
+    return this.prisma.db.queue.findFirst({ where: { id } });
+  }
 }

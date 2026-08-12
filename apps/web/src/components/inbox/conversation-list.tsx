@@ -5,6 +5,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { avatarColor, initials } from "@/lib/avatar";
+import { PRIORITY_META } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import type { ConversationStatus, ConversationSummary } from "@/lib/types";
 
@@ -15,15 +17,6 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   RESOLVED: "Resolvida",
   CLOSED: "Fechada",
 };
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
 
 /** Relativo e curto, como numa lista de conversas de mensageiro. */
 function timeLabel(iso: string | null) {
@@ -42,13 +35,14 @@ function timeLabel(iso: string | null) {
 export function ConversationList({
   conversations,
   selectedId,
-  unreadCounts,
+  liveUnread,
   loading,
   onSelect,
 }: {
   conversations: ConversationSummary[];
   selectedId: string | null;
-  unreadCounts?: Record<string, number>;
+  /** Não lidas que chegaram via socket depois do último carregamento. */
+  liveUnread?: Record<string, number>;
   loading?: boolean;
   onSelect: (id: string) => void;
 }) {
@@ -57,7 +51,7 @@ export function ConversationList({
       <div className="flex flex-col divide-y">
         {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className="flex items-start gap-3 p-3">
-            <Skeleton className="size-9 shrink-0 rounded-full" />
+            <Skeleton className="size-10 shrink-0 rounded-full" />
             <div className="flex flex-1 flex-col gap-2">
               <Skeleton className="h-3.5 w-28" />
               <Skeleton className="h-3 w-20" />
@@ -73,8 +67,8 @@ export function ConversationList({
       <div className="p-4">
         <EmptyState
           icon={MessageSquareDashed}
-          title="Nenhuma conversa ainda"
-          description="Quando alguém mandar mensagem, ela aparece aqui na hora."
+          title="Nenhuma conversa aqui"
+          description="Ajuste os filtros acima ou espere alguém mandar mensagem."
         />
       </div>
     );
@@ -83,8 +77,12 @@ export function ConversationList({
   return (
     <div className="flex flex-col divide-y">
       {conversations.map((conversation) => {
-        const unread = unreadCounts?.[conversation.id] ?? 0;
+        // O contador do banco é a verdade; o do socket cobre o intervalo
+        // entre a última busca e agora, sem precisar refazer a lista.
+        const unread = Math.max(conversation.unreadCount, liveUnread?.[conversation.id] ?? 0);
         const selected = selectedId === conversation.id;
+        const priority = PRIORITY_META[conversation.priority];
+        const showPriority = conversation.priority === "URGENT" || conversation.priority === "HIGH";
 
         return (
           <button
@@ -94,13 +92,20 @@ export function ConversationList({
             className={cn(
               "relative flex items-start gap-3 p-3 text-left transition-colors hover:bg-muted/60",
               selected && "bg-muted",
+              !selected && unread > 0 && "bg-primary/[0.04]",
             )}
           >
-            {selected ? (
-              <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" aria-hidden />
-            ) : null}
-            <Avatar className="size-9 shrink-0">
-              <AvatarFallback className="text-xs">{initials(conversation.customer.name)}</AvatarFallback>
+            <span
+              className={cn(
+                "absolute inset-y-0 left-0 w-0.5",
+                selected ? "bg-primary" : unread > 0 ? "bg-primary/45" : "bg-transparent",
+              )}
+              aria-hidden
+            />
+            <Avatar className="size-10 shrink-0">
+              <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
+                {initials(conversation.customer.name)}
+              </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
@@ -117,13 +122,24 @@ export function ConversationList({
                     {timeLabel(conversation.lastMessageAt)}
                   </span>
                   {unread > 0 ? (
-                    <span className="flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-                      {unread > 9 ? "9+" : unread}
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground tabular-nums">
+                      {unread > 99 ? "99+" : unread}
                     </span>
                   ) : null}
                 </div>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                {showPriority ? (
+                  <span
+                    className={cn(
+                      "flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+                      priority.chip,
+                    )}
+                  >
+                    <span className={cn("size-1.5 rounded-full", priority.dot)} aria-hidden />
+                    {priority.short}
+                  </span>
+                ) : null}
                 <Badge variant="secondary" className="text-[10px]">
                   {STATUS_LABEL[conversation.status]}
                 </Badge>
