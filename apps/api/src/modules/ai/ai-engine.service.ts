@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AiContextBuilder } from './ai-context-builder.service';
 import { AiCredentialsResolver } from './providers/ai-credentials.resolver';
-import { AI_PROVIDER, type AiProvider } from './providers/ai-provider.interface';
+import { AI_PROVIDER, type AiProvider, type AiToolExecutor } from './providers/ai-provider.interface';
+import { AiToolsService } from './tools/ai-tools.service';
 
 /**
  * O "cérebro": decide se responde e, se sim, o quê. Nunca escreve no banco
@@ -16,6 +17,7 @@ export class AiEngineService {
   constructor(
     private readonly contextBuilder: AiContextBuilder,
     private readonly credentials: AiCredentialsResolver,
+    private readonly tools: AiToolsService,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
   ) {}
 
@@ -43,8 +45,19 @@ export class AiEngineService {
       return null;
     }
 
+    const toolDeclarations = await this.tools.getEnabledDeclarations();
+    const executeTool: AiToolExecutor | undefined =
+      toolDeclarations.length > 0
+        ? (name, args) => this.tools.execute(name, args, conversationId)
+        : undefined;
+
     try {
-      const result = await this.provider.generateReply({ ...context, ...credentials });
+      const result = await this.provider.generateReply({
+        ...context,
+        ...credentials,
+        tools: toolDeclarations,
+        executeTool,
+      });
       return result.content;
     } catch (error) {
       this.logger.warn(
@@ -58,7 +71,9 @@ export class AiEngineService {
    * Usado pelo simulador de teste (/ai/simulate). Diferente de
    * generateReply, deixa o erro estourar — aqui o dono está testando de
    * propósito e precisa ver se a chave/config está errada, não receber um
-   * silêncio educado.
+   * silêncio educado. De propósito não passa ferramentas: o simulador testa
+   * a personalidade/prompt, não deve criar tarefa ou disparar handoff de
+   * verdade sem uma conversa real por trás.
    */
   async simulate(message: string): Promise<string> {
     const { credentials } = await this.credentials.resolve();

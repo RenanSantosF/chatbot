@@ -74,6 +74,28 @@ export interface ConversationDetail extends ConversationSummary {
   messages: ConversationMessage[];
 }
 
+export type AiToolPermission = "ALLOW" | "DENY" | "REQUIRES_APPROVAL";
+
+export interface ConfiguredTool {
+  key: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  permission: AiToolPermission;
+}
+
+export type TaskStatus = "OPEN" | "DONE";
+
+export interface Task {
+  id: string;
+  conversationId: string | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  createdByAi: boolean;
+  createdAt: string;
+}
+
 export type AiTone = "PROFESSIONAL" | "FRIENDLY" | "CASUAL" | "OBJECTIVE" | "WARM";
 
 export interface AiSettings {

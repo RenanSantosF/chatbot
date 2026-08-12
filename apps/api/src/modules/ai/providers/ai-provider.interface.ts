@@ -4,12 +4,34 @@ export interface AiMessage {
   content: string;
 }
 
+/** Descrição de uma ferramenta que a IA pode decidir usar — nome, o que faz, e o formato dos parâmetros (JSON Schema). */
+export interface AiToolDeclaration {
+  name: string;
+  description: string;
+  parametersSchema: Record<string, unknown>;
+}
+
+export interface AiToolCallResult {
+  output?: unknown;
+  error?: string;
+}
+
+/**
+ * Quem de fato roda a ferramenta quando a IA pede. O provider (Gemini, e
+ * depois outros) chama isso e nunca sabe o que tem por trás — permissão,
+ * execução do código nativo ou chamada HTTP customizada é tudo
+ * responsabilidade de quem fornece esse executor (AiEngineService).
+ */
+export type AiToolExecutor = (name: string, args: Record<string, unknown>) => Promise<AiToolCallResult>;
+
 export interface AiGenerateInput {
   systemPrompt: string;
   history: AiMessage[];
   /** Credencial do TENANT, nunca uma chave compartilhada da plataforma. */
   apiKey: string;
   model?: string;
+  tools?: AiToolDeclaration[];
+  executeTool?: AiToolExecutor;
 }
 
 export interface AiGenerateResult {

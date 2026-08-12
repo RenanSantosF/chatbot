@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { AiMode, ConversationDetail, ConversationPriority, ConversationStatus } from "@/lib/types";
+import { TasksSection } from "./tasks-section";
 
 const STATUS_LABEL: Record<ConversationStatus, string> = {
   OPEN: "Aberta",
@@ -61,6 +62,8 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="secondary">{conversation.messages.length} mensagens</Badge>
       </div>
+
+      <TasksSection key={conversation.id} conversationId={conversation.id} />
     </div>
   );
 }

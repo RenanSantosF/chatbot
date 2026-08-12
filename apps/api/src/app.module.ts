@@ -10,6 +10,7 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { CustomersModule } from './modules/customers/customers.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -25,6 +26,7 @@ import { UsersModule } from './modules/users/users.module';
     RealtimeModule,
     AiModule,
     KnowledgeModule,
+    TasksModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
