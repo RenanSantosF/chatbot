@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
@@ -12,6 +13,8 @@ const GRAPH_API_VERSION = 'v21.0';
 
 @Injectable()
 export class WhatsappSettingsService {
+  private readonly logger = new Logger(WhatsappSettingsService.name);
+
   constructor(
     private readonly prisma: TenantPrismaService,
     private readonly encryption: EncryptionService,
@@ -119,32 +122,46 @@ export class WhatsappSettingsService {
   private async discoverWabaId(accessToken: string): Promise<string | null> {
     const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`;
     const response = await fetch(url);
+    const body: unknown = await response.json().catch(() => null);
+
+    // Log completo (sem o token) pra diagnosticar o formato real que a Meta
+    // devolve pra esse tipo de token — tokens temporários do quickstart
+    // parecem não ter granular_scopes, então a lógica abaixo precisa se
+    // ajustar ao que a gente realmente vir aqui.
+    this.logger.log(
+      `debug_token resposta (status ${response.status}): ${JSON.stringify(body)}`,
+    );
+
     if (!response.ok) {
       return null;
     }
 
-    const body: unknown = await response.json().catch(() => null);
-    const scopes =
+    const data =
       body &&
       typeof body === 'object' &&
       'data' in body &&
       body.data &&
-      typeof body.data === 'object' &&
-      'granular_scopes' in body.data &&
-      Array.isArray(body.data.granular_scopes)
-        ? (body.data.granular_scopes as Array<{
-            scope?: string;
-            target_ids?: string[];
-          }>)
-        : [];
+      typeof body.data === 'object'
+        ? (body.data as Record<string, unknown>)
+        : null;
 
-    const whatsappScope = scopes.find(
+    const granularScopes = Array.isArray(data?.granular_scopes)
+      ? (data.granular_scopes as Array<{
+          scope?: string;
+          target_ids?: string[];
+        }>)
+      : [];
+
+    const whatsappScope = granularScopes.find(
       (scope) =>
         scope.scope === 'whatsapp_business_messaging' ||
         scope.scope === 'whatsapp_business_management',
     );
+    if (whatsappScope?.target_ids?.[0]) {
+      return whatsappScope.target_ids[0];
+    }
 
-    return whatsappScope?.target_ids?.[0] ?? null;
+    return null;
   }
 
   /**
