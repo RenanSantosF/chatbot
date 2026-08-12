@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
-const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:3001";
+// Normaliza pra sempre ter protocolo: é comum colar só o domínio (ex:
+// "sua-api.up.railway.app") na env var de produção, sem o "https://" na
+// frente — e o Next recusa o build inteiro se o destino do rewrite não
+// começar com http(s):// ou "/", com um erro que não deixa óbvio qual env
+// var é a culpada.
+function withProtocol(url: string): string {
+  return /^https?:\/\//.test(url) ? url : `https://${url}`;
+}
+
+const API_INTERNAL_URL = withProtocol(process.env.API_INTERNAL_URL ?? "http://localhost:3001");
 
 const nextConfig: NextConfig = {
   async rewrites() {
