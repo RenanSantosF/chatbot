@@ -5,7 +5,7 @@ Três serviços, cada um cuidando de uma parte:
 | O quê | Onde | Por quê |
 |---|---|---|
 | Banco de dados (Postgres + pgvector) | **Supabase** | Já vem com a extensão `vector` pronta pra habilitar |
-| API (NestJS + Socket.io) | **Render** | Processo Node de vida longa — Vercel é serverless e não segura WebSocket bem |
+| API (NestJS + Socket.io) | **Railway** (ou Render) | Processo Node de vida longa — Vercel é serverless e não segura WebSocket bem |
 | Frontend (Next.js) | **Vercel** | É o que o Next.js faz de melhor |
 
 Todos têm plano free suficiente pra testar. Depois, se validar o negócio, dá pra subir de tier sem trocar nada de arquitetura.
@@ -28,33 +28,39 @@ Todos têm plano free suficiente pra testar. Depois, se validar o negócio, dá 
 
 ---
 
-## 2. API (Render)
+## 2. API (Railway)
 
-1. Crie um **Web Service** em [render.com](https://render.com) apontando pro repositório, branch `main`.
-2. Root directory: `apps/api`
-3. Build command:
-   ```
-   cd ../.. && corepack enable && pnpm install --frozen-lockfile && pnpm --filter api exec prisma migrate deploy && pnpm --filter api run build
-   ```
-4. Start command:
-   ```
-   pnpm run start:prod
-   ```
-5. Variáveis de ambiente (Render > Environment):
+O repo é um monorepo pnpm (`apps/api` + `apps/web` compartilhando um `pnpm-lock.yaml` na raiz) — isso é a parte que mais costuma dar problema em plataformas de deploy que tentam auto-detectar o build. `apps/api/railway.json` já resolve isso; o Railway lê esse arquivo automaticamente quando o **Root Directory** do serviço é `apps/api`.
+
+1. Crie um serviço em [railway.app](https://railway.app) apontando pro repositório, branch `main`.
+2. Em **Settings > Source**: Root Directory = `apps/api`.
+3. Em **Settings > Build**, confirme que ficou assim (vem do `railway.json`, mas confira se não tem override manual pisando nele):
+   - Build command:
+     ```
+     corepack enable && cd ../.. && pnpm install --frozen-lockfile && pnpm --filter api run build
+     ```
+   - Start command:
+     ```
+     npx prisma migrate deploy && node dist/src/main
+     ```
+   > Se o deploy falhar com `Cannot find module '.../dist/src/main'`, é sinal de que o Build Command não rodou (ou rodou em outro lugar) antes do Start — geralmente porque um Start Command customizado foi salvo no dashboard sem Build Command nenhum. Cole o comando acima explicitamente no campo Build Command pra garantir.
+4. Variáveis de ambiente (Settings > Variables):
 
    | Variável | Valor |
    |---|---|
    | `DATABASE_URL` | a connection string do Supabase (passo 1) |
    | `JWT_SECRET` | gere com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `JWT_EXPIRES_IN` | `7d` |
-   | `PORT` | `3001` (Render define a própria porta via `PORT`, mas o Nest já lê essa env — confirme que bate com a porta que o Render expõe) |
+   | `PORT` | `3001` |
    | `ENCRYPTION_KEY` | gere do mesmo jeito que o `JWT_SECRET`, mas **guarde separado** — se perder, ninguém decripta as chaves de IA/WhatsApp já salvas |
    | `WEB_APP_URL` | a URL que a Vercel vai te dar no passo 3 (ex: `https://seu-app.vercel.app`) — sem isso, CORS bloqueia o frontend |
    | `WHATSAPP_VERIFY_TOKEN` | qualquer string que você escolher (ex: `token-secreto-webhook`) — vai reaparecer no passo 4 |
-   | `API_PUBLIC_URL` | a URL que o Render vai te dar (ex: `https://sua-api.onrender.com`) — só usada pra mostrar a URL do webhook pronta na tela de Configurações |
+   | `API_PUBLIC_URL` | a URL pública que o Railway vai te dar (Settings > Networking > Generate Domain) — só usada pra mostrar a URL do webhook pronta na tela de Configurações |
    | `GEMINI_API_KEY` / `GEMINI_MODEL` | opcional — deixe em branco. Cada empresa cadastra a própria chave pela tela `/dashboard/ai` |
 
-6. Deploy. Confirme nos logs que apareceu `Nest application successfully started` e `Conectado ao Postgres`.
+5. Deploy. Confirme nos logs que apareceu `Nest application successfully started` e `Conectado ao Postgres`.
+
+**Prefere Render?** Funciona igual, só troca o jeito de configurar: Root directory `apps/api`, Build command `cd ../.. && corepack enable && pnpm install --frozen-lockfile && pnpm --filter api run build`, Start command `npx prisma migrate deploy && node dist/src/main`, mesmas variáveis da tabela acima trocando `API_PUBLIC_URL` pela URL que o Render gerar.
 
 ---
 
@@ -66,10 +72,10 @@ Todos têm plano free suficiente pra testar. Depois, se validar o negócio, dá 
 
    | Variável | Valor |
    |---|---|
-   | `API_INTERNAL_URL` | a URL da API no Render (ex: `https://sua-api.onrender.com`) |
-   | `NEXT_PUBLIC_SOCKET_URL` | a mesma URL da API no Render |
+   | `API_INTERNAL_URL` | a URL pública da API (Railway ou Render) |
+   | `NEXT_PUBLIC_SOCKET_URL` | a mesma URL pública da API |
 
-4. Deploy. Depois de pronto, volte no Render e confirme que `WEB_APP_URL` bate exatamente com a URL que a Vercel gerou (com `https://`, sem barra no final).
+4. Deploy. Depois de pronto, volte na API e confirme que `WEB_APP_URL` bate exatamente com a URL que a Vercel gerou (com `https://`, sem barra no final).
 
 ---
 
@@ -84,8 +90,8 @@ Isso é por empresa/tenant — cada cliente da plataforma faz esse passo uma vez
    - Gere um **token de acesso permanente**: crie um Usuário do sistema (System User) em Configurações do Negócio, dê a ele permissão `whatsapp_business_messaging` no seu WABA, e gere o token por ali — o token temporário de teste (24h) que aparece na tela inicial não serve pra produção.
 4. Em **Configurações do app > Básico**, copie o **App Secret**.
 5. Ainda em **WhatsApp > Configuração**, na seção **Webhook**:
-   - Callback URL: `https://sua-api.onrender.com/api/webhooks/whatsapp`
-   - Verify token: o mesmo valor que você colocou em `WHATSAPP_VERIFY_TOKEN` no Render
+   - Callback URL: `https://sua-api.up.railway.app/api/webhooks/whatsapp`
+   - Verify token: o mesmo valor que você colocou em `WHATSAPP_VERIFY_TOKEN` na API
    - Clique em **Verify and save** — se dar erro aqui, confira se a API está no ar e se o verify token bate exatamente
    - Inscreva o campo **messages**
 6. Na plataforma, faça login como dono da empresa, vá em **Configurações**, e cole: Phone number ID, número (só exibição), token de acesso e App Secret. Salve.
@@ -95,11 +101,11 @@ Isso é por empresa/tenant — cada cliente da plataforma faz esse passo uma vez
 
 ## Checklist rápido pra saber se está tudo certo
 
-- [ ] `https://sua-api.onrender.com/api` responde (qualquer rota autenticada deve dar 401, não erro de conexão)
+- [ ] `https://sua-api.up.railway.app/api` responde (qualquer rota autenticada deve dar 401, não erro de conexão)
 - [ ] Criar conta em `https://seu-app.vercel.app/register` funciona e leva pro dashboard
 - [ ] Inbox conecta em tempo real (manda uma mensagem simulada e ela aparece sem dar F5)
 - [ ] `/dashboard/ai` salva a API key do Gemini sem erro
-- [ ] `/dashboard/settings` mostra a URL do webhook correta (com o domínio do Render, não `localhost`)
+- [ ] `/dashboard/settings` mostra a URL do webhook correta (com o domínio da API em produção, não `localhost`)
 - [ ] Handshake do webhook: a Meta aceitou a URL sem erro ao salvar
 - [ ] Mensagem real do WhatsApp chega no Inbox
 
