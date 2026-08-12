@@ -20,6 +20,7 @@ import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
+import { AttachmentComposer } from "./attachment-composer";
 import { ForwardDialog } from "./forward-dialog";
 import { VoiceRecorder } from "./voice-recorder";
 import type { ConversationDetail, ConversationMessage, ConversationPriority } from "@/lib/types";
@@ -117,7 +118,7 @@ export function ChatPanel({
   onReopen: () => Promise<void>;
   onReactivateAi: () => Promise<void>;
   onChangePriority: (priority: ConversationPriority) => Promise<void>;
-  onSendFile: (file: File) => Promise<void>;
+  onSendFile: (file: File, caption?: string) => Promise<void>;
   replyTo: ConversationMessage | null;
   hasOlder: boolean;
   onLoadOlder: () => Promise<void>;
@@ -130,6 +131,8 @@ export function ChatPanel({
   const [needle, setNeedle] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [forwarding, setForwarding] = useState<ConversationMessage | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const firstPaintRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -179,6 +182,24 @@ export function ChatPanel({
   }
 
   const isResolved = conversation.status === "RESOLVED" || conversation.status === "CLOSED";
+
+  function handleDrop(event: React.DragEvent) {
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) setPendingFile(file);
+  }
+
+  /**
+   * Ctrl+V com imagem na área de transferência cai aqui. Só intercepta
+   * quando há arquivo — colar texto continua funcionando normalmente.
+   */
+  function handlePaste(event: React.ClipboardEvent) {
+    const file = Array.from(event.clipboardData.files)[0];
+    if (!file) return;
+    event.preventDefault();
+    setPendingFile(file);
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -286,7 +307,24 @@ export function ChatPanel({
         </div>
       ) : null}
 
-      <div className="chat-wallpaper flex flex-1 flex-col gap-1.5 overflow-y-auto p-4">
+      <div
+        className="chat-wallpaper relative flex flex-1 flex-col gap-1.5 overflow-y-auto p-4"
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (!isResolved) setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          // Só apaga o realce quando o ponteiro sai de verdade da área —
+          // sem isso ele pisca ao passar por cima de cada balão.
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
+        }}
+        onDrop={isResolved ? undefined : handleDrop}
+      >
+        {dragging ? (
+          <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/80 backdrop-blur-sm">
+            <p className="text-sm font-medium">Solte o arquivo pra anexar</p>
+          </div>
+        ) : null}
         {hasOlder ? (
           <div className="flex justify-center pb-2">
             <Button size="sm" variant="secondary" onClick={() => void onLoadOlder()}>
@@ -336,8 +374,20 @@ export function ChatPanel({
         </div>
       ) : null}
 
-      {/* Sem borda entre a conversa e o compositor: a troca de cor da
-          superfície já marca a separação, que era o pedido. */}
+      {pendingFile ? (
+        <AttachmentComposer
+          file={pendingFile}
+          sending={sending}
+          onCancel={() => setPendingFile(null)}
+          onSend={(caption) => {
+            const file = pendingFile;
+            setPendingFile(null);
+            void onSendFile(file, caption);
+          }}
+        />
+      ) : (
+      /* Sem borda entre a conversa e o compositor: a troca de cor da
+         superfície já marca a separação, que era o pedido. */
       <form onSubmit={handleSubmit} className="flex items-center gap-2 bg-card p-3">
         <input
           ref={fileInputRef}
@@ -348,7 +398,7 @@ export function ChatPanel({
             // Limpa o input pra o mesmo arquivo poder ser reenviado logo
             // depois — sem isso o onChange não dispara na segunda vez.
             event.target.value = "";
-            if (file) void onSendFile(file);
+            if (file) setPendingFile(file);
           }}
         />
         <Button
@@ -366,6 +416,7 @@ export function ChatPanel({
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onPaste={handlePaste}
           placeholder={isResolved ? "Conversa resolvida" : "Escreva uma mensagem..."}
           disabled={isResolved || sending}
           className="rounded-md"
@@ -380,6 +431,7 @@ export function ChatPanel({
           {sending ? <Spinner /> : <SendHorizonal className="size-4" />}
         </Button>
       </form>
+      )}
     </div>
   );
 }

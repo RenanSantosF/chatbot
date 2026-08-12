@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, Send, Trash2 } from "lucide-react";
+import { Mic, Pause, Play, Send, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,31 @@ function clock(seconds: number) {
   return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+function extensionFor(mimeType: string) {
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("mpeg")) return "mp3";
+  return "webm";
+}
+
+/** Barras que sobem e descem enquanto grava — o mesmo sinal de vida do app. */
+function Waveform({ paused }: { paused: boolean }) {
+  return (
+    <span className="flex items-end gap-0.5" aria-hidden>
+      {[0, 1, 2, 3, 4].map((index) => (
+        <span
+          key={index}
+          className={cn(
+            "w-0.5 rounded-full bg-primary",
+            paused ? "h-1.5 opacity-50" : "animate-[onda_0.9s_ease-in-out_infinite]",
+          )}
+          style={paused ? undefined : { height: "0.75rem", animationDelay: `${index * 110}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function VoiceRecorder({
   disabled,
   onRecorded,
@@ -38,18 +63,19 @@ export function VoiceRecorder({
   onRecorded: (file: File) => Promise<void>;
 }) {
   const [recording, setRecording] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  // Cancelar precisa ser lido lá dentro do onstop, que é assíncrono e
-  // enxerga o estado congelado do render em que foi criado.
+  // Descartar precisa ser lido dentro do onstop, que roda depois e enxerga
+  // o estado congelado do render em que foi criado.
   const cancelledRef = useRef(false);
 
   useEffect(() => {
-    if (!recording) return;
+    if (!recording || paused) return;
     const timer = setInterval(() => setSeconds((value) => value + 1), 1000);
     return () => clearInterval(timer);
-  }, [recording]);
+  }, [recording, paused]);
 
   useEffect(() => {
     // Solta o microfone se a pessoa sair da tela no meio da gravação —
@@ -87,29 +113,39 @@ export function VoiceRecorder({
       if (cancelledRef.current) return;
       const blob = new Blob(chunksRef.current, { type: mimeType });
       if (blob.size === 0) return;
-      const extension = mimeType.includes("ogg")
-        ? "ogg"
-        : mimeType.includes("mp4")
-          ? "m4a"
-          : mimeType.includes("mpeg")
-            ? "mp3"
-            : "webm";
       void onRecorded(
-        new File([blob], `audio-${Date.now()}.${extension}`, { type: mimeType }),
+        new File([blob], `audio-${Date.now()}.${extensionFor(mimeType)}`, { type: mimeType }),
       );
     };
 
     recorder.start();
     recorderRef.current = recorder;
     setSeconds(0);
+    setPaused(false);
     setRecording(true);
+  }
+
+  function togglePause() {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+    if (recorder.state === "recording") {
+      recorder.pause();
+      setPaused(true);
+    } else if (recorder.state === "paused") {
+      recorder.resume();
+      setPaused(false);
+    }
   }
 
   function finish(cancel: boolean) {
     cancelledRef.current = cancel;
+    // Um recorder pausado não dispara ondataavailable ao parar; retomar
+    // antes garante que o último pedaço entre no arquivo.
+    if (recorderRef.current?.state === "paused") recorderRef.current.resume();
     recorderRef.current?.stop();
     recorderRef.current = null;
     setRecording(false);
+    setPaused(false);
   }
 
   if (!recording) {
@@ -129,27 +165,43 @@ export function VoiceRecorder({
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-md bg-muted px-2 py-1">
-      <span
-        className={cn("size-2 shrink-0 rounded-full bg-destructive", "animate-pulse")}
-        aria-hidden
-      />
-      <span className="text-xs tabular-nums" aria-live="polite">
-        Gravando {clock(seconds)}
-      </span>
+    <div className="flex flex-1 items-center gap-2 rounded-full bg-muted px-2 py-1 duration-200 animate-in fade-in slide-in-from-bottom-1">
       <Button
         type="button"
         size="icon-sm"
         variant="ghost"
         aria-label="Descartar gravação"
         title="Descartar"
+        className="text-destructive hover:text-destructive"
         onClick={() => finish(true)}
       >
         <Trash2 className="size-4" />
       </Button>
+
+      <Waveform paused={paused} />
+
+      <span className="text-xs tabular-nums" aria-live="polite">
+        {clock(seconds)}
+      </span>
+
       <Button
         type="button"
         size="icon-sm"
+        variant="ghost"
+        aria-label={paused ? "Retomar gravação" : "Pausar gravação"}
+        title={paused ? "Retomar" : "Pausar"}
+        onClick={togglePause}
+      >
+        {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
+      </Button>
+
+      {/* Sem "ouvir uma vez": a Cloud API não expõe view_once no envio —
+          é recurso só do aplicativo. Um controle que não faz nada é pior
+          que a ausência dele. */}
+      <Button
+        type="button"
+        size="icon-sm"
+        className="ml-auto"
         aria-label="Enviar áudio"
         title="Enviar áudio"
         onClick={() => finish(false)}

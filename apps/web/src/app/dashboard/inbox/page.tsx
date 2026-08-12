@@ -331,12 +331,13 @@ export default function InboxPage() {
     }
   }
 
-  async function handleSendFile(file: File) {
+  async function handleSendFile(file: File, caption?: string) {
     if (!selectedId) return;
     setSending(true);
     try {
       const body = new FormData();
       body.append("file", file);
+      if (caption) body.append("caption", caption);
       await apiFetch(`/conversations/${selectedId}/attachments`, { method: "POST", body });
     } catch {
       toast.error("Não deu pra enviar o arquivo.");
