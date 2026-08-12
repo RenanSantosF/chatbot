@@ -98,7 +98,16 @@ export class WhatsappWebhookController {
     }
 
     if (messages.length === 0) {
-      // Evento de status (entregue/lido) numa conversa já conhecida — nada a fazer.
+      // Evento de status (enviado/entregue/lido/falhou) de uma mensagem que a
+      // gente mandou — só loga, não precisa fazer mais nada por enquanto.
+      for (const status of value?.statuses ?? []) {
+        const errorDetail = status.errors?.[0]
+          ? ` erro=${status.errors[0].code} ${status.errors[0].title ?? ''} ${status.errors[0].message ?? ''}`.trim()
+          : '';
+        this.logger.log(
+          `Status de mensagem: id=${status.id}, status=${status.status}, para=${status.recipient_id}.${errorDetail}`,
+        );
+      }
       return { ok: true };
     }
 
