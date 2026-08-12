@@ -1,4 +1,4 @@
-import { Check, CheckCheck, Reply, TriangleAlert } from "lucide-react";
+import { Check, CheckCheck, Forward, Reply, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
@@ -77,6 +77,7 @@ export function MessageBubble({
   isCurrentMatch = false,
   onReply,
   onReact,
+  onForward,
 }: {
   message: ConversationMessage;
   /** Termo buscado na conversa, pra pintar dentro do balão. */
@@ -85,6 +86,7 @@ export function MessageBubble({
   isCurrentMatch?: boolean;
   onReply?: (message: ConversationMessage) => void;
   onReact?: (messageId: string, emoji: string) => Promise<void>;
+  onForward?: (message: ConversationMessage) => void;
 }) {
   if (message.senderType === "SYSTEM") {
     return (
@@ -112,10 +114,12 @@ export function MessageBubble({
         isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
       )}
     >
-      {onReply || onReact ? (
+      {onReply || onReact || onForward ? (
         <div
           className={cn(
-            "absolute -top-3 z-10 flex items-center gap-0.5 rounded-full border bg-popover px-1 py-0.5 opacity-0 shadow-sm transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
+            // Fica inteiro acima do balão (bottom-full), não por cima dele: com
+            // -top-3 o menu tapava a primeira linha da mensagem.
+            "absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-full border bg-popover px-1 py-0.5 opacity-0 shadow-sm transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
             fromCustomer ? "left-2" : "right-2",
           )}
         >
@@ -141,6 +145,17 @@ export function MessageBubble({
               className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
             >
               <Reply className="size-3.5" />
+            </button>
+          ) : null}
+          {onForward ? (
+            <button
+              type="button"
+              title="Encaminhar"
+              aria-label="Encaminhar esta mensagem"
+              onClick={() => onForward(message)}
+              className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Forward className="size-3.5" />
             </button>
           ) : null}
         </div>

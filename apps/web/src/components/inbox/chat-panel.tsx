@@ -19,6 +19,7 @@ import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
+import { ForwardDialog } from "./forward-dialog";
 import { VoiceRecorder } from "./voice-recorder";
 import type { ConversationDetail, ConversationMessage, ConversationPriority } from "@/lib/types";
 
@@ -133,6 +134,7 @@ export function ChatPanel({
   const [searchOpen, setSearchOpen] = useState(false);
   const [needle, setNeedle] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
+  const [forwarding, setForwarding] = useState<ConversationMessage | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -297,12 +299,19 @@ export function ChatPanel({
                 isCurrentMatch={message.id === currentMatchId}
                 onReply={onReply}
                 onReact={onReact}
+                onForward={setForwarding}
               />
             </div>
           );
         })}
         <div ref={bottomRef} />
       </div>
+
+      <ForwardDialog
+        message={forwarding}
+        fromConversationId={conversation.id}
+        onClose={() => setForwarding(null)}
+      />
 
       {replyTo ? (
         <div className="flex items-center gap-2 border-t bg-muted/60 px-3 py-2">

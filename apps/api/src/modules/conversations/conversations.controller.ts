@@ -86,6 +86,19 @@ export class ConversationsController {
     return this.conversationsService.reactToMessage(id, messageId, emoji ?? '');
   }
 
+  @Post(':id/messages/:messageId/forward')
+  forward(
+    @Param('messageId') messageId: string,
+    @Body('toConversationId') toConversationId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.forwardMessage(
+      messageId,
+      toConversationId,
+      user.userId,
+    );
+  }
+
   @Post(':id/messages')
   sendMessage(
     @Param('id') id: string,

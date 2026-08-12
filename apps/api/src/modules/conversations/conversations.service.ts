@@ -620,6 +620,85 @@ export class ConversationsService {
     };
   }
 
+  /**
+   * Encaminha uma mensagem pra outra conversa. Mídia não é baixada e
+   * subida de novo: o id de mídia da Meta é reaproveitado, que é o mesmo
+   * que o aplicativo faz e evita um ida-e-volta de megabytes à toa.
+   */
+  async forwardMessage(
+    messageId: string,
+    toConversationId: string,
+    agentId: string,
+  ) {
+    const source = await this.prisma.db.message.findFirst({
+      where: { id: messageId },
+    });
+    if (!source) {
+      throw new NotFoundException('Mensagem não encontrada.');
+    }
+
+    const target = await this.requireConversation(toConversationId);
+
+    if (source.messageType === 'TEXT') {
+      return this.sendAgentMessage(toConversationId, agentId, source.content);
+    }
+
+    const metadata = (source.metadata ?? {}) as {
+      mediaId?: string;
+      mimeType?: string;
+      fileName?: string;
+      size?: number;
+    };
+    if (!metadata.mediaId) {
+      throw new BadRequestException(
+        'Esta mídia não pode ser encaminhada: ela não tem id na Meta.',
+      );
+    }
+
+    const kind = mediaKindFor(metadata.mimeType ?? '');
+    const externalId = await this.whatsapp.sendMedia(
+      target.customer.phone,
+      kind,
+      metadata.mediaId,
+      { filename: metadata.fileName },
+    );
+
+    const message = await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId: toConversationId,
+        senderType: 'AGENT',
+        senderId: agentId,
+        content: source.content,
+        messageType: source.messageType,
+        externalId,
+        metadata: metadata as Prisma.InputJsonValue,
+      },
+    });
+
+    const updated = await this.prisma.db.conversation.update({
+      where: { id: toConversationId },
+      data: {
+        lastMessageAt: message.createdAt,
+        status: 'WAITING_CUSTOMER',
+        unreadCount: 0,
+      },
+      include: conversationInclude,
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+      conversationId: toConversationId,
+      message,
+    });
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(updated),
+    );
+
+    return message;
+  }
+
   async sendAttachment(
     conversationId: string,
     agentId: string,
