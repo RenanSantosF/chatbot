@@ -68,6 +68,10 @@ export class WhatsappWebhookController {
   ) {
     const value = body.entry?.[0]?.changes?.[0]?.value;
     const phoneNumberId = value?.metadata?.phone_number_id;
+    const messages = value?.messages ?? [];
+    this.logger.log(
+      `POST recebido: phoneNumberId=${phoneNumberId ?? 'ausente'}, mensagens=${messages.length}`,
+    );
 
     // Sem phone_number_id não tem como saber de qual tenant é — provavelmente
     // é um evento de status (entregue/lido) sem "messages", que ignoramos
@@ -88,10 +92,10 @@ export class WhatsappWebhookController {
     }
 
     if (!this.hasValidSignature(req, settings.appSecretEncrypted)) {
+      this.logger.warn(`Assinatura inválida pro tenant ${settings.tenantId}.`);
       throw new ForbiddenException('Assinatura inválida.');
     }
 
-    const messages = value?.messages ?? [];
     if (messages.length === 0) {
       // Evento de status (entregue/lido) numa conversa já conhecida — nada a fazer.
       return { ok: true };
@@ -122,6 +126,9 @@ export class WhatsappWebhookController {
         content: message.text.body,
         channel: 'WHATSAPP',
       });
+      this.logger.log(
+        `Mensagem processada pro tenant ${settings.tenantId} (de ${message.from}).`,
+      );
     }
 
     return { ok: true };
