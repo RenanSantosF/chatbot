@@ -19,6 +19,7 @@ import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
+import { VoiceRecorder } from "./voice-recorder";
 import type { ConversationDetail, ConversationMessage, ConversationPriority } from "@/lib/types";
 
 /**
@@ -343,6 +344,7 @@ export function ChatPanel({
         >
           <Paperclip className="size-4" />
         </Button>
+        <VoiceRecorder disabled={isResolved || sending} onRecorded={onSendFile} />
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

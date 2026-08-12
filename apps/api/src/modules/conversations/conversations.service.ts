@@ -18,6 +18,10 @@ import { AiEngineService } from '../ai/ai-engine.service';
 import { CustomersService } from '../customers/customers.service';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import {
+  isAcceptedAudio,
+  remuxToOggOpus,
+} from '../whatsapp/audio-container';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
 
@@ -587,6 +591,35 @@ export class ConversationsService {
    * histórico. O arquivo em si não fica no nosso banco — a Meta hospeda, e
    * guardamos o id dela, mesmo caminho da mídia que o cliente envia.
    */
+  /**
+   * Áudio gravado no navegador chega em webm/opus (padrão do Chrome), que a
+   * Cloud API não aceita. Aqui ele vira ogg/opus antes de subir. Se a
+   * máquina não tiver ffmpeg, o erro diz exatamente isso em vez de deixar a
+   * Meta recusar com uma mensagem genérica.
+   */
+  private async prepareAudio<
+    T extends { buffer: Buffer; mimetype: string; originalname: string },
+  >(file: T): Promise<T> {
+    if (!file.mimetype.startsWith('audio/') || isAcceptedAudio(file.mimetype)) {
+      return file;
+    }
+
+    const converted = await remuxToOggOpus(file.buffer);
+    if (!converted) {
+      throw new BadRequestException(
+        'Não deu pra converter o áudio pro formato que o WhatsApp aceita. ' +
+          'Instale o ffmpeg no servidor da API pra habilitar o envio de áudio gravado.',
+      );
+    }
+
+    return {
+      ...file,
+      buffer: converted,
+      mimetype: 'audio/ogg',
+      originalname: file.originalname.replace(/\.[^.]+$/, '') + '.ogg',
+    };
+  }
+
   async sendAttachment(
     conversationId: string,
     agentId: string,
@@ -601,14 +634,16 @@ export class ConversationsService {
       );
     }
 
-    const mediaId = await this.media.upload(file);
+    const toUpload = await this.prepareAudio(file);
+
+    const mediaId = await this.media.upload(toUpload);
     if (!mediaId) {
       throw new BadRequestException(
         'A Meta recusou o arquivo. Confira o formato e o tamanho.',
       );
     }
 
-    const kind = mediaKindFor(file.mimetype);
+    const kind = mediaKindFor(toUpload.mimetype);
     const externalId = await this.whatsapp.sendMedia(
       conversation.customer.phone,
       kind,
