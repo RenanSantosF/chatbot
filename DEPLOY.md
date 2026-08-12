@@ -30,20 +30,20 @@ Todos têm plano free suficiente pra testar. Depois, se validar o negócio, dá 
 
 ## 2. API (Railway)
 
-O repo é um monorepo pnpm (`apps/api` + `apps/web` compartilhando um `pnpm-lock.yaml` na raiz) — isso é a parte que mais costuma dar problema em plataformas de deploy que tentam auto-detectar o build. `apps/api/railway.json` já resolve isso; o Railway lê esse arquivo automaticamente quando o **Root Directory** do serviço é `apps/api`.
+O repo é um monorepo pnpm (`apps/api` + `apps/web` compartilhando um `pnpm-lock.yaml` na raiz). Pra isso funcionar, o **Root Directory do serviço precisa ser a raiz do repositório** (deixe em branco), não `apps/api` — só assim o Nixpacks enxerga o `pnpm-lock.yaml`/`pnpm-workspace.yaml` e sabe que é um workspace pnpm em vez de tentar `npm install` isolado dentro de `apps/api` (é exatamente isso que causa o erro `Prisma only supports Node.js versions 20.19+...` rodando em Node 18: sem ver o lockfile, ele nem escolhe o gerenciador nem a versão certos).
+
+O `railway.json` na raiz do repo já define o build e o start certos:
+```json
+{
+  "build": { "builder": "NIXPACKS", "buildCommand": "pnpm --filter api run build" },
+  "deploy": { "startCommand": "cd apps/api && npx prisma migrate deploy && node dist/src/main" }
+}
+```
+E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks escolha Node 22+ em vez do padrão antigo.
 
 1. Crie um serviço em [railway.app](https://railway.app) apontando pro repositório, branch `main`.
-2. Em **Settings > Source**: Root Directory = `apps/api`.
-3. Em **Settings > Build**, confirme que ficou assim (vem do `railway.json`, mas confira se não tem override manual pisando nele):
-   - Build command:
-     ```
-     corepack enable && cd ../.. && pnpm install --frozen-lockfile && pnpm --filter api run build
-     ```
-   - Start command:
-     ```
-     npx prisma migrate deploy && node dist/src/main
-     ```
-   > Se o deploy falhar com `Cannot find module '.../dist/src/main'`, é sinal de que o Build Command não rodou (ou rodou em outro lugar) antes do Start — geralmente porque um Start Command customizado foi salvo no dashboard sem Build Command nenhum. Cole o comando acima explicitamente no campo Build Command pra garantir.
+2. Em **Settings > Source**: Root Directory = *(vazio, raiz do repo)*.
+3. Em **Settings > Build**, confirme que Build e Start command batem com o `railway.json` acima — se tiver algo customizado salvo por cima, apague pra deixar o `railway.json` mandar.
 4. Variáveis de ambiente (Settings > Variables):
 
    | Variável | Valor |
@@ -60,7 +60,7 @@ O repo é um monorepo pnpm (`apps/api` + `apps/web` compartilhando um `pnpm-lock
 
 5. Deploy. Confirme nos logs que apareceu `Nest application successfully started` e `Conectado ao Postgres`.
 
-**Prefere Render?** Funciona igual, só troca o jeito de configurar: Root directory `apps/api`, Build command `cd ../.. && corepack enable && pnpm install --frozen-lockfile && pnpm --filter api run build`, Start command `npx prisma migrate deploy && node dist/src/main`, mesmas variáveis da tabela acima trocando `API_PUBLIC_URL` pela URL que o Render gerar.
+**Prefere Render?** Funciona igual: Root directory *(vazio, raiz do repo)*, Build command `pnpm --filter api run build`, Start command `cd apps/api && npx prisma migrate deploy && node dist/src/main`, mesmas variáveis da tabela acima trocando `API_PUBLIC_URL` pela URL que o Render gerar.
 
 ---
 
