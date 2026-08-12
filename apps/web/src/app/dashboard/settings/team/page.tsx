@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateMemberCard } from "@/components/team/create-member-card";
 import { TeamMemberRow } from "@/components/team/team-member-row";
-import { PageHeader } from "@/components/page-header";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import type { MeResponse, TeamMember } from "@/lib/types";
@@ -31,7 +30,6 @@ export default function TeamPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Equipe" description="Quem tem acesso ao painel desta empresa." />
 
       {loading || !currentUserId ? (
         <PageSkeleton rows={3} />

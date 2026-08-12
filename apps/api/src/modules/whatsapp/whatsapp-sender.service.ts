@@ -80,6 +80,64 @@ export class WhatsappSenderService {
     }
   }
 
+  /**
+   * Envia uma mídia já hospedada na Meta (ver WhatsappMediaService.upload).
+   * `kind` decide o campo do payload — a Cloud API não aceita um "anexo"
+   * genérico, cada tipo tem o seu, e só `document` aceita filename.
+   */
+  async sendMedia(
+    to: string,
+    kind: 'image' | 'document' | 'audio' | 'video',
+    mediaId: string,
+    options: { caption?: string; filename?: string } = {},
+  ): Promise<string | null> {
+    const settings = await this.prisma.db.whatsAppSettings.findFirst();
+    if (!settings) {
+      this.logger.warn(
+        `Tenant ${this.prisma.tenantId} sem WhatsApp conectado — mídia não enviada.`,
+      );
+      return null;
+    }
+
+    const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
+    const media: Record<string, string> = { id: mediaId };
+    if (options.caption && kind !== 'audio') media.caption = options.caption;
+    if (options.filename && kind === 'document') media.filename = options.filename;
+
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to,
+            type: kind,
+            [kind]: media,
+          }),
+        },
+      );
+
+      const responseBody = await response.text();
+      if (!response.ok) {
+        this.logger.error(
+          `Falha ao enviar mídia via WhatsApp (${response.status}): ${responseBody}`,
+        );
+        return null;
+      }
+      return this.extractMessageId(responseBody);
+    } catch (error) {
+      this.logger.error(
+        `Erro de rede ao enviar mídia via WhatsApp: ${error instanceof Error ? error.message : error}`,
+      );
+      return null;
+    }
+  }
+
   private extractMessageId(responseBody: string): string | null {
     try {
       const parsed = JSON.parse(responseBody) as {

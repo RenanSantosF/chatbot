@@ -1,5 +1,6 @@
 import { Check, CheckCheck, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
 
 function timeLabel(iso: string) {
@@ -66,7 +67,10 @@ export function MessageBubble({ message }: { message: ConversationMessage }) {
           : "self-end rounded-br-sm bg-primary text-primary-foreground slide-in-from-right-2",
       )}
     >
-      <span className="whitespace-pre-wrap break-words">{message.content}</span>
+      {message.messageType !== "TEXT" ? <MessageAttachment message={message} /> : null}
+      {message.content ? (
+        <span className="whitespace-pre-wrap break-words">{message.content}</span>
+      ) : null}
       <span
         className={cn(
           "flex items-center justify-end gap-1 text-[10px] leading-none",

@@ -48,108 +48,82 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Superfícies estritamente neutras (cinza puro, croma 0) e o verde da
+   marca reservado só pro que é ação: botão primário, item ativo, badge de
+   não lida. Fundo levemente tingido de verde deixava tudo com aparência
+   de "tema", não de ferramenta. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.16 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.16 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.47 0.11 165);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.16 0 0);
+  --primary: oklch(0.52 0.12 163);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0 0);
+  --secondary-foreground: oklch(0.22 0 0);
+  --muted: oklch(0.965 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.955 0 0);
+  --accent-foreground: oklch(0.2 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.6 0.09 165);
+  --border: oklch(0.9 0 0);
+  --input: oklch(0.88 0 0);
+  /* Anel de foco neutro: a borda verde no input gritava e destoava do
+     resto. Foco precisa ser evidente, não colorido. */
+  --ring: oklch(0.55 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.47 0.11 165);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.955 0.025 165);
-  --sidebar-accent-foreground: oklch(0.32 0.09 165);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.6 0.09 165);
+  --radius: 0.375rem;
+  --sidebar: oklch(0.975 0 0);
+  --sidebar-foreground: oklch(0.16 0 0);
+  --sidebar-primary: oklch(0.52 0.12 163);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.93 0 0);
+  --sidebar-accent-foreground: oklch(0.16 0 0);
+  --sidebar-border: oklch(0.9 0 0);
+  --sidebar-ring: oklch(0.55 0 0);
 }
 
-/* Escuro "de trabalhar", não escuro de vitrine: o fundo fica em torno de
-   L 0.26 em vez de quase preto, e os cartões sobem mais um degrau. Preto
-   puro com texto branco force contraste demais e cansa em jornada longa —
-   a referência aqui é o cinza-azulado dos painéis de trabalho, com um
-   toque do verde da marca pra não ficar morto. */
+/* Escuro neutro, sem tingimento: cinza-carvão puro (croma 0), do jeito
+   que os painéis de trabalho maduros fazem. O verde aparece só no que é
+   ação — nunca no fundo, nunca no hover. */
 .dark {
-  --background: oklch(0.26 0.008 165);
-  --foreground: oklch(0.96 0.003 165);
-  --card: oklch(0.3 0.009 165);
-  --card-foreground: oklch(0.96 0.003 165);
-  --popover: oklch(0.31 0.009 165);
-  --popover-foreground: oklch(0.96 0.003 165);
-  --primary: oklch(0.76 0.13 165);
-  --primary-foreground: oklch(0.2 0.02 165);
-  --secondary: oklch(0.36 0.01 165);
-  --secondary-foreground: oklch(0.96 0.003 165);
-  --muted: oklch(0.35 0.01 165);
-  --muted-foreground: oklch(0.75 0.012 165);
-  --accent: oklch(0.36 0.012 165);
-  --accent-foreground: oklch(0.96 0.003 165);
-  --destructive: oklch(0.704 0.191 22.216);
+  --background: oklch(0.17 0 0);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.21 0 0);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.23 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+  --primary: oklch(0.72 0.13 163);
+  --primary-foreground: oklch(0.16 0 0);
+  --secondary: oklch(0.27 0 0);
+  --secondary-foreground: oklch(0.96 0 0);
+  --muted: oklch(0.26 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.28 0 0);
+  --accent-foreground: oklch(0.96 0 0);
+  --destructive: oklch(0.68 0.19 22);
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.65 0.11 165);
+  --ring: oklch(0.7 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.29 0.009 165);
-  --sidebar-foreground: oklch(0.96 0.003 165);
-  --sidebar-primary: oklch(0.76 0.13 165);
-  --sidebar-primary-foreground: oklch(0.2 0.02 165);
-  --sidebar-accent: oklch(0.38 0.035 165);
-  --sidebar-accent-foreground: oklch(0.93 0.05 165);
+  --sidebar: oklch(0.19 0 0);
+  --sidebar-foreground: oklch(0.96 0 0);
+  --sidebar-primary: oklch(0.72 0.13 163);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.29 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
   --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.65 0.11 165);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-  html {
-    @apply font-sans;
-  }
-
-  /* Barras de rolagem discretas: o painel tem várias colunas roláveis ao
-     mesmo tempo e a barra padrão do Windows/Linux polui demais. */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-  *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  *::-webkit-scrollbar-thumb {
-    background-color: var(--border);
-    border-radius: 999px;
-  }
-  *::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  --sidebar-ring: oklch(0.7 0 0);
 }
 
 /* Papel de parede do chat. O fundo chapado deixava a conversa com cara de
@@ -157,13 +131,13 @@
    textura de mensageiro sem competir com os balões. Como é embutido em
    data URI, não há requisição de rede nem risco de o padrão não carregar. */
 .chat-wallpaper {
-  background-color: #efeae2;
+  background-color: oklch(0.955 0 0);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M8 12c3-4 7-4 10 0'/%3E%3Cpath d='M40 6c2.5 3 2.5 6 0 9'/%3E%3Cpath d='M52 26c-3 2-6 1-8-2'/%3E%3Cpath d='M18 38c4-1 7 1 8 5'/%3E%3Cpath d='M44 48c-2 3-6 4-9 2'/%3E%3Cpath d='M6 54c3-3 7-3 10 0'/%3E%3Ccircle cx='30' cy='24' r='2.5'/%3E%3Ccircle cx='58' cy='42' r='2'/%3E%3Ccircle cx='12' cy='28' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: repeat;
 }
 
 .dark .chat-wallpaper {
-  background-color: #14211d;
+  background-color: oklch(0.15 0 0);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23fff' stroke-opacity='0.05' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M8 12c3-4 7-4 10 0'/%3E%3Cpath d='M40 6c2.5 3 2.5 6 0 9'/%3E%3Cpath d='M52 26c-3 2-6 1-8-2'/%3E%3Cpath d='M18 38c4-1 7 1 8 5'/%3E%3Cpath d='M44 48c-2 3-6 4-9 2'/%3E%3Cpath d='M6 54c3-3 7-3 10 0'/%3E%3Ccircle cx='30' cy='24' r='2.5'/%3E%3Ccircle cx='58' cy='42' r='2'/%3E%3Ccircle cx='12' cy='28' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
 }
 

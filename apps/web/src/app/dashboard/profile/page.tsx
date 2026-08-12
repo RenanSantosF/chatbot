@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, ShieldCheck } from "lucide-react";
+import { KeyRound, Pencil, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -49,6 +49,8 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<TeamMember | null>(null);
   const [name, setName] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -73,6 +75,7 @@ export default function ProfilePage() {
         body: JSON.stringify({ name }),
       });
       setProfile(updated);
+      setEditingName(false);
       toast.success("Perfil atualizado.");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Não deu pra salvar.");
@@ -96,6 +99,7 @@ export default function ProfilePage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      setEditingPassword(false);
       toast.success("Senha alterada.");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Não deu pra trocar a senha.");
@@ -134,25 +138,52 @@ export default function ProfilePage() {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSaveName} className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="profile-name" className="text-xs">
-                Nome
-              </Label>
-              <Input
-                id="profile-name"
-                className="w-64"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                minLength={2}
-              />
+          {editingName ? (
+            <form onSubmit={handleSaveName} className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="profile-name" className="text-xs">
+                  Nome
+                </Label>
+                <Input
+                  id="profile-name"
+                  className="w-64"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  required
+                  minLength={2}
+                  autoFocus
+                />
+              </div>
+              <Button
+                type="submit"
+                disabled={savingName || name.trim() === profile.name || name.trim().length < 2}
+              >
+                {savingName ? <Spinner /> : null}
+                Salvar
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setName(profile.name);
+                  setEditingName(false);
+                }}
+              >
+                Cancelar
+              </Button>
+            </form>
+          ) : (
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Nome</p>
+                <p className="truncate text-sm font-medium">{profile.name}</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setEditingName(true)}>
+                <Pencil className="size-3.5" />
+                Editar
+              </Button>
             </div>
-            <Button type="submit" disabled={savingName || name.trim() === profile.name || name.trim().length < 2}>
-              {savingName ? <Spinner /> : null}
-              Salvar
-            </Button>
-          </form>
+          )}
           <p className="mt-3 text-xs text-muted-foreground">
             O e-mail e a permissão não são editáveis por aqui — quem muda isso é o dono da empresa, na tela
             de Equipe.
@@ -169,6 +200,12 @@ export default function ProfilePage() {
           <CardDescription>Pedimos a senha atual pra confirmar que é você mesmo.</CardDescription>
         </CardHeader>
         <CardContent>
+          {!editingPassword ? (
+            <Button size="sm" variant="outline" onClick={() => setEditingPassword(true)}>
+              <Pencil className="size-3.5" />
+              Trocar senha
+            </Button>
+          ) : (
           <form onSubmit={handleChangePassword} className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-2">
               <Label htmlFor="current-password" className="text-xs">
@@ -218,8 +255,23 @@ export default function ProfilePage() {
               {savingPassword ? <Spinner /> : null}
               Trocar senha
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setCurrentPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setEditingPassword(false);
+              }}
+            >
+              Cancelar
+            </Button>
           </form>
-          <p className="mt-3 text-xs text-muted-foreground">Mínimo de 8 caracteres.</p>
+          )}
+          {editingPassword ? (
+            <p className="mt-3 text-xs text-muted-foreground">Mínimo de 8 caracteres.</p>
+          ) : null}
         </CardContent>
       </Card>
 

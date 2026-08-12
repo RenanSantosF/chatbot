@@ -60,7 +60,7 @@ export function TeamMemberRow({
                 disabled={updating}
                 onClick={() => updateMember({ role })}
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                  "rounded-md border px-2.5 py-1 text-xs transition-colors",
                   member.role === role
                     ? "border-primary bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted",

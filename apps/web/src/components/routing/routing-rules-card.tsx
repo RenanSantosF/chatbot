@@ -110,7 +110,7 @@ export function RoutingRulesCard({
                     {rule.minPriority !== "NORMAL" && rule.minPriority !== "LOW" ? (
                       <span
                         className={cn(
-                          "rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+                          "rounded border px-1.5 py-0.5 text-[10px] font-medium",
                           PRIORITY_META[rule.minPriority].chip,
                         )}
                       >
@@ -213,7 +213,7 @@ export function RoutingRulesCard({
                     onClick={() => setMinPriority(priority)}
                     aria-pressed={minPriority === priority}
                     className={cn(
-                      "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                      "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                       minPriority === priority
                         ? "border-primary bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-muted",

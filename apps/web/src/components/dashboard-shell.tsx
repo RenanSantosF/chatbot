@@ -3,18 +3,16 @@
 import {
   Bell,
   BellRing,
-  Bot,
-  Building2,
   ChartNoAxesColumn,
+  ChevronRight,
   Inbox,
-  LibraryBig,
   LogOut,
-  ListTree,
   Settings,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +33,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
+import { SETTINGS_SECTIONS } from "@/components/settings/sections";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { SessionTenant, SessionUser, UserRole } from "@/lib/types";
@@ -51,11 +50,6 @@ const NAV_ITEMS: {
   { href: "/dashboard", label: "Visão geral", icon: ChartNoAxesColumn },
   { href: "/dashboard/inbox", label: "Inbox", icon: Inbox },
   { href: "/dashboard/customers", label: "Clientes", icon: Users },
-  { href: "/dashboard/ai", label: "IA", icon: Bot, roles: ["OWNER", "ADMIN"] },
-  { href: "/dashboard/knowledge", label: "Conhecimento", icon: LibraryBig, roles: ["OWNER", "ADMIN"] },
-  { href: "/dashboard/team", label: "Equipe", icon: Building2, roles: ["OWNER", "ADMIN"] },
-  { href: "/dashboard/queues", label: "Filas", icon: ListTree, roles: ["OWNER", "ADMIN"] },
-  { href: "/dashboard/settings", label: "Configurações", icon: Settings, roles: ["OWNER", "ADMIN"] },
 ];
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -103,12 +97,16 @@ function ConnectionBadge() {
 function Nav({ role }: { role: UserRole }) {
   const pathname = usePathname();
   const { totalUnread } = useRealtime();
-
-  const visible = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(role));
+  // Configurações abre sozinho quando você já está dentro de alguma seção
+  // dela — assim o submenu não some justo quando ele é útil.
+  const inSettings =
+    pathname.startsWith("/dashboard/settings") || pathname === "/dashboard/knowledge";
+  const [settingsOpen, setSettingsOpen] = useState(inSettings);
+  const canConfigure = role === "OWNER" || role === "ADMIN";
 
   return (
     <SidebarMenu>
-      {visible.map((item) => {
+      {NAV_ITEMS.map((item) => {
         const showBadge = item.href === "/dashboard/inbox" && totalUnread > 0;
         return (
           <SidebarMenuItem key={item.href}>
@@ -128,6 +126,47 @@ function Nav({ role }: { role: UserRole }) {
           </SidebarMenuItem>
         );
       })}
+
+      {canConfigure ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={inSettings}
+            tooltip="Configurações"
+            onClick={() => setSettingsOpen((open) => !open)}
+          >
+            <Settings />
+            <span>Configurações</span>
+            <ChevronRight
+              className={cn(
+                "ml-auto transition-transform group-data-[collapsible=icon]:hidden",
+                settingsOpen && "rotate-90",
+              )}
+            />
+          </SidebarMenuButton>
+
+          {settingsOpen ? (
+            <ul className="mt-1 ml-4 flex flex-col gap-0.5 border-l pl-2 group-data-[collapsible=icon]:hidden">
+              {SETTINGS_SECTIONS.map((section) => (
+                <li key={section.href}>
+                  <Link
+                    href={section.href}
+                    aria-current={pathname === section.href ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                      pathname === section.href
+                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    <section.icon className="size-3.5 shrink-0" />
+                    {section.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </SidebarMenuItem>
+      ) : null}
     </SidebarMenu>
   );
 }

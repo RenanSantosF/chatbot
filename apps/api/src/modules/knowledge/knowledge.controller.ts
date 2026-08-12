@@ -10,14 +10,14 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Roles } from '../../common/auth/roles.decorator';
+import { RequiresPermission } from '../../common/auth/permission.decorator';
 import { KnowledgeService } from './knowledge.service';
 import { SUPPORTED_MIME_TYPES } from './parsing/extract-text';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 @Controller('knowledge/documents')
-@Roles('OWNER', 'ADMIN')
+@RequiresPermission('knowledge.manage')
 export class KnowledgeController {
   constructor(private readonly knowledgeService: KnowledgeService) {}
 

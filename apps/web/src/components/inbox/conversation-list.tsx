@@ -132,7 +132,7 @@ export function ConversationList({
                 {showPriority ? (
                   <span
                     className={cn(
-                      "flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+                      "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium",
                       priority.chip,
                     )}
                   >

@@ -1,6 +1,6 @@
 "use client";
 
-import { MessagesSquare, SendHorizonal } from "lucide-react";
+import { MessagesSquare, Paperclip, SendHorizonal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -97,6 +97,7 @@ export function ChatPanel({
   onResolve,
   onReactivateAi,
   onChangePriority,
+  onSendFile,
 }: {
   conversation: ConversationDetail | null;
   sending: boolean;
@@ -105,9 +106,11 @@ export function ChatPanel({
   onResolve: () => Promise<void>;
   onReactivateAi: () => Promise<void>;
   onChangePriority: (priority: ConversationPriority) => Promise<void>;
+  onSendFile: (file: File) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -184,17 +187,40 @@ export function ChatPanel({
       </div>
 
       <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t bg-card p-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Limpa o input pra o mesmo arquivo poder ser reenviado logo
+            // depois — sem isso o onChange não dispara na segunda vez.
+            event.target.value = "";
+            if (file) void onSendFile(file);
+          }}
+        />
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          aria-label="Anexar arquivo"
+          title="Anexar imagem, PDF, áudio ou vídeo"
+          disabled={isResolved || sending}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className="size-4" />
+        </Button>
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={isResolved ? "Conversa resolvida" : "Escreva uma mensagem..."}
           disabled={isResolved || sending}
-          className="rounded-full"
+          className="rounded-md"
         />
         <Button
           type="submit"
           size="icon-lg"
-          className="shrink-0 rounded-full"
+          className="shrink-0"
           aria-label="Enviar mensagem"
           disabled={isResolved || sending || !draft.trim()}
         >

@@ -6,28 +6,24 @@ import { toast } from "sonner";
 import { ChatPanel } from "@/components/inbox/chat-panel";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerPanel } from "@/components/inbox/customer-panel";
-import { DEFAULT_FILTERS, InboxFilterBar, type InboxFilters } from "@/components/inbox/inbox-filters";
+import {
+  buildFilterCounts,
+  DEFAULT_FILTERS,
+  InboxFilterBar,
+  type InboxFilters,
+} from "@/components/inbox/inbox-filters";
 import { SimulateInboundDialog } from "@/components/inbox/simulate-inbound-dialog";
 import { PageHeader } from "@/components/page-header";
 import { useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
+import { PRIORITY_META } from "@/lib/priority";
 import type {
   ConversationDetail,
   ConversationPriority,
   ConversationSummary,
+  MeResponse,
   MessageStatus,
 } from "@/lib/types";
-
-function buildQuery(filters: InboxFilters): string {
-  const params = new URLSearchParams();
-  if (filters.status !== "ALL") params.set("status", filters.status);
-  if (filters.priority !== "ALL") params.set("priority", filters.priority);
-  if (filters.mine) params.set("mine", "true");
-  if (filters.unreadOnly) params.set("unread", "true");
-  if (filters.sort === "priority") params.set("sort", "priority");
-  const query = params.toString();
-  return query ? `/conversations?${query}` : "/conversations";
-}
 
 export default function InboxPage() {
   // Link vindo da página de Clientes ("abrir conversa") chega com ?c=<id>.
@@ -35,17 +31,13 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("c"));
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [filters, setFilters] = useState<InboxFilters>(DEFAULT_FILTERS);
   const selectedIdRef = useRef<string | null>(null);
-  const filtersRef = useRef(filters);
 
   const { socket, unreadCounts, clearUnread, setActiveConversationId } = useRealtime();
-
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -53,8 +45,17 @@ export default function InboxPage() {
     return () => setActiveConversationId(null);
   }, [selectedId, setActiveConversationId]);
 
+  useEffect(() => {
+    apiFetch<MeResponse>("/auth/me")
+      .then((me) => setCurrentUserId(me.user.id))
+      .catch(() => {});
+  }, []);
+
+  // Busca a lista inteira uma vez e filtra aqui. Assim os contadores de
+  // cada filtro batem com a realidade (um filtro no servidor esconderia
+  // justamente o que a contagem precisa ver) e trocar de filtro é instantâneo.
   const loadConversations = useCallback(async () => {
-    const list = await apiFetch<ConversationSummary[]>(buildQuery(filtersRef.current));
+    const list = await apiFetch<ConversationSummary[]>("/conversations");
     setConversations(list);
   }, []);
 
@@ -74,11 +75,10 @@ export default function InboxPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoadingList(true);
     loadConversations()
       .catch(() => toast.error("Não deu pra carregar as conversas."))
       .finally(() => setLoadingList(false));
-  }, [loadConversations, filters]);
+  }, [loadConversations]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -104,19 +104,7 @@ export default function InboxPage() {
     const onConversationUpdated = (updated: ConversationSummary) => {
       setConversations((prev) => {
         const exists = prev.some((c) => c.id === updated.id);
-        // Uma conversa que não está na lista só entra quando nenhum filtro
-        // está ativo — senão ela apareceria furando o filtro escolhido.
-        const isFiltered =
-          filtersRef.current.status !== "ALL" ||
-          filtersRef.current.priority !== "ALL" ||
-          filtersRef.current.mine ||
-          filtersRef.current.unreadOnly;
-        if (!exists && isFiltered) return prev;
-
-        const next = exists ? prev.map((c) => (c.id === updated.id ? updated : c)) : [updated, ...prev];
-        return [...next].sort(
-          (a, b) => new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
-        );
+        return exists ? prev.map((c) => (c.id === updated.id ? updated : c)) : [updated, ...prev];
       });
 
       if (selectedIdRef.current === updated.id) {
@@ -167,17 +155,41 @@ export default function InboxPage() {
     };
   }, [socket, loadConversations, loadDetail]);
 
-  // A busca por texto é local de propósito: filtra o que já está na tela sem
-  // ida ao servidor, então digitar não pisca a lista inteira.
+  const counts = useMemo(
+    () => buildFilterCounts(conversations, currentUserId),
+    [conversations, currentUserId],
+  );
+
   const visible = useMemo(() => {
     const term = filters.search.trim().toLowerCase();
-    if (!term) return conversations;
-    return conversations.filter(
-      (conversation) =>
-        conversation.customer.name.toLowerCase().includes(term) ||
-        conversation.customer.phone.includes(term),
-    );
-  }, [conversations, filters.search]);
+
+    const filtered = conversations.filter((conversation) => {
+      if (filters.status !== "ALL" && conversation.status !== filters.status) return false;
+      if (filters.priority !== "ALL" && conversation.priority !== filters.priority) return false;
+      if (filters.scope === "UNREAD" && conversation.unreadCount === 0) return false;
+      if (filters.scope === "MINE" && conversation.assignedUser?.id !== currentUserId) return false;
+      if (filters.scope === "UNASSIGNED" && conversation.assignedUser) return false;
+      if (
+        term &&
+        !conversation.customer.name.toLowerCase().includes(term) &&
+        !conversation.customer.phone.includes(term)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const byRecent = (a: ConversationSummary, b: ConversationSummary) =>
+      new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime();
+
+    return filtered.sort((a, b) => {
+      if (filters.sort === "priority") {
+        const diff = PRIORITY_META[b.priority].rank - PRIORITY_META[a.priority].rank;
+        if (diff !== 0) return diff;
+      }
+      return byRecent(a, b);
+    });
+  }, [conversations, filters, currentUserId]);
 
   async function handleSend(content: string) {
     if (!selectedId) return;
@@ -189,6 +201,20 @@ export default function InboxPage() {
       });
     } catch {
       toast.error("Não deu pra enviar a mensagem.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleSendFile(file: File) {
+    if (!selectedId) return;
+    setSending(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      await apiFetch(`/conversations/${selectedId}/attachments`, { method: "POST", body });
+    } catch {
+      toast.error("Não deu pra enviar o arquivo.");
     } finally {
       setSending(false);
     }
@@ -223,9 +249,9 @@ export default function InboxPage() {
         action={<SimulateInboundDialog onSimulated={loadConversations} />}
       />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border bg-card shadow-sm md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_290px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-lg border bg-card shadow-sm md:grid-cols-[310px_1fr] xl:grid-cols-[310px_1fr_290px]">
         <div className="hidden min-h-0 flex-col border-r md:flex">
-          <InboxFilterBar value={filters} onChange={setFilters} />
+          <InboxFilterBar value={filters} counts={counts} onChange={setFilters} />
           <div className="min-h-0 flex-1 overflow-y-auto">
             <ConversationList
               conversations={visible}
@@ -240,6 +266,7 @@ export default function InboxPage() {
           conversation={detail}
           sending={sending}
           onSend={handleSend}
+          onSendFile={handleSendFile}
           onAssign={() => handleAction("assign", "Não deu pra assumir essa conversa.")}
           onResolve={() => handleAction("resolve", "Não deu pra resolver essa conversa.")}
           onReactivateAi={() => handleAction("reactivate-ai", "Não deu pra reativar a IA.")}

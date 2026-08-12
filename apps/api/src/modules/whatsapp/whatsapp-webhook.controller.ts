@@ -13,13 +13,85 @@ import {
 import type { RawBodyRequest } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
-import type { MessageStatus } from '../../../generated/prisma/client';
+import type {
+  MessageStatus,
+  MessageType,
+  Prisma,
+} from '../../../generated/prisma/client';
 import { Public } from '../../common/auth/public.decorator';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ConversationsService } from '../conversations/conversations.service';
-import type { WhatsAppWebhookPayload } from './whatsapp-webhook.types';
+import type {
+  WhatsAppInboundMessage,
+  WhatsAppWebhookPayload,
+} from './whatsapp-webhook.types';
+
+const MEDIA_KINDS = {
+  image: 'IMAGE',
+  document: 'DOCUMENT',
+  audio: 'AUDIO',
+  video: 'VIDEO',
+  sticker: 'IMAGE',
+} as const;
+
+/**
+ * Traduz a mensagem da Meta pro nosso formato. Mídia não é baixada aqui: o
+ * webhook precisa responder rápido (a Meta reenvia e chega a desativar o
+ * webhook em caso de lentidão), então só guardamos o id e o binário é
+ * buscado sob demanda quando alguém abre a conversa no painel.
+ */
+function parseInboundMessage(
+  message: WhatsAppInboundMessage,
+): { content: string; messageType: MessageType; metadata?: Prisma.InputJsonValue } | null {
+  if (message.type === 'text') {
+    return message.text?.body
+      ? { content: message.text.body, messageType: 'TEXT' }
+      : null;
+  }
+
+  if (message.type === 'location' && message.location) {
+    const { latitude, longitude, name, address } = message.location;
+    const label = [name, address].filter(Boolean).join(' — ');
+    return {
+      content: label || `Localização: ${latitude}, ${longitude}`,
+      messageType: 'LOCATION',
+      metadata: { latitude, longitude, name, address } as Prisma.InputJsonValue,
+    };
+  }
+
+  const kind = message.type as keyof typeof MEDIA_KINDS;
+  const media =
+    kind === 'image'
+      ? message.image
+      : kind === 'document'
+        ? message.document
+        : kind === 'audio'
+          ? message.audio
+          : kind === 'video'
+            ? message.video
+            : kind === 'sticker'
+              ? message.sticker
+              : undefined;
+
+  if (media?.id && MEDIA_KINDS[kind]) {
+    return {
+      // A legenda vira o texto da mensagem; sem legenda fica o nome do
+      // arquivo, que é o que o atendente precisa ver na lista.
+      content: media.caption ?? media.filename ?? '',
+      messageType: MEDIA_KINDS[kind],
+      metadata: {
+        mediaId: media.id,
+        mimeType: media.mime_type,
+        fileName: media.filename,
+        voice: media.voice ?? false,
+      } as Prisma.InputJsonValue,
+    };
+  }
+
+  return null;
+}
 
 /** Vocabulário de status da Meta -> o nosso. O que não estiver aqui é ignorado. */
 const STATUS_MAP: Record<string, MessageStatus | undefined> = {
@@ -142,19 +214,24 @@ export class WhatsappWebhookController {
     const contact = value?.contacts?.[0];
 
     for (const message of messages) {
-      if (message.type !== 'text' || !message.from || !message.text?.body) {
-        // MVP: só texto. Áudio/imagem/documento ficam pra depois.
+      if (!message.from) continue;
+
+      const parsed = parseInboundMessage(message);
+      if (!parsed) {
+        this.logger.warn(`Tipo de mensagem não suportado: ${message.type}`);
         continue;
       }
 
       await this.conversationsService.receiveInbound({
         customerPhone: message.from,
         customerName: contact?.profile?.name ?? message.from,
-        content: message.text.body,
+        content: parsed.content,
+        messageType: parsed.messageType,
+        metadata: parsed.metadata,
         channel: 'WHATSAPP',
       });
       this.logger.log(
-        `Mensagem processada pro tenant ${settings.tenantId} (de ${message.from}).`,
+        `Mensagem ${parsed.messageType} processada pro tenant ${settings.tenantId} (de ${message.from}).`,
       );
     }
 

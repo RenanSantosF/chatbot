@@ -53,6 +53,7 @@ model Tenant {
   queues             Queue[]
   queueMembers       QueueMember[]
   routingRules       RoutingRule[]
+  rolePermissions    RolePermission[]
   whatsappSettings   WhatsAppSettings?
 
   @@map("tenants")
@@ -419,6 +420,26 @@ model RoutingRule {
   @@unique([tenantId, key])
   @@index([tenantId, active])
   @@map("routing_rules")
+}
+
+// O que cada papel pode fazer, ajustável pelo dono. A linha só existe
+// quando o dono mexeu no padrão — a ausência significa "vale o padrão do
+// código" (ver PERMISSION_DEFAULTS), então ligar o sistema não precisa
+// semear nada e um recurso novo já nasce com um padrão sensato.
+model RolePermission {
+  id        String   @id @default(uuid())
+  tenantId  String
+  role      UserRole
+  key       String
+  allowed   Boolean
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, role, key])
+  @@index([tenantId])
+  @@map("role_permissions")
 }
 
 enum TaskStatus {

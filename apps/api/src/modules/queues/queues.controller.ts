@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { Roles } from '../../common/auth/roles.decorator';
+import { RequiresPermission } from '../../common/auth/permission.decorator';
 import { CreateQueueDto, UpdateQueueDto } from './dto/queue.dto';
 import { QueuesService } from './queues.service';
 
@@ -13,31 +13,31 @@ export class QueuesController {
   }
 
   @Post()
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('queues.manage')
   create(@Body() dto: CreateQueueDto) {
     return this.queuesService.create(dto);
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('queues.manage')
   update(@Param('id') id: string, @Body() dto: UpdateQueueDto) {
     return this.queuesService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('queues.manage')
   remove(@Param('id') id: string) {
     return this.queuesService.remove(id);
   }
 
   @Post(':id/members/:userId')
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('queues.manage')
   addMember(@Param('id') id: string, @Param('userId') userId: string) {
     return this.queuesService.addMember(id, userId);
   }
 
   @Delete(':id/members/:userId')
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('queues.manage')
   removeMember(@Param('id') id: string, @Param('userId') userId: string) {
     return this.queuesService.removeMember(id, userId);
   }

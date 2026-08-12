@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CreateQueueCard } from "@/components/queues/create-queue-card";
 import { QueueList } from "@/components/queues/queue-list";
-import { PageHeader } from "@/components/page-header";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import type { Queue, TeamMember } from "@/lib/types";
@@ -34,10 +33,6 @@ export default function QueuesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Filas"
-        description="Departamentos pra onde a IA pode transferir atendimentos, com distribuição em rodízio entre os membros."
-      />
 
       {loading ? (
         <PageSkeleton rows={3} />

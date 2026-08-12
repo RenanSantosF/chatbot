@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { Roles } from '../../common/auth/roles.decorator';
 import type {
@@ -63,6 +74,32 @@ export class ConversationsController {
   @Post(':id/resolve')
   resolve(@Param('id') id: string) {
     return this.conversationsService.resolve(id);
+  }
+
+  /**
+   * Limite de 16 MB porque é o teto da própria Cloud API pra vídeo/áudio
+   * (documento vai até 100 MB, mas manter um número só evita prometer o
+   * que a Meta recusaria depois do upload).
+   */
+  @Post(':id/attachments')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 16 * 1024 * 1024 } }),
+  )
+  sendAttachment(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: RequestUser,
+    @Body('caption') caption?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Nenhum arquivo enviado.');
+    }
+    return this.conversationsService.sendAttachment(
+      id,
+      user.userId,
+      file,
+      caption,
+    );
   }
 
   @Post(':id/priority')

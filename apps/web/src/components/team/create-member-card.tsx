@@ -136,7 +136,7 @@ export function CreateMemberCard({ onCreated }: { onCreated: (member: TeamMember
                   title={option.description}
                   onClick={() => setRole(option.value)}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                    "rounded-md border px-3 py-1.5 text-sm transition-colors",
                     role === option.value
                       ? "border-primary bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted",

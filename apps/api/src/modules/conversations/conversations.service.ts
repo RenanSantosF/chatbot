@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   AiMode,
   ConversationChannel,
@@ -6,11 +10,14 @@ import type {
   ConversationStatus,
   MessageSenderType,
   MessageStatus,
+  MessageType,
+  Prisma,
 } from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
 import { CustomersService } from '../customers/customers.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
 
 const OPEN_STATUSES: ConversationStatus[] = [
@@ -30,6 +37,28 @@ const STATUS_RANK: Record<MessageStatus, number> = {
   FAILED: 4,
 };
 
+/**
+ * A Cloud API não tem um tipo "anexo" genérico: cada mídia vai num campo
+ * próprio. O que não for imagem/áudio/vídeo conhecido vai como documento,
+ * que é o balde que aceita qualquer coisa.
+ */
+function mediaKindFor(mimeType: string): 'image' | 'document' | 'audio' | 'video' {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.startsWith('video/')) return 'video';
+  return 'document';
+}
+
+const MEDIA_MESSAGE_TYPE: Record<
+  'image' | 'document' | 'audio' | 'video',
+  MessageType
+> = {
+  image: 'IMAGE',
+  document: 'DOCUMENT',
+  audio: 'AUDIO',
+  video: 'VIDEO',
+};
+
 const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
@@ -44,6 +73,7 @@ export class ConversationsService {
     private readonly realtime: RealtimeGateway,
     private readonly aiEngine: AiEngineService,
     private readonly whatsapp: WhatsappSenderService,
+    private readonly media: WhatsappMediaService,
   ) {}
 
   async list(filter: {
@@ -141,8 +171,19 @@ export class ConversationsService {
    */
   private async persistMessage(
     conversationId: string,
-    data: { senderType: MessageSenderType; senderId?: string; content: string },
+    data: {
+      senderType: MessageSenderType;
+      senderId?: string;
+      content: string;
+      messageType?: MessageType;
+      metadata?: Prisma.InputJsonValue;
+    },
   ) {
+    const before = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { status: true, aiMode: true },
+    });
+
     const message = await this.prisma.db.message.create({
       data: { tenantId: this.prisma.tenantId, conversationId, ...data },
     });
@@ -153,11 +194,21 @@ export class ConversationsService {
     // conversa pra "aguardando cliente" mesmo tendo acabado de cair no colo
     // de um atendente.
     const isSystemNote = data.senderType === 'SYSTEM';
-    const status: ConversationStatus | undefined = isSystemNote
-      ? undefined
-      : fromCustomer
-        ? 'OPEN'
-        : 'WAITING_CUSTOMER';
+
+    // A IA transfere e, na mesma rodada, ainda manda um "já te encaminhei,
+    // um momento". Essa despedida NÃO pode desfazer a transferência: sem
+    // isto, a conversa voltava pra "aguardando cliente" logo depois de cair
+    // na fila do time e ninguém a via como pendente de atendimento.
+    const alreadyHandedOff =
+      data.senderType === 'AI' &&
+      (before?.status === 'WAITING_AGENT' || before?.aiMode === 'HUMAN_ACTIVE');
+
+    const status: ConversationStatus | undefined =
+      isSystemNote || alreadyHandedOff
+        ? undefined
+        : fromCustomer
+          ? 'OPEN'
+          : 'WAITING_CUSTOMER';
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
@@ -245,6 +296,81 @@ export class ConversationsService {
     return message;
   }
 
+  /**
+   * Anexo enviado pelo painel: sobe pra Meta, manda pro cliente e grava no
+   * histórico. O arquivo em si não fica no nosso banco — a Meta hospeda, e
+   * guardamos o id dela, mesmo caminho da mídia que o cliente envia.
+   */
+  async sendAttachment(
+    conversationId: string,
+    agentId: string,
+    file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+    caption?: string,
+  ) {
+    const conversation = await this.requireConversation(conversationId);
+
+    if (conversation.channel !== 'WHATSAPP') {
+      throw new BadRequestException(
+        'Anexos só valem em conversas de WhatsApp.',
+      );
+    }
+
+    const mediaId = await this.media.upload(file);
+    if (!mediaId) {
+      throw new BadRequestException(
+        'A Meta recusou o arquivo. Confira o formato e o tamanho.',
+      );
+    }
+
+    const kind = mediaKindFor(file.mimetype);
+    const externalId = await this.whatsapp.sendMedia(
+      conversation.customer.phone,
+      kind,
+      mediaId,
+      { caption, filename: file.originalname },
+    );
+
+    const message = await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId,
+        senderType: 'AGENT',
+        senderId: agentId,
+        content: caption ?? file.originalname,
+        messageType: MEDIA_MESSAGE_TYPE[kind],
+        externalId,
+        metadata: {
+          mediaId,
+          mimeType: file.mimetype,
+          fileName: file.originalname,
+          size: file.size,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    const updated = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: {
+        lastMessageAt: message.createdAt,
+        status: 'WAITING_CUSTOMER',
+        unreadCount: 0,
+      },
+      include: conversationInclude,
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+      conversationId,
+      message,
+    });
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      updated,
+    );
+
+    return message;
+  }
+
   async assign(conversationId: string, userId: string) {
     await this.requireConversation(conversationId);
 
@@ -313,6 +439,8 @@ export class ConversationsService {
     customerName: string;
     content: string;
     channel?: ConversationChannel;
+    messageType?: MessageType;
+    metadata?: Prisma.InputJsonValue;
   }) {
     const customer = await this.customers.findOrCreateByPhone({
       phone: input.customerPhone,
@@ -337,6 +465,8 @@ export class ConversationsService {
     const inbound = await this.persistMessage(conversation.id, {
       senderType: 'CUSTOMER',
       content: input.content,
+      messageType: input.messageType,
+      metadata: input.metadata,
     });
 
     let latestConversation = inbound.conversation;

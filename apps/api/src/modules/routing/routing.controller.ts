@@ -7,7 +7,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { Roles } from '../../common/auth/roles.decorator';
+import { RequiresPermission } from '../../common/auth/permission.decorator';
 import {
   CreateRoutingRuleDto,
   UpdateRoutingRuleDto,
@@ -24,19 +24,19 @@ export class RoutingController {
   }
 
   @Post()
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('routing.manage')
   create(@Body() dto: CreateRoutingRuleDto) {
     return this.routingService.create(dto);
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('routing.manage')
   update(@Param('id') id: string, @Body() dto: UpdateRoutingRuleDto) {
     return this.routingService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ADMIN')
+  @RequiresPermission('routing.manage')
   remove(@Param('id') id: string) {
     return this.routingService.remove(id);
   }

@@ -79,7 +79,7 @@ export function IdentityForm({
                   type="button"
                   onClick={() => setTone(option.value)}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                    "rounded-md border px-3 py-1.5 text-sm transition-colors",
                     tone === option.value
                       ? "border-primary bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted",

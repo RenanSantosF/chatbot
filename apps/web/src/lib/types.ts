@@ -47,13 +47,28 @@ export interface Customer {
 
 export type MessageStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
 
+export type MessageType = "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | "LOCATION" | "OTHER";
+
+export interface MessageMetadata {
+  mediaId?: string;
+  mimeType?: string;
+  fileName?: string;
+  size?: number;
+  voice?: boolean;
+  latitude?: number;
+  longitude?: number;
+  name?: string;
+  address?: string;
+}
+
 export interface ConversationMessage {
   id: string;
   conversationId: string;
   senderType: MessageSenderType;
   senderId: string | null;
   content: string;
-  messageType: string;
+  messageType: MessageType;
+  metadata: MessageMetadata | null;
   status: MessageStatus;
   createdAt: string;
 }
@@ -221,4 +236,9 @@ export interface RoutingRule {
   priorityOrder: number;
   targetUser: RoutingRuleTargetUser | null;
   targetQueue: ConversationQueue | null;
+}
+
+export interface PermissionMatrix {
+  catalog: { group: string; items: { key: string; label: string }[] }[];
+  roles: { role: string; permissions: Record<string, boolean> }[];
 }

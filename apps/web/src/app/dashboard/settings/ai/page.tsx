@@ -6,7 +6,6 @@ import { ApiKeyCard } from "@/components/ai-settings/api-key-card";
 import { IdentityForm } from "@/components/ai-settings/identity-form";
 import { InstructionsManager } from "@/components/ai-settings/instructions-manager";
 import { MemoryCard } from "@/components/ai-settings/memory-card";
-import { PageHeader } from "@/components/page-header";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { Simulator } from "@/components/ai-settings/simulator";
 import { ToolsManager } from "@/components/ai-settings/tools-manager";
@@ -41,7 +40,6 @@ export default function AiSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="IA" description="Configure quem é sua IA e o que ela sabe." />
 
       {loading || !settings ? (
         <PageSkeleton rows={3} />

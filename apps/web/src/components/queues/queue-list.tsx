@@ -103,7 +103,7 @@ export function QueueList({
                           type="button"
                           disabled={busy === `${queue.id}:${member.userId}`}
                           onClick={() => handleRemoveMember(queue.id, member.userId)}
-                          className="rounded-full px-1 text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
+                          className="rounded px-1 text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
                           aria-label={`Remover ${member.user.name} da fila`}
                         >
                           ×

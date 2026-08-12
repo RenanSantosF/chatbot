@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { Roles } from '../../common/auth/roles.decorator';
+import { RequiresPermission } from '../../common/auth/permission.decorator';
 import { AiInstructionsService } from './ai-instructions.service';
 import { CreateAiInstructionDto, UpdateAiInstructionDto } from './dto/ai-instruction.dto';
 
 @Controller('ai/instructions')
-@Roles('OWNER', 'ADMIN')
+@RequiresPermission('ai.manage')
 export class AiInstructionsController {
   constructor(private readonly aiInstructionsService: AiInstructionsService) {}
 
