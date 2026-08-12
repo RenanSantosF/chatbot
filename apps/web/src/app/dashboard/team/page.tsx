@@ -1,26 +1,30 @@
-import { Badge } from "@/components/ui/badge";
+"use client";
+
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ApiError } from "@/lib/api-error";
-import { apiFetchServer } from "@/lib/api-server";
-import type { TeamMember } from "@/lib/types";
+import { CreateMemberCard } from "@/components/team/create-member-card";
+import { TeamMemberRow } from "@/components/team/team-member-row";
+import { apiFetch } from "@/lib/api-client";
+import type { MeResponse, TeamMember } from "@/lib/types";
 
-const ROLE_LABEL: Record<TeamMember["role"], string> = {
-  OWNER: "Dono",
-  ADMIN: "Admin",
-  AGENT: "Atendente",
-};
+export default function TeamPage() {
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-export default async function TeamPage() {
-  let team: TeamMember[] = [];
-  let errorMessage: string | null = null;
+  useEffect(() => {
+    Promise.all([apiFetch<TeamMember[]>("/users"), apiFetch<MeResponse>("/auth/me")])
+      .then(([teamResult, me]) => {
+        setTeam(teamResult);
+        setCurrentUserId(me.user.id);
+      })
+      .catch(() => toast.error("Não deu pra carregar a equipe agora."))
+      .finally(() => setLoading(false));
+  }, []);
 
-  try {
-    team = (await apiFetchServer<TeamMember[]>("/users")) ?? [];
-  } catch (err) {
-    errorMessage =
-      err instanceof ApiError
-        ? err.message
-        : "Não deu pra carregar a equipe agora.";
+  function handleUpdated(updated: TeamMember) {
+    setTeam((prev) => prev.map((member) => (member.id === updated.id ? updated : member)));
   }
 
   return (
@@ -30,34 +34,34 @@ export default async function TeamPage() {
         <p className="text-muted-foreground">Quem tem acesso ao painel desta empresa.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Usuários</CardTitle>
-          <CardDescription>Convite e gestão completa da equipe chegam na próxima fase.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {errorMessage ? (
-            <p className="text-sm text-destructive">{errorMessage}</p>
-          ) : (
-            <div className="flex flex-col divide-y">
-              {team.map((member) => (
-                <div key={member.id} className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-sm font-medium">{member.name}</p>
-                    <p className="text-sm text-muted-foreground">{member.email}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{ROLE_LABEL[member.role]}</Badge>
-                    <Badge variant={member.status === "ACTIVE" ? "default" : "outline"}>
-                      {member.status === "ACTIVE" ? "Ativo" : member.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {loading || !currentUserId ? (
+        <p className="text-sm text-muted-foreground">Carregando...</p>
+      ) : (
+        <>
+          <CreateMemberCard onCreated={(member) => setTeam((prev) => [...prev, member])} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Usuários</CardTitle>
+              <CardDescription>
+                Admin tem acesso completo (configurações, IA, filas); Atendente só vê o Inbox e os clientes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col divide-y">
+                {team.map((member) => (
+                  <TeamMemberRow
+                    key={member.id}
+                    member={member}
+                    currentUserId={currentUserId}
+                    onUpdated={handleUpdated}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

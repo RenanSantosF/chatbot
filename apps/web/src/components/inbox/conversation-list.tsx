@@ -30,10 +30,12 @@ function timeLabel(iso: string | null) {
 export function ConversationList({
   conversations,
   selectedId,
+  unreadCounts,
   onSelect,
 }: {
   conversations: ConversationSummary[];
   selectedId: string | null;
+  unreadCounts?: Record<string, number>;
   onSelect: (id: string) => void;
 }) {
   if (conversations.length === 0) {
@@ -46,7 +48,9 @@ export function ConversationList({
 
   return (
     <div className="flex flex-col divide-y overflow-y-auto">
-      {conversations.map((conversation) => (
+      {conversations.map((conversation) => {
+        const unread = unreadCounts?.[conversation.id] ?? 0;
+        return (
         <button
           key={conversation.id}
           type="button"
@@ -61,10 +65,17 @@ export function ConversationList({
           </Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm font-medium">{conversation.customer.name}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {timeLabel(conversation.lastMessageAt)}
+              <span className={cn("truncate text-sm", unread > 0 ? "font-semibold" : "font-medium")}>
+                {conversation.customer.name}
               </span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">{timeLabel(conversation.lastMessageAt)}</span>
+                {unread > 0 ? (
+                  <span className="flex size-4.5 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                    {unread > 9 ? "9+" : unread}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <Badge variant="secondary" className="text-[10px]">
@@ -83,7 +94,8 @@ export function ConversationList({
             </div>
           </div>
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
