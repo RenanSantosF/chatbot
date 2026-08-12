@@ -5,6 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --color-chat-bg: var(--chat-bg);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-out-foreground: var(--bubble-out-foreground);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -71,13 +74,15 @@
   /* Linha divisória quase imperceptível: ela existe pra separar, não pra
      desenhar caixas. Um traço forte demais é o que dava a sensação de
      formulário antigo. */
-  --border: oklch(0.925 0.002 85);
-  --input: oklch(0.905 0.002 85);
+  --border: oklch(0.935 0.002 85);
+  --input: oklch(0.915 0.002 85);
   --ring: oklch(0.6 0.01 260);
   /* Fundo da área de conversa. Fica um passo abaixo do painel, o
      suficiente pra separar as camadas sem virar um bloco de cor. */
   --chat-bg: oklch(0.955 0.004 80);
-  --chat-dot: oklch(0.19 0.005 260 / 4%);
+  --chat-dot: oklch(0.19 0.005 260 / 3.5%);
+  --bubble-out: oklch(0.94 0.06 150);
+  --bubble-out-foreground: oklch(0.22 0.01 160);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -94,50 +99,50 @@
   --sidebar-ring: oklch(0.6 0.01 260);
 }
 
-/* Escuro neutro, sem tingimento: cinza-carvão puro (croma 0), do jeito
-   que os painéis de trabalho maduros fazem. O verde aparece só no que é
-   ação — nunca no fundo, nunca no hover.
-   Duas coisas aprendidas medindo os pixels da tela em vez de confiar no
-   olho: (1) o L do OKLCH não é a claridade percebida do CIELAB — 0.17 de
-   OKLCH sai como um #1a1a1a quase preto, e era daí que vinha o "escuro
-   demais"; (2) as superfícies precisam viver num intervalo estreito
-   (0.285 a 0.37, de #2a2a2a a #3d3d3d), senão cada componente parece
-   recortado de uma tela diferente. O degrau entre camadas é pra ser
-   sentido, não visto. */
+/* Escuro no tom do WhatsApp Web: cinza levemente frio (matiz 230, croma
+   baixíssimo), não cinza puro. Duas coisas aprendidas medindo os pixels
+   em vez de confiar no olho: (1) o L do OKLCH não é a claridade percebida
+   do CIELAB — oklch(0.17) renderiza como #1a1a1a, quase preto, e era daí
+   que vinha o "escuro demais"; (2) as superfícies precisam viver num
+   intervalo estreito, senão cada componente parece recortado de uma tela
+   diferente. Aqui elas vão de 0.255 a 0.36, um pouco acima do aplicativo
+   real, que é escuro demais pra um painel de trabalho de oito horas. */
 .dark {
-  --background: oklch(0.3 0 0);
-  --foreground: oklch(0.94 0 0);
-  --card: oklch(0.325 0 0);
-  --card-foreground: oklch(0.94 0 0);
-  --popover: oklch(0.345 0 0);
-  --popover-foreground: oklch(0.94 0 0);
+  --background: oklch(0.28 0.012 230);
+  --foreground: oklch(0.93 0.003 230);
+  --card: oklch(0.315 0.013 230);
+  --card-foreground: oklch(0.93 0.003 230);
+  --popover: oklch(0.335 0.013 230);
+  --popover-foreground: oklch(0.93 0.003 230);
   --primary: oklch(0.72 0.13 163);
   --primary-foreground: oklch(0.16 0 0);
-  --secondary: oklch(0.355 0 0);
-  --secondary-foreground: oklch(0.94 0 0);
-  --muted: oklch(0.35 0 0);
-  --muted-foreground: oklch(0.7 0 0);
-  --accent: oklch(0.365 0 0);
+  --secondary: oklch(0.35 0.012 230);
+  --secondary-foreground: oklch(0.93 0.003 230);
+  --muted: oklch(0.34 0.012 230);
+  --muted-foreground: oklch(0.7 0.008 230);
+  --accent: oklch(0.36 0.012 230);
   --accent-foreground: oklch(0.96 0 0);
   --destructive: oklch(0.68 0.19 22);
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.62 0 0);
-  --chat-bg: oklch(0.285 0 0);
-  --chat-dot: oklch(1 0 0 / 3.5%);
+  --border: oklch(1 0 0 / 6%);
+  --input: oklch(1 0 0 / 9%);
+  --ring: oklch(0.62 0.01 230);
+  --chat-bg: oklch(0.255 0.012 230);
+  --chat-dot: oklch(1 0 0 / 3%);
+  --bubble-out: oklch(0.42 0.075 165);
+  --bubble-out-foreground: oklch(0.96 0.005 165);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.305 0 0);
-  --sidebar-foreground: oklch(0.94 0 0);
+  --sidebar: oklch(0.265 0.012 230);
+  --sidebar-foreground: oklch(0.93 0.003 230);
   --sidebar-primary: oklch(0.72 0.13 163);
   --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.37 0 0);
+  --sidebar-accent: oklch(0.36 0.012 230);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.62 0 0);
+  --sidebar-border: oklch(1 0 0 / 6%);
+  --sidebar-ring: oklch(0.62 0.01 230);
 }
 
 /* Papel de parede do chat. O fundo chapado deixava a conversa com cara de
@@ -194,8 +199,27 @@
   animation: shimmer 1.6s infinite;
 }
 
+/* Mensagem nova na conversa: entra deslizando de baixo, curtinho. É o
+   mesmo tempo do aplicativo — mais que isso e parece lento, menos e nem
+   se percebe que algo chegou. */
+@keyframes bolha-entrando {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.bolha-nova {
+  animation: bolha-entrando 180ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer::after {
+    animation: none;
+  }
+
+  .bolha-nova,
+  ::view-transition-group(*) {
     animation: none;
   }
 }

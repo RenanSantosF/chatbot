@@ -129,6 +129,7 @@ export function ChatPanel({
   const [matchIndex, setMatchIndex] = useState(0);
   const [forwarding, setForwarding] = useState<ConversationMessage | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const firstPaintRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Ids das mensagens que casam com a busca, na ordem da conversa. Roda
@@ -154,7 +155,13 @@ export function ChatPanel({
   useEffect(() => {
     // Não puxa pro fim enquanto a pessoa está navegando pelos resultados.
     if (currentMatchId) return;
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    // Suave quando é mensagem nova numa conversa já aberta; instantâneo ao
+    // abrir a conversa, senão a tela desce rolando na frente da pessoa.
+    bottomRef.current?.scrollIntoView({
+      block: "end",
+      behavior: firstPaintRef.current ? "auto" : "smooth",
+    });
+    firstPaintRef.current = false;
   }, [conversation?.id, conversation?.messages.length, currentMatchId]);
 
   if (!conversation) {
@@ -181,7 +188,7 @@ export function ChatPanel({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-card px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-card px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Avatar className="size-9 shrink-0">
             <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
@@ -223,7 +230,7 @@ export function ChatPanel({
       </div>
 
       {searchOpen ? (
-        <div className="flex items-center gap-2 border-b bg-card px-3 py-2">
+        <div className="flex items-center gap-2 bg-card px-3 py-2">
           <div className="relative flex-1">
             <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -307,7 +314,7 @@ export function ChatPanel({
       />
 
       {replyTo ? (
-        <div className="flex items-center gap-2 border-t bg-muted/60 px-3 py-2">
+        <div className="flex items-center gap-2 bg-muted/60 px-3 py-2">
           <div className="min-w-0 flex-1 border-l-2 border-primary pl-2">
             <p className="text-[11px] font-medium text-primary">
               {replyTo.senderType === "CUSTOMER" ? "Cliente" : "Você"}
@@ -322,7 +329,9 @@ export function ChatPanel({
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t bg-card p-3">
+      {/* Sem borda entre a conversa e o compositor: a troca de cor da
+          superfície já marca a separação, que era o pedido. */}
+      <form onSubmit={handleSubmit} className="flex items-center gap-2 bg-card p-3">
         <input
           ref={fileInputRef}
           type="file"

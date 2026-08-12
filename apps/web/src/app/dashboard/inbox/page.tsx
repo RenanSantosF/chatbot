@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ChatPanel } from "@/components/inbox/chat-panel";
@@ -186,13 +187,24 @@ export default function InboxPage() {
 
     const onConversationUpdated = (updated: ConversationSummary) => {
       // Mais recente sempre em cima: a conversa que acabou de receber
-      // mensagem sobe pro topo, igual a qualquer mensageiro.
-      setConversations((prev) => {
-        const rest = prev.filter((item) => item.id !== updated.id);
-        return [updated, ...rest].sort(
-          (a, b) => new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
-        );
-      });
+      // mensagem sobe pro topo, igual a qualquer mensageiro. A troca de
+      // posição vai numa view transition — sem ela a lista "pisca" e quem
+      // está lendo perde de vista onde estava. Onde o navegador não tem a
+      // API, o estado muda igual, só que sem o deslizamento.
+      const reorder = () =>
+        setConversations((prev) => {
+          const rest = prev.filter((item) => item.id !== updated.id);
+          return [updated, ...rest].sort(
+            (a, b) =>
+              new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
+          );
+        });
+
+      if (typeof document.startViewTransition === "function") {
+        document.startViewTransition(() => flushSync(reorder));
+      } else {
+        reorder();
+      }
       if (selectedIdRef.current === updated.id) {
         setDetail((prev) => (prev ? { ...prev, ...updated } : prev));
       }

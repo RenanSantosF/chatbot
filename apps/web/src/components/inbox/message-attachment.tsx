@@ -2,6 +2,7 @@
 
 import { Download, FileText, MapPin, Play } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { ImageLightbox } from "./image-lightbox";
 import type { ConversationMessage } from "@/lib/types";
 
@@ -23,6 +24,7 @@ function humanSize(bytes?: number): string {
 
 export function MessageAttachment({ message }: { message: ConversationMessage }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const meta = message.metadata;
 
@@ -51,14 +53,24 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Abrir imagem"
-          className="block cursor-zoom-in overflow-hidden rounded-md"
+          // A imagem vem pelo nosso proxy, que ainda busca na Meta — pode
+          // demorar. Sem o esqueleto embaixo, o balão nascia com altura
+          // zero e a conversa dava um salto quando a foto chegava.
+          className="relative block min-h-24 min-w-40 cursor-zoom-in overflow-hidden rounded-md"
         >
+          {loaded ? null : (
+            <span className="shimmer absolute inset-0 rounded-md bg-foreground/10" aria-hidden />
+          )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
             alt={message.content || "Imagem recebida"}
             onError={() => setFailed(true)}
-            className="max-h-64 w-auto max-w-full object-cover transition-transform duration-200 hover:scale-[1.02]"
+            onLoad={() => setLoaded(true)}
+            className={cn(
+              "max-h-64 w-auto max-w-full object-cover transition-all duration-300 hover:scale-[1.02]",
+              loaded ? "opacity-100" : "opacity-0",
+            )}
           />
         </button>
         {open ? (

@@ -170,7 +170,7 @@ export function MessageBubble({
         "flex flex-col gap-0.5 rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
         fromCustomer
           ? "rounded-bl-sm bg-card text-card-foreground ring-1 ring-foreground/5 slide-in-from-left-2"
-          : "rounded-br-sm bg-[oklch(0.94_0.06_150)] text-neutral-900 slide-in-from-right-2 dark:bg-[oklch(0.43_0.05_165)] dark:text-neutral-100",
+          : "rounded-br-sm bg-bubble-out text-bubble-out-foreground slide-in-from-right-2",
       )}
     >
       {message.replyTo ? (
@@ -198,7 +198,7 @@ export function MessageBubble({
       <span
         className={cn(
           "flex items-center justify-end gap-1 text-[10px] leading-none",
-          fromCustomer ? "text-muted-foreground" : "text-neutral-600 dark:text-neutral-300",
+          fromCustomer ? "text-muted-foreground" : "text-bubble-out-foreground/70",
         )}
       >
         {message.senderType === "AI" ? <span className="font-medium">IA</span> : null}

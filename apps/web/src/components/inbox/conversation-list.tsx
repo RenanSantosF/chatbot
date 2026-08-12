@@ -84,9 +84,9 @@ export function ConversationList({
 
   if (loading) {
     return (
-      <div className="flex flex-col divide-y overflow-y-auto">
+      <div className="flex flex-col gap-1 overflow-y-auto p-3">
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="flex items-start gap-3 p-3">
+          <div key={index} className="flex items-start gap-3 py-1.5">
             <Skeleton className="size-10 shrink-0 rounded-full" />
             <div className="flex flex-1 flex-col gap-2">
               <Skeleton className="h-3.5 w-28" />
@@ -112,7 +112,7 @@ export function ConversationList({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="flex flex-col">
+      <div className="flex flex-col py-1.5">
       {conversations.map((conversation) => {
         // O contador do banco é a verdade; o do socket cobre o intervalo
         // entre a última busca e agora, sem precisar refazer a lista.
@@ -135,13 +135,16 @@ export function ConversationList({
             // Sem barra colorida na lateral e sem fundo tingido: a conversa
             // selecionada muda de superfície, e só. Quem chama atenção na
             // linha é o contador de não lidas, como em qualquer mensageiro.
+            // Sem divisória nenhuma entre as conversas: o espaçamento já
+            // separa. O que responde ao mouse é a superfície inteira, com
+            // canto arredondado — o mesmo gesto do WhatsApp.
             className={cn(
-              "relative flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/60",
-              // A divisória começa depois do avatar, como no WhatsApp Web:
-              // um traço de ponta a ponta engessa a lista.
-              "before:absolute before:inset-x-0 before:top-0 before:ml-14 before:border-t first:before:hidden",
-              selected && "bg-muted before:hidden",
+              "mx-1.5 flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors duration-150",
+              selected ? "bg-accent" : "hover:bg-accent/60",
             )}
+            // A ordem muda quando chega mensagem. Sem animação a lista
+            // "pisca" e a pessoa perde de vista onde estava.
+            style={{ viewTransitionName: `conversa-${conversation.id}` }}
           >
             <Avatar className="size-11 shrink-0">
               <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
