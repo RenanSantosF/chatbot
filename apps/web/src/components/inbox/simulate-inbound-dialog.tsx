@@ -9,9 +9,9 @@ import { ApiError } from "@/lib/api-error";
 
 /**
  * Ferramenta de teste: manda uma mensagem "como se fosse" um cliente
- * chegando por um canal externo, sem depender do WhatsApp (Fase 7). Fica
+ * chegando por um canal externo, sem precisar de um WhatsApp real. Fica
  * visualmente separada do resto do painel de propósito — não é uma feature
- * de produto, é o jeito de testar o inbox antes do canal real existir.
+ * de produto, é o jeito de testar o inbox e a IA rapidamente.
  */
 export function SimulateInboundDialog({ onSimulated }: { onSimulated: () => void }) {
   const [open, setOpen] = useState(false);

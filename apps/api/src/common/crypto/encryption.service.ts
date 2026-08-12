@@ -6,7 +6,7 @@ const IV_LENGTH = 12;
 
 /**
  * Criptografia genérica pra secrets de tenant guardados no banco — usado
- * hoje pela API key da IA, e pelo token do WhatsApp na Fase 7. Nunca guarde
+ * pela API key da IA e pelas credenciais do WhatsApp. Nunca guarde
  * um secret de tenant em texto puro; sempre passe por aqui antes do
  * Prisma.create/update e depois de todo findMany/findFirst que traga o
  * campo criptografado.

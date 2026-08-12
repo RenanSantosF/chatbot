@@ -254,10 +254,10 @@ export class AiToolsService {
     }
 
     if (permission === 'REQUIRES_APPROVAL') {
-      // Fase 5a: nunca executa sozinha quando exige aprovação — cria uma
-      // tarefa pra um humano revisar e avisa a IA que precisa aguardar, em
-      // vez de aprovar e retomar a ação automaticamente depois (esse
-      // fluxo de "aprovar e retomar" fica pra uma fase futura).
+      // Nunca executa sozinha quando exige aprovação — cria uma tarefa pra
+      // um humano revisar e avisa a IA que precisa aguardar, em vez de
+      // aprovar e retomar a ação automaticamente depois (esse fluxo de
+      // "aprovar e retomar" ainda não existe).
       await this.prisma.db.task.create({
         data: {
           tenantId: this.prisma.tenantId,

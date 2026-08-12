@@ -191,7 +191,8 @@ export class ConversationsService {
    * o cliente pelo telefone, reaproveita uma conversa em aberto ou cria uma
    * nova, grava a mensagem — e, se a IA estiver ativa nessa conversa, deixa
    * ela responder antes de devolver. É o mesmo caminho que o webhook do
-   * WhatsApp vai chamar na Fase 7.
+   * WhatsApp chama (ver WhatsappWebhookController) e que o simulador de
+   * teste usa.
    */
   async receiveInbound(input: {
     customerPhone: string;

@@ -1,9 +1,10 @@
 import { IsString, MinLength } from 'class-validator';
 
 /**
- * Simula uma mensagem chegando de um cliente por um canal externo. Fica no
- * lugar do webhook real do WhatsApp até a Fase 7 — mesma lógica de negócio
- * (ConversationsService.receiveInbound), só troca a porta de entrada.
+ * Simula uma mensagem chegando de um cliente por um canal externo, sem
+ * precisar de um número de WhatsApp real — mesma lógica de negócio do
+ * webhook (ConversationsService.receiveInbound), só troca a porta de
+ * entrada. Útil pra testar o Inbox e o comportamento da IA rapidamente.
  */
 export class SimulateInboundDto {
   @IsString()

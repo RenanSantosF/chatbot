@@ -21,8 +21,8 @@ export class CustomersService {
   }
 
   /**
-   * Ponto de entrada de qualquer canal (hoje só o simulador; WhatsApp na
-   * Fase 7 chama isto também). Telefone identifica o cliente dentro do
+   * Ponto de entrada de qualquer canal (simulador ou webhook do WhatsApp).
+   * Telefone identifica o cliente dentro do
    * tenant — cria o cadastro na primeira mensagem, reaproveita depois.
    */
   async findOrCreateByPhone({ phone, name }: FindOrCreateInput) {

@@ -58,7 +58,7 @@ export class ConversationsController {
     return this.conversationsService.setAiMode(id, 'AI_ACTIVE');
   }
 
-  /** Ferramenta de teste: simula uma mensagem chegando de um cliente, sem depender do WhatsApp (Fase 7). */
+  /** Ferramenta de teste: simula uma mensagem chegando de um cliente, sem precisar de um WhatsApp real. */
   @Post('simulate-inbound')
   @Roles('OWNER', 'ADMIN')
   simulateInbound(@Body() dto: SimulateInboundDto) {
