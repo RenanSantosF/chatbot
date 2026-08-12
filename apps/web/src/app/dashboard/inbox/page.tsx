@@ -417,6 +417,7 @@ export default function InboxPage() {
         onSendFile={handleSendFile}
         onAssign={() => handleAction("assign", "Não deu pra assumir essa conversa.")}
         onResolve={() => handleAction("resolve", "Não deu pra resolver essa conversa.")}
+        onReopen={() => handleAction("reopen", "Não deu pra reabrir essa conversa.")}
         onReactivateAi={() => handleAction("reactivate-ai", "Não deu pra reativar a IA.")}
         onChangePriority={handlePriority}
       />

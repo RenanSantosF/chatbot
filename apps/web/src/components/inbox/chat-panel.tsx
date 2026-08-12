@@ -98,6 +98,7 @@ export function ChatPanel({
   onSend,
   onAssign,
   onResolve,
+  onReopen,
   onReactivateAi,
   onChangePriority,
   onSendFile,
@@ -113,6 +114,7 @@ export function ChatPanel({
   onSend: (content: string) => Promise<void>;
   onAssign: () => Promise<void>;
   onResolve: () => Promise<void>;
+  onReopen: () => Promise<void>;
   onReactivateAi: () => Promise<void>;
   onChangePriority: (priority: ConversationPriority) => Promise<void>;
   onSendFile: (file: File) => Promise<void>;
@@ -220,6 +222,11 @@ export function ChatPanel({
                 Resolver
               </Button>
             </>
+          )}
+          {isResolved && (
+            <Button size="sm" variant="outline" onClick={onReopen}>
+              Reabrir
+            </Button>
           )}
           {!isResolved && conversation.aiMode !== "AI_ACTIVE" && (
             <Button size="sm" variant="ghost" onClick={onReactivateAi}>

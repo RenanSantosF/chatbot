@@ -118,6 +118,11 @@ export class ConversationsController {
     return this.conversationsService.assign(id, user.userId);
   }
 
+  @Post(':id/reopen')
+  reopen(@Param('id') id: string) {
+    return this.conversationsService.reopen(id);
+  }
+
   @Post(':id/resolve')
   resolve(@Param('id') id: string) {
     return this.conversationsService.resolve(id);

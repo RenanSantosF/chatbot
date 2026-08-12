@@ -798,6 +798,43 @@ export class ConversationsService {
    * aviso vai antes da troca de status pra a mensagem não ficar marcada
    * como "aguardando cliente" de uma conversa já resolvida.
    */
+  /**
+   * Reabre uma conversa encerrada. Deve poder: encerrar cedo demais é o
+   * erro mais comum de quem atende, e sem reabrir a saída seria criar uma
+   * conversa nova — perdendo o histórico justamente no caso em que ele
+   * mais importa.
+   *
+   * Volta como WAITING_AGENT, não OPEN: quem reabriu foi a equipe, então a
+   * bola está com ela, não com o cliente. Nada é enviado pro WhatsApp — o
+   * cliente não precisa saber que a ficha dele mudou de estado aqui
+   * dentro.
+   */
+  async reopen(conversationId: string) {
+    const before = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { status: true },
+    });
+    if (!before) {
+      throw new NotFoundException('Conversa não encontrada.');
+    }
+    if (before.status !== 'RESOLVED' && before.status !== 'CLOSED') {
+      throw new BadRequestException('Esta conversa já está aberta.');
+    }
+
+    const conversation = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'WAITING_AGENT' },
+      include: conversationInclude,
+    });
+
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(conversation),
+    );
+    return conversation;
+  }
+
   async resolve(conversationId: string) {
     await this.requireConversationExists(conversationId);
 
