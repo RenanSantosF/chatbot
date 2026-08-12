@@ -389,7 +389,10 @@ export default function InboxPage() {
           onSelect={setSelectedId}
         />
       </div>
+      {/* Remontar ao trocar de conversa zera rascunho e busca — que é o
+          esperado: rascunho de uma conversa não pode aparecer na outra. */}
       <ChatPanel
+        key={selectedId ?? "vazio"}
         conversation={detail}
         sending={sending}
         replyTo={replyTo}

@@ -1,7 +1,15 @@
 "use client";
 
-import { MessagesSquare, Paperclip, SendHorizonal, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  MessagesSquare,
+  Paperclip,
+  Search,
+  SendHorizonal,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,12 +129,37 @@ export function ChatPanel({
   onReact: (messageId: string, emoji: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [needle, setNeedle] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Ids das mensagens que casam com a busca, na ordem da conversa. Roda
+  // sobre o que já está carregado — que é o mesmo que o WhatsApp Web faz
+  // enquanto você não rola pra trás.
+  const matches = useMemo(() => {
+    const term = needle.trim().toLowerCase();
+    if (!term || !conversation) return [] as string[];
+    return conversation.messages
+      .filter((message) => message.content?.toLowerCase().includes(term))
+      .map((message) => message.id);
+  }, [needle, conversation]);
+
+  const currentMatchId = matches[matchIndex] ?? null;
+
   useEffect(() => {
+    if (!currentMatchId) return;
+    document
+      .querySelector(`[data-message-id="${currentMatchId}"]`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [currentMatchId]);
+
+  useEffect(() => {
+    // Não puxa pro fim enquanto a pessoa está navegando pelos resultados.
+    if (currentMatchId) return;
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [conversation?.id, conversation?.messages.length]);
+  }, [conversation?.id, conversation?.messages.length, currentMatchId]);
 
   if (!conversation) {
     return (
@@ -165,6 +198,15 @@ export function ChatPanel({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Buscar nesta conversa"
+            title="Buscar nesta conversa"
+            onClick={() => setSearchOpen((open) => !open)}
+          >
+            <Search className="size-4" />
+          </Button>
           <PriorityPicker value={conversation.priority} onChange={onChangePriority} />
           {!isResolved && (
             <>
@@ -184,6 +226,56 @@ export function ChatPanel({
         </div>
       </div>
 
+      {searchOpen ? (
+        <div className="flex items-center gap-2 border-b bg-card px-3 py-2">
+          <div className="relative flex-1">
+            <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={needle}
+              onChange={(event) => {
+                setNeedle(event.target.value);
+                setMatchIndex(0);
+              }}
+              placeholder="Buscar nesta conversa"
+              className="h-8 pl-7 text-xs"
+            />
+          </div>
+          <span className="w-16 text-center text-xs text-muted-foreground tabular-nums">
+            {needle.trim() ? `${matches.length ? matchIndex + 1 : 0}/${matches.length}` : ""}
+          </span>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Resultado anterior"
+            disabled={matches.length < 2}
+            onClick={() => setMatchIndex((i) => (i - 1 + matches.length) % matches.length)}
+          >
+            <ChevronUp className="size-4" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Próximo resultado"
+            disabled={matches.length < 2}
+            onClick={() => setMatchIndex((i) => (i + 1) % matches.length)}
+          >
+            <ChevronDown className="size-4" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Fechar busca"
+            onClick={() => {
+              setSearchOpen(false);
+              setNeedle("");
+            }}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      ) : null}
+
       <div className="chat-wallpaper flex flex-1 flex-col gap-1.5 overflow-y-auto p-4">
         {hasOlder ? (
           <div className="flex justify-center pb-2">
@@ -198,7 +290,13 @@ export function ChatPanel({
           return (
             <div key={message.id} className="contents">
               {startsNewDay ? <DaySeparator label={dayLabel(message.createdAt)} /> : null}
-              <MessageBubble message={message} onReply={onReply} onReact={onReact} />
+              <MessageBubble
+                message={message}
+                highlight={needle.trim()}
+                isCurrentMatch={message.id === currentMatchId}
+                onReply={onReply}
+                onReact={onReact}
+              />
             </div>
           );
         })}

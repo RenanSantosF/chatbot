@@ -49,12 +49,40 @@ function DeliveryTicks({ status }: { status: MessageStatus }) {
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏"];
 
+/**
+ * Pinta os trechos que casam com a busca. Divide pelo termo em vez de usar
+ * innerHTML: o conteúdo vem do cliente e não pode virar marcação.
+ */
+function Highlighted({ text, term }: { text: string; term: string }) {
+  if (!term) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"));
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.toLowerCase() === term.toLowerCase() ? (
+          <mark key={index} className="rounded-xs bg-amber-300/70 text-inherit dark:bg-amber-400/40">
+            {part}
+          </mark>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 export function MessageBubble({
   message,
+  highlight = "",
+  isCurrentMatch = false,
   onReply,
   onReact,
 }: {
   message: ConversationMessage;
+  /** Termo buscado na conversa, pra pintar dentro do balão. */
+  highlight?: string;
+  /** Resultado em foco na navegação da busca. */
+  isCurrentMatch?: boolean;
   onReply?: (message: ConversationMessage) => void;
   onReact?: (messageId: string, emoji: string) => Promise<void>;
 }) {
@@ -72,7 +100,18 @@ export function MessageBubble({
   );
 
   return (
-    <div className={cn("group/msg relative flex max-w-[75%] flex-col", fromCustomer ? "self-start" : "self-end")}>
+    <div
+      data-message-id={message.id}
+      // Dois cliques respondem, igual ao aplicativo. `select-none` no
+      // duplo clique evita que o gesto saia selecionando o texto todo.
+      onDoubleClick={onReply ? () => onReply(message) : undefined}
+      className={cn(
+        "group/msg relative flex max-w-[75%] flex-col",
+        fromCustomer ? "self-start" : "self-end",
+        onReply && "select-none",
+        isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
+      )}
+    >
       {onReply || onReact ? (
         <div
           className={cn(
@@ -137,7 +176,9 @@ export function MessageBubble({
 
       {message.messageType !== "TEXT" ? <MessageAttachment message={message} /> : null}
       {message.content ? (
-        <span className="whitespace-pre-wrap break-words">{message.content}</span>
+        <span className="whitespace-pre-wrap break-words">
+          <Highlighted text={message.content} term={highlight} />
+        </span>
       ) : null}
       <span
         className={cn(
