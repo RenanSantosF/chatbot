@@ -4,7 +4,7 @@ import {
   Bell,
   BellRing,
   ChartNoAxesColumn,
-  Inbox,
+  MessageCircleMore,
   LogOut,
   Settings,
   Users,
@@ -39,11 +39,11 @@ import type { SessionTenant, SessionUser, UserRole } from "@/lib/types";
 const NAV_ITEMS: {
   href: string;
   label: string;
-  icon: typeof Inbox;
+  icon: typeof MessageCircleMore;
   roles?: UserRole[];
 }[] = [
   { href: "/dashboard", label: "Visão geral", icon: ChartNoAxesColumn },
-  { href: "/dashboard/inbox", label: "Inbox", icon: Inbox },
+  { href: "/dashboard/inbox", label: "Inbox", icon: MessageCircleMore },
   { href: "/dashboard/customers", label: "Clientes", icon: Users },
 ];
 

@@ -109,10 +109,14 @@ export function MessageBubble({
 
     <div
       className={cn(
-        "flex flex-col gap-0.5 rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm duration-200 ease-out animate-in fade-in",
+        // Sombra rasa e anel finíssimo: o balão precisa se destacar do
+        // papel de parede sem parecer um cartão empilhado. O verde de saída
+        // no escuro é dessaturado de propósito — o verde cheio do app
+        // brigava com o cinza da interface.
+        "flex flex-col gap-0.5 rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
         fromCustomer
           ? "rounded-bl-sm bg-card text-card-foreground ring-1 ring-foreground/5 slide-in-from-left-2"
-          : "rounded-br-sm bg-[#d9fdd3] text-neutral-900 slide-in-from-right-2 dark:bg-[#005c4b] dark:text-neutral-50",
+          : "rounded-br-sm bg-[oklch(0.94_0.06_150)] text-neutral-900 slide-in-from-right-2 dark:bg-[oklch(0.43_0.05_165)] dark:text-neutral-100",
       )}
     >
       {message.replyTo ? (
