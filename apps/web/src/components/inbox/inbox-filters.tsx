@@ -76,9 +76,13 @@ export function InboxFilterBar({
         {action}
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      {/* Sem rótulo em cima de cada seletor: três rótulos empilhados
+          roubavam altura da lista de conversas. O que cada um filtra fica
+          no title/aria-label — o texto visível precisa caber em 1/3 de uma
+          coluna de 340px sem cortar a contagem. */}
+      <div className="grid grid-cols-3 gap-1.5">
         <SelectField
-          label="Situação"
+          title="Filtrar por situação"
           value={value.status}
           onChange={(next) => set("status", next as InboxFilters["status"])}
           options={[
@@ -91,7 +95,7 @@ export function InboxFilterBar({
           ]}
         />
         <SelectField
-          label="Prioridade"
+          title="Filtrar por prioridade"
           value={value.priority}
           onChange={(next) => set("priority", next as InboxFilters["priority"])}
           options={[
@@ -104,7 +108,7 @@ export function InboxFilterBar({
           ]}
         />
         <SelectField
-          label="Mostrar"
+          title="Mostrar quais conversas"
           value={value.scope}
           onChange={(next) => set("scope", next as InboxFilters["scope"])}
           options={[

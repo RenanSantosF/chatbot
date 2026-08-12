@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SelectField } from "@/components/ui/select-field";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { avatarColor, initials } from "@/lib/avatar";
@@ -61,6 +62,11 @@ function DaySeparator({ label }: { label: string }) {
   );
 }
 
+/**
+ * Prioridade num seletor só, com um ponto da cor atual. Antes eram quatro
+ * botões lado a lado, que somados a "Assumir", "Resolver" e "Reativar IA"
+ * enchiam o cabeçalho de coisa clicável competindo pela atenção.
+ */
 function PriorityPicker({
   value,
   onChange,
@@ -68,33 +74,20 @@ function PriorityPicker({
   value: ConversationPriority;
   onChange: (priority: ConversationPriority) => void;
 }) {
+  const meta = PRIORITY_META[value];
   return (
-    <div className="flex items-center gap-0.5 rounded-lg border bg-background p-0.5">
-      {PRIORITY_ORDER.map((priority) => {
-        const meta = PRIORITY_META[priority];
-        const active = value === priority;
-        return (
-          <button
-            key={priority}
-            type="button"
-            title={`Prioridade ${meta.label.toLowerCase()}`}
-            aria-pressed={active}
-            onClick={() => onChange(priority)}
-            className={cn(
-              "flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors",
-              active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            <span
-              className={cn("size-1.5 rounded-full", active ? "bg-primary-foreground" : meta.dot)}
-              aria-hidden
-            />
-            {meta.short}
-          </button>
-        );
-      })}
+    <div className="flex items-center gap-1.5">
+      <span className={cn("size-2 shrink-0 rounded-full", meta.dot)} aria-hidden />
+      <SelectField
+        title="Prioridade da conversa"
+        className="w-28"
+        value={value}
+        onChange={(next) => onChange(next as ConversationPriority)}
+        options={PRIORITY_ORDER.map((priority) => ({
+          value: priority,
+          label: PRIORITY_META[priority].label,
+        }))}
+      />
     </div>
   );
 }

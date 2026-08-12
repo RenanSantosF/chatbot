@@ -17,12 +17,16 @@ export interface SelectOption {
  */
 export function SelectField({
   label,
+  title,
   value,
   options,
   onChange,
   className,
 }: {
-  label: string;
+  /** Some quando não informado — a própria opção já diz o que é. */
+  label?: string;
+  /** Nome do filtro pra leitor de tela e dica do mouse, quando não há rótulo visível. */
+  title?: string;
   value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
@@ -30,9 +34,13 @@ export function SelectField({
 }) {
   return (
     <label className={cn("flex min-w-0 flex-col gap-1", className)}>
-      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      {label ? (
+        <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      ) : null}
       <div className="relative">
         <select
+          title={title}
+          aria-label={title ?? label}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="h-8 w-full appearance-none truncate rounded-md border border-input bg-background py-0 pr-7 pl-2.5 text-xs font-medium shadow-xs outline-none transition-colors hover:border-ring/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"

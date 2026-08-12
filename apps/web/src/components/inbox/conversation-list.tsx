@@ -112,7 +112,7 @@ export function ConversationList({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="flex flex-col divide-y">
+      <div className="flex flex-col">
       {conversations.map((conversation) => {
         // O contador do banco é a verdade; o do socket cobre o intervalo
         // entre a última busca e agora, sem precisar refazer a lista.
@@ -132,20 +132,18 @@ export function ConversationList({
             key={conversation.id}
             type="button"
             onClick={() => onSelect(conversation.id)}
+            // Sem barra colorida na lateral e sem fundo tingido: a conversa
+            // selecionada muda de superfície, e só. Quem chama atenção na
+            // linha é o contador de não lidas, como em qualquer mensageiro.
             className={cn(
-              "relative flex items-start gap-3 p-3 text-left transition-colors hover:bg-muted/60",
-              selected && "bg-muted",
-              !selected && unread > 0 && "bg-primary/[0.04]",
+              "relative flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/60",
+              // A divisória começa depois do avatar, como no WhatsApp Web:
+              // um traço de ponta a ponta engessa a lista.
+              "before:absolute before:inset-x-0 before:top-0 before:ml-14 before:border-t first:before:hidden",
+              selected && "bg-muted before:hidden",
             )}
           >
-            <span
-              className={cn(
-                "absolute inset-y-0 left-0 w-0.5",
-                selected ? "bg-primary" : unread > 0 ? "bg-primary/45" : "bg-transparent",
-              )}
-              aria-hidden
-            />
-            <Avatar className="size-10 shrink-0">
+            <Avatar className="size-11 shrink-0">
               <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
                 {initials(conversation.customer.name)}
               </AvatarFallback>
@@ -171,37 +169,34 @@ export function ConversationList({
                   ) : null}
                 </div>
               </div>
-              <p
-                className={cn(
-                  "mt-0.5 truncate text-xs",
-                  unread > 0 ? "font-medium text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {preview}
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-1">
+              {/* Uma linha só embaixo do nome: a prévia manda, e as
+                  etiquetas aparecem espremidas à direita apenas quando
+                  dizem algo. "Aberta" e "sem responsável" são o normal —
+                  repetir isso em toda linha vira ruído, não informação. */}
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <p
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-xs",
+                    unread > 0 ? "font-medium text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {preview}
+                </p>
                 {showPriority ? (
                   <span
-                    className={cn(
-                      "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium",
-                      priority.chip,
-                    )}
-                  >
-                    <span className={cn("size-1.5 rounded-full", priority.dot)} aria-hidden />
-                    {priority.short}
-                  </span>
+                    title={`Prioridade ${priority.label.toLowerCase()}`}
+                    className={cn("size-2 shrink-0 rounded-full", priority.dot)}
+                    aria-label={`Prioridade ${priority.label.toLowerCase()}`}
+                  />
                 ) : null}
-                <Badge variant="secondary" className="text-[10px]">
-                  {STATUS_LABEL[conversation.status]}
-                </Badge>
-                {conversation.assignedUser ? (
-                  <Badge variant="outline" className="text-[10px]">
-                    {conversation.assignedUser.name.split(" ")[0]}
+                {conversation.status !== "OPEN" ? (
+                  <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
+                    {STATUS_LABEL[conversation.status]}
                   </Badge>
                 ) : null}
-                {conversation.queue ? (
-                  <Badge variant="outline" className="text-[10px]">
-                    {conversation.queue.name}
+                {conversation.assignedUser ? (
+                  <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                    {conversation.assignedUser.name.split(" ")[0]}
                   </Badge>
                 ) : null}
               </div>
