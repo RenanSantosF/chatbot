@@ -16,6 +16,7 @@ import type {
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
 import { CustomersService } from '../customers/customers.service';
+import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
@@ -88,6 +89,7 @@ export class ConversationsService {
     private readonly aiEngine: AiEngineService,
     private readonly whatsapp: WhatsappSenderService,
     private readonly media: WhatsappMediaService,
+    private readonly inboxSettings: InboxSettingsService,
   ) {}
 
   /**
@@ -271,8 +273,8 @@ export class ConversationsService {
         'conversation.updated',
         updated,
       );
-      // Avisa a Meta que a empresa leu — é o que acende o tique azul no
-      // aparelho do cliente, igual ao WhatsApp de verdade.
+      // Avisa a Meta que a empresa leu — só se a empresa quiser revelar
+      // isso (ver InboxSettings.sendReadReceipts).
       void this.markConversationRead(id);
     }
 
@@ -290,6 +292,9 @@ export class ConversationsService {
    * atrapalhar quem está abrindo a conversa.
    */
   private async markConversationRead(conversationId: string) {
+    const settings = await this.inboxSettings.get();
+    if (!settings.sendReadReceipts) return;
+
     const lastInbound = await this.prisma.db.message.findFirst({
       where: { conversationId, senderType: 'CUSTOMER', externalId: { not: null } },
       orderBy: { createdAt: 'desc' },
@@ -655,8 +660,22 @@ export class ConversationsService {
     return conversation;
   }
 
+  /**
+   * Resolver avisa o cliente por padrão: sem isso ele fica esperando uma
+   * resposta que não vem, sem saber que o atendimento foi encerrado. O
+   * aviso vai antes da troca de status pra a mensagem não ficar marcada
+   * como "aguardando cliente" de uma conversa já resolvida.
+   */
   async resolve(conversationId: string) {
-    await this.requireConversation(conversationId);
+    await this.requireConversationExists(conversationId);
+
+    const settings = await this.inboxSettings.get();
+    if (settings.notifyOnResolve && settings.resolveMessage.trim()) {
+      await this.persistMessage(conversationId, {
+        senderType: 'AGENT',
+        content: settings.resolveMessage.trim(),
+      });
+    }
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },

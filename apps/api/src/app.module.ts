@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CollectionModule } from './modules/collection/collection.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CustomersModule } from './modules/customers/customers.module';
+import { InboxSettingsModule } from './modules/inbox-settings/inbox-settings.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
@@ -32,6 +33,7 @@ import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.modul
     CustomersModule,
     ConversationsModule,
     CollectionModule,
+    InboxSettingsModule,
     RealtimeModule,
     AiModule,
     KnowledgeModule,

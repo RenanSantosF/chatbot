@@ -16,9 +16,12 @@ export class WhatsappMediaController {
   async download(@Param('mediaId') mediaId: string, @Res() res: Response) {
     const { buffer, mimeType } = await this.media.download(mediaId);
     res.setHeader('Content-Type', mimeType);
-    // A mídia na Meta é imutável e some depois de 30 dias; um cache privado
-    // curto evita rebaixar o mesmo arquivo a cada rolagem da conversa.
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    // O id da mídia na Meta aponta sempre pro mesmo binário, então o
+    // conteúdo é imutável: `immutable` faz o navegador nem revalidar,
+    // e a imagem reaparece instantânea ao rolar a conversa de novo.
+    // Privado porque é conteúdo de cliente — nunca em cache compartilhado.
+    res.setHeader('Cache-Control', 'private, max-age=86400, immutable');
+    res.setHeader('ETag', `"${mediaId}"`);
     res.send(buffer);
   }
 }

@@ -4,7 +4,6 @@ import {
   Bell,
   BellRing,
   ChartNoAxesColumn,
-  ChevronRight,
   Inbox,
   LogOut,
   Settings,
@@ -12,7 +11,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,18 +20,15 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
-import { SETTINGS_SECTIONS } from "@/components/settings/sections";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { SessionTenant, SessionUser, UserRole } from "@/lib/types";
@@ -106,7 +101,6 @@ function Nav({ role }: { role: UserRole }) {
   // dela — assim o submenu não some justo quando ele é útil.
   const inSettings =
     pathname.startsWith("/dashboard/settings") || pathname === "/dashboard/knowledge";
-  const [settingsOpen, setSettingsOpen] = useState(inSettings);
   const canConfigure = role === "OWNER" || role === "ADMIN";
 
   return (
@@ -135,41 +129,13 @@ function Nav({ role }: { role: UserRole }) {
       {canConfigure ? (
         <SidebarMenuItem>
           <SidebarMenuButton
+            render={<Link href="/dashboard/settings" />}
             isActive={inSettings}
             tooltip="Configurações"
-            onClick={() => setSettingsOpen((open) => !open)}
           >
             <Settings />
             <span>Configurações</span>
-            <ChevronRight
-              className={cn(
-                "ml-auto transition-transform group-data-[collapsible=icon]:hidden",
-                settingsOpen && "rotate-90",
-              )}
-            />
           </SidebarMenuButton>
-
-          {settingsOpen ? (
-            <ul className="mt-1 ml-4 flex flex-col gap-0.5 border-l pl-2 group-data-[collapsible=icon]:hidden">
-              {SETTINGS_SECTIONS.map((section) => (
-                <li key={section.href}>
-                  <Link
-                    href={section.href}
-                    aria-current={pathname === section.href ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                      pathname === section.href
-                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                    )}
-                  >
-                    <section.icon className="size-3.5 shrink-0" />
-                    {section.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </SidebarMenuItem>
       ) : null}
     </SidebarMenu>
@@ -195,22 +161,20 @@ function Shell({
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false} open={false} onOpenChange={() => {}}>
       <Sidebar collapsible="icon">
         <SidebarHeader>
-          <div className="flex items-center gap-2 px-2 py-1.5">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
+          <div
+            className="flex items-center justify-center py-1.5"
+            title={`${tenant.name} · Clara`}
+          >
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
               C
-            </div>
-            <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-              <span className="truncate text-sm font-medium">{tenant.name}</span>
-              <span className="truncate text-xs text-muted-foreground">Clara</span>
             </div>
           </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Atendimento</SidebarGroupLabel>
             <SidebarGroupContent>
               <Nav role={user.role} />
             </SidebarGroupContent>
@@ -239,7 +203,7 @@ function Shell({
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-sm">
-          <SidebarTrigger />
+          <div />
           <div className="flex items-center gap-2">
             <ConnectionBadge />
             <NotificationsButton />

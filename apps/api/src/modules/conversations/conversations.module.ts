@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module';
 import { CustomersModule } from '../customers/customers.module';
+import { InboxSettingsModule } from '../inbox-settings/inbox-settings.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
 
 @Module({
-  imports: [CustomersModule, RealtimeModule, AiModule, WhatsappModule],
+  imports: [CustomersModule, RealtimeModule, AiModule, WhatsappModule, InboxSettingsModule],
   controllers: [ConversationsController],
   providers: [ConversationsService],
   exports: [ConversationsService],

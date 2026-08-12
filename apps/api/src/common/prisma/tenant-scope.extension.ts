@@ -19,6 +19,10 @@ const TENANT_SCOPED_MODELS = new Set([
   'Queue',
   'QueueMember',
   'WhatsAppSettings',
+  'InboxSettings',
+  'RoutingRule',
+  'RolePermission',
+  'CollectionField',
   // KnowledgeChunk não entra aqui: seu campo de embedding é Unsupported,
   // então toda leitura/escrita dele já é SQL raw (ver KnowledgeService),
   // que não passa pela extensão de query do Prisma de jeito nenhum — o

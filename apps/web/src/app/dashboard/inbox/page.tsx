@@ -16,6 +16,7 @@ import { SimulateInboundDialog } from "@/components/inbox/simulate-inbound-dialo
 import { PageHeader } from "@/components/page-header";
 import { useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
+import { conversationCache } from "@/lib/conversation-cache";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type {
   ConversationDetail,
@@ -115,8 +116,16 @@ export default function InboxPage() {
       const conversation = await apiFetch<
         ConversationDetail & { messagesCursor: string | null }
       >(`/conversations/${id}`);
-      setDetail(conversation);
-      setMessagesCursor(conversation.messagesCursor);
+      conversationCache.set(id, {
+        detail: conversation,
+        messagesCursor: conversation.messagesCursor,
+      });
+      // Só aplica se a pessoa ainda está nessa conversa: numa troca rápida
+      // a resposta antiga chegaria depois e sobrescreveria a nova.
+      if (selectedIdRef.current === id) {
+        setDetail(conversation);
+        setMessagesCursor(conversation.messagesCursor);
+      }
       clearUnread(id);
       setConversations((prev) =>
         prev.map((item) => (item.id === id ? { ...item, unreadCount: 0 } : item)),
@@ -158,6 +167,13 @@ export default function InboxPage() {
       return;
     }
     setReplyTo(null);
+    // Pinta do cache na hora (troca de conversa fica instantânea) e busca
+    // do servidor em segundo plano só pra reconciliar.
+    const cached = conversationCache.get(selectedId);
+    if (cached) {
+      setDetail(cached.detail);
+      setMessagesCursor(cached.messagesCursor);
+    }
     loadDetail(selectedId).catch(() => toast.error("Não deu pra carregar essa conversa."));
   }, [selectedId, loadDetail]);
 
@@ -192,9 +208,15 @@ export default function InboxPage() {
       message: ConversationMessage;
     }) => {
       if (selectedIdRef.current !== conversationId) return;
-      setDetail((prev) =>
-        prev && prev.id === conversationId ? { ...prev, messages: [...prev.messages, message] } : prev,
-      );
+      setDetail((prev) => {
+        if (!prev || prev.id !== conversationId) return prev;
+        // O socket entrega a mesma mensagem que já pode ter entrado pela
+        // resposta do POST; a checagem de id evita duplicar.
+        if (prev.messages.some((m) => m.id === message.id)) return prev;
+        const messages = [...prev.messages, message];
+        conversationCache.patchMessages(conversationId, messages);
+        return { ...prev, messages };
+      });
     };
 
     const onMessageUpdated = ({
@@ -246,14 +268,52 @@ export default function InboxPage() {
 
   async function handleSend(content: string) {
     if (!selectedId) return;
+
+    // Envio otimista: a mensagem aparece na hora com um tique vazio, do
+    // jeito que o WhatsApp faz. Se o servidor confirmar, o evento de tempo
+    // real substitui pela versão real; se falhar, ela some e avisamos.
+    const optimisticId = `pending-${Date.now()}`;
+    const optimistic: ConversationMessage = {
+      id: optimisticId,
+      conversationId: selectedId,
+      senderType: "AGENT",
+      senderId: null,
+      content,
+      messageType: "TEXT",
+      metadata: null,
+      status: "PENDING",
+      reactions: null,
+      replyToId: replyTo?.id ?? null,
+      replyTo: replyTo
+        ? {
+            id: replyTo.id,
+            content: replyTo.content,
+            senderType: replyTo.senderType,
+            messageType: replyTo.messageType,
+          }
+        : null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const quoted = replyTo?.id;
+    setDetail((prev) => (prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev));
+    setReplyTo(null);
     setSending(true);
+
     try {
       await apiFetch(`/conversations/${selectedId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ content, replyToId: replyTo?.id }),
+        body: JSON.stringify({ content, replyToId: quoted }),
       });
-      setReplyTo(null);
+      // A mensagem real chega pelo socket; tirar a otimista aqui evita ela
+      // ficar duplicada na tela por um instante.
+      setDetail((prev) =>
+        prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev,
+      );
     } catch {
+      setDetail((prev) =>
+        prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev,
+      );
       toast.error("Não deu pra enviar a mensagem.");
     } finally {
       setSending(false);

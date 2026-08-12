@@ -266,3 +266,10 @@ export interface CollectionField {
   order: number;
   active: boolean;
 }
+
+export interface InboxSettings {
+  id: string;
+  sendReadReceipts: boolean;
+  notifyOnResolve: boolean;
+  resolveMessage: string;
+}

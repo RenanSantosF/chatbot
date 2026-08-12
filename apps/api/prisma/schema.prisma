@@ -55,6 +55,7 @@ model Tenant {
   routingRules       RoutingRule[]
   rolePermissions    RolePermission[]
   collectionFields   CollectionField[]
+  inboxSettings      InboxSettings?
   whatsappSettings   WhatsAppSettings?
 
   @@map("tenants")
@@ -132,6 +133,28 @@ model Customer {
   @@map("customers")
 }
 
+// Preferências de atendimento da empresa, separadas das credenciais do
+// canal: valem pra qualquer canal e são o tipo de coisa que o dono mexe
+// sem precisar tocar em token nenhum.
+model InboxSettings {
+  id       String  @id @default(uuid())
+  tenantId String  @unique
+  // Confirmação de leitura: quando desligada, abrir a conversa no painel
+  // não acende o tique azul no aparelho do cliente. É escolha da empresa —
+  // tem negócio que prefere não revelar que leu e ainda não respondeu.
+  sendReadReceipts Boolean @default(true)
+  // Aviso automático ao resolver: sem isso o cliente fica sem saber que o
+  // atendimento foi encerrado e continua esperando resposta.
+  notifyOnResolve  Boolean @default(true)
+  resolveMessage   String  @default("Atendimento encerrado por aqui. Se precisar de mais alguma coisa, é só mandar mensagem que a gente volta a te atender.")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("inbox_settings")
+}
+
 enum ConversationChannel {
   INTERNAL
   WHATSAPP
@@ -192,6 +215,9 @@ model Conversation {
   tasks        Task[]
 
   @@index([tenantId, status])
+  // Ordenação padrão da lista do Inbox (mais recente primeiro) —
+  // sem isso o Postgres ordena a tabela toda a cada página.
+  @@index([tenantId, lastMessageAt(sort: Desc)])
   @@index([customerId])
   @@index([assignedUserId])
   @@index([queueId])
