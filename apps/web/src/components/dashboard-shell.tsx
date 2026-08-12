@@ -27,6 +27,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "@/components/ui/sidebar";
+import { CopilotWidget } from "@/components/copilot-widget";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
@@ -253,6 +254,7 @@ function Shell({
             {children}
           </div>
         </main>
+        <CopilotWidget />
       </SidebarInset>
     </SidebarProvider>
   );
