@@ -126,7 +126,14 @@ export function DashboardShell({
             Sair
           </Button>
         </header>
-        <main className="flex flex-1 flex-col gap-6 p-6">{children}</main>
+        <main className="flex flex-1 flex-col overflow-y-auto p-6">
+          <div
+            key={pathname}
+            className="flex flex-1 flex-col gap-6 duration-300 ease-out animate-in fade-in slide-in-from-bottom-2"
+          >
+            {children}
+          </div>
+        </main>
       </SidebarInset>
     </SidebarProvider>
   );

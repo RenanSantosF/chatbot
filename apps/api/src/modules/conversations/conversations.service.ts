@@ -37,6 +37,7 @@ export class ConversationsService {
     status?: ConversationStatus;
     assignedUserId?: string;
     queueId?: string;
+    customerId?: string;
   }) {
     return this.prisma.db.conversation.findMany({
       where: {
@@ -45,6 +46,7 @@ export class ConversationsService {
           ? { assignedUserId: filter.assignedUserId }
           : {}),
         ...(filter.queueId ? { queueId: filter.queueId } : {}),
+        ...(filter.customerId ? { customerId: filter.customerId } : {}),
       },
       include: conversationInclude,
       orderBy: { lastMessageAt: 'desc' },

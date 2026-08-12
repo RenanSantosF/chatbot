@@ -16,12 +16,14 @@ export class ConversationsController {
     @Query('status') status: ConversationStatus | undefined,
     @Query('mine') mine: string | undefined,
     @Query('queueId') queueId: string | undefined,
+    @Query('customerId') customerId: string | undefined,
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.list({
       status,
       assignedUserId: mine === 'true' ? user.userId : undefined,
       queueId,
+      customerId,
     });
   }
 

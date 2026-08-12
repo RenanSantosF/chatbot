@@ -19,10 +19,10 @@ export function MessageBubble({ message }: { message: ConversationMessage }) {
   return (
     <div
       className={cn(
-        "flex max-w-[70%] flex-col gap-1 rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
+        "flex max-w-[70%] flex-col gap-1 rounded-2xl px-3.5 py-2 text-sm leading-relaxed duration-200 ease-out animate-in fade-in",
         fromCustomer
-          ? "self-start rounded-bl-sm border bg-card"
-          : "self-end rounded-br-sm bg-primary text-primary-foreground",
+          ? "self-start rounded-bl-sm border bg-card slide-in-from-left-2"
+          : "self-end rounded-br-sm bg-primary text-primary-foreground slide-in-from-right-2",
       )}
     >
       <span className="whitespace-pre-wrap">{message.content}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageBubble } from "./message-bubble";
@@ -22,6 +22,11 @@ export function ChatPanel({
   onReactivateAi: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [conversation?.id, conversation?.messages.length]);
 
   if (!conversation) {
     return (
@@ -67,10 +72,11 @@ export function ChatPanel({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-muted/20 p-4">
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-[#f3f1ea] p-4 dark:bg-[#0b141a]">
         {conversation.messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
+        <div ref={bottomRef} />
       </div>
 
       <form onSubmit={handleSubmit} className="flex gap-2 border-t p-3">

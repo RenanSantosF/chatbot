@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import type { Socket } from "socket.io-client";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +15,12 @@ import { connectRealtime } from "@/lib/socket";
 import type { ConversationDetail, ConversationSummary } from "@/lib/types";
 
 export default function InboxPage() {
+  // Só lida com o momento inicial da tela: um link vindo da página de
+  // Clientes ("Abrir conversa") chega com ?c=<id>, então já entra
+  // selecionando ela em vez de deixar o usuário procurar de novo.
+  const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("c"));
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(true);
