@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { AiToolPermission } from '../../../../generated/prisma/client';
+import type { AiToolPermission, Prisma } from '../../../../generated/prisma/client';
 import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
+import { QueuesService } from '../../queues/queues.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import type { AiToolCallResult, AiToolDeclaration } from '../providers/ai-provider.interface';
 
@@ -27,6 +28,7 @@ export interface ConfiguredTool {
 const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
+  queue: true,
 } as const;
 
 /**
@@ -41,6 +43,7 @@ export class AiToolsService {
   constructor(
     private readonly prisma: TenantPrismaService,
     private readonly realtime: RealtimeGateway,
+    private readonly queues: QueuesService,
   ) {}
 
   private readonly registry: BuiltInTool[] = [
@@ -95,33 +98,68 @@ export class AiToolsService {
       },
     },
     {
-      key: 'requestHumanHandoff',
-      name: 'Chamar atendente humano',
+      key: 'transferToQueue',
+      name: 'Transferir atendimento',
       description:
-        'Sinaliza que esta conversa precisa de um humano assumir. Use quando o cliente pedir claramente por uma pessoa, ou quando o assunto for sensível/complexo demais pra você decidir sozinha.',
+        'Transfere a conversa pra um humano assumir. Se souber qual área é mais apropriada, informe queueKey; se não tiver certeza ou não houver fila específica, deixe queueKey vazio. Use quando o cliente pedir claramente por uma pessoa, ou o assunto for sensível/complexo demais pra você decidir sozinha.',
       parametersSchema: {
         type: 'object',
         properties: {
-          reason: { type: 'string', description: 'Motivo curto de por que precisa de um humano' },
+          queueKey: { type: 'string', description: 'Chave da fila mais apropriada pra este assunto, se houver uma' },
+          reason: { type: 'string', description: 'Motivo curto da transferência' },
+          summary: {
+            type: 'string',
+            description: 'Resumo do que o cliente precisa, pra quem for atender não perder contexto',
+          },
+          collectedData: {
+            type: 'object',
+            description:
+              'Dados relevantes já coletados do cliente durante a conversa, como pares chave-valor (ex: {"idade": "58", "cidade": "São Paulo"})',
+            additionalProperties: { type: 'string' },
+          },
         },
-        required: ['reason'],
+        required: ['reason', 'summary'],
       },
       execute: async (args, ctx) => {
+        const queueKeyArg = args.queueKey ? String(args.queueKey).trim() : null;
+        const queue = queueKeyArg ? await this.queues.findByKey(queueKeyArg) : null;
+        const assignedUserId = queue ? await this.queues.pickNextMember(queue.id) : null;
+
+        const reason = String(args.reason ?? 'não informado');
+        const summary = String(args.summary ?? '');
+        const collectedData =
+          args.collectedData && typeof args.collectedData === 'object'
+            ? (args.collectedData as Prisma.InputJsonValue)
+            : undefined;
+
         await this.prisma.db.message.create({
           data: {
             tenantId: this.prisma.tenantId,
             conversationId: ctx.conversationId,
             senderType: 'SYSTEM',
-            content: `IA solicitou atendimento humano: ${String(args.reason ?? 'sem motivo informado')}`,
+            content: queue
+              ? `IA transferiu para a fila "${queue.name}": ${reason}`
+              : `IA solicitou atendimento humano: ${reason}`,
           },
         });
+
         const conversation = await this.prisma.db.conversation.update({
           where: { id: ctx.conversationId },
-          data: { aiMode: 'HUMAN_ACTIVE', status: 'WAITING_AGENT' },
+          data: {
+            aiMode: 'HUMAN_ACTIVE',
+            status: 'WAITING_AGENT',
+            queueId: queue?.id,
+            assignedUserId: assignedUserId ?? undefined,
+            escalationReason: reason,
+            escalationSummary: summary,
+            collectedData,
+          },
           include: conversationInclude,
         });
+
         this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
-        return { status: 'handoff_requested' };
+
+        return { status: 'transferred', queue: queue?.name ?? null, assigned: Boolean(assignedUserId) };
       },
     },
   ];
@@ -167,14 +205,34 @@ export class AiToolsService {
     };
   }
 
-  /** Ferramentas habilitadas, no formato que o AiProvider entende — chamado pelo AiEngineService a cada resposta. */
+  /**
+   * Ferramentas habilitadas, no formato que o AiProvider entende — chamado
+   * pelo AiEngineService a cada resposta. transferToQueue ganha um enum
+   * dinâmico com as filas reais do tenant, pra IA nunca inventar uma
+   * fila que não existe.
+   */
   async getEnabledDeclarations(): Promise<AiToolDeclaration[]> {
     const configured = await this.prisma.db.aiTool.findMany({ where: { enabled: true } });
     const enabledKeys = new Set(configured.map((tool) => tool.key));
+    const enabledTools = this.registry.filter((tool) => enabledKeys.has(tool.key));
 
-    return this.registry
-      .filter((tool) => enabledKeys.has(tool.key))
-      .map((tool) => ({ name: tool.key, description: tool.description, parametersSchema: tool.parametersSchema }));
+    const queues = enabledKeys.has('transferToQueue') ? await this.prisma.db.queue.findMany() : [];
+
+    return enabledTools.map((tool) => {
+      if (tool.key !== 'transferToQueue' || queues.length === 0) {
+        return { name: tool.key, description: tool.description, parametersSchema: tool.parametersSchema };
+      }
+
+      const schema = JSON.parse(JSON.stringify(tool.parametersSchema)) as {
+        properties: { queueKey: { description: string; enum?: string[] } };
+      };
+      schema.properties.queueKey.enum = queues.map((queue) => queue.key);
+      schema.properties.queueKey.description = `Fila mais apropriada: ${queues
+        .map((queue) => `${queue.key} (${queue.name})`)
+        .join(', ')}. Deixe vazio se nenhuma se aplicar.`;
+
+      return { name: tool.key, description: tool.description, parametersSchema: schema };
+    });
   }
 
   /**

@@ -14,6 +14,7 @@ const OPEN_STATUSES: ConversationStatus[] = ['OPEN', 'WAITING_CUSTOMER', 'WAITIN
 const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
+  queue: { select: { id: true, key: true, name: true } },
 } as const;
 
 @Injectable()
@@ -25,11 +26,12 @@ export class ConversationsService {
     private readonly aiEngine: AiEngineService,
   ) {}
 
-  async list(filter: { status?: ConversationStatus; assignedUserId?: string }) {
+  async list(filter: { status?: ConversationStatus; assignedUserId?: string; queueId?: string }) {
     return this.prisma.db.conversation.findMany({
       where: {
         ...(filter.status ? { status: filter.status } : {}),
         ...(filter.assignedUserId ? { assignedUserId: filter.assignedUserId } : {}),
+        ...(filter.queueId ? { queueId: filter.queueId } : {}),
       },
       include: conversationInclude,
       orderBy: { lastMessageAt: 'desc' },

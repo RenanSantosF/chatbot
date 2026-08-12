@@ -57,7 +57,39 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
         <InfoRow label="IA" value={AI_MODE_LABEL[conversation.aiMode]} />
         <InfoRow label="Prioridade" value={PRIORITY_LABEL[conversation.priority]} />
         <InfoRow label="Responsável" value={conversation.assignedUser?.name ?? "Ninguém"} />
+        {conversation.queue ? <InfoRow label="Fila" value={conversation.queue.name} /> : null}
       </div>
+
+      {conversation.escalationSummary || conversation.escalationReason ? (
+        <div>
+          <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Escalonamento
+          </h3>
+          {conversation.escalationReason ? (
+            <p className="text-sm">
+              <span className="text-muted-foreground">Motivo: </span>
+              {conversation.escalationReason}
+            </p>
+          ) : null}
+          {conversation.escalationSummary ? (
+            <p className="mt-1 text-sm">
+              <span className="text-muted-foreground">Resumo: </span>
+              {conversation.escalationSummary}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {conversation.collectedData && Object.keys(conversation.collectedData).length > 0 ? (
+        <div>
+          <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Dados coletados
+          </h3>
+          {Object.entries(conversation.collectedData).map(([key, value]) => (
+            <InfoRow key={key} label={key} value={value} />
+          ))}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="secondary">{conversation.messages.length} mensagens</Badge>

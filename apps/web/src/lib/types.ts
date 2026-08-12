@@ -59,6 +59,12 @@ export interface AssignedUser {
   avatar: string | null;
 }
 
+export interface ConversationQueue {
+  id: string;
+  key: string;
+  name: string;
+}
+
 export interface ConversationSummary {
   id: string;
   status: ConversationStatus;
@@ -68,6 +74,10 @@ export interface ConversationSummary {
   createdAt: string;
   customer: Customer;
   assignedUser: AssignedUser | null;
+  queue: ConversationQueue | null;
+  escalationReason: string | null;
+  escalationSummary: string | null;
+  collectedData: Record<string, string> | null;
 }
 
 export interface ConversationDetail extends ConversationSummary {
@@ -82,6 +92,27 @@ export interface ConfiguredTool {
   description: string;
   enabled: boolean;
   permission: AiToolPermission;
+}
+
+export interface QueueMemberUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+}
+
+export interface QueueMember {
+  id: string;
+  userId: string;
+  user: QueueMemberUser;
+}
+
+export interface Queue {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  members: QueueMember[];
 }
 
 export type TaskStatus = "OPEN" | "DONE";

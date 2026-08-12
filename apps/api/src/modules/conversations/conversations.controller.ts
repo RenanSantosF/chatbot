@@ -15,11 +15,13 @@ export class ConversationsController {
   list(
     @Query('status') status: ConversationStatus | undefined,
     @Query('mine') mine: string | undefined,
+    @Query('queueId') queueId: string | undefined,
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.list({
       status,
       assignedUserId: mine === 'true' ? user.userId : undefined,
+      queueId,
     });
   }
 

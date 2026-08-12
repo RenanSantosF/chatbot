@@ -1,24 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { slugify } from '../../common/utils/slugify';
 
 @Injectable()
 export class TenantsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private slugify(name: string): string {
-    const COMBINING_DIACRITICS = /[̀-ͯ]/g;
-    return name
-      .normalize('NFD')
-      .replace(COMBINING_DIACRITICS, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '')
-      .slice(0, 60);
-  }
-
   /** Gera um slug único a partir do nome da empresa, adicionando sufixo se já existir. */
   async generateUniqueSlug(companyName: string): Promise<string> {
-    const base = this.slugify(companyName) || 'empresa';
+    const base = slugify(companyName) || 'empresa';
     let candidate = base;
     let attempt = 1;
 

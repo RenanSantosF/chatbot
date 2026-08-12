@@ -50,6 +50,8 @@ model Tenant {
   knowledgeChunks    KnowledgeChunk[]
   aiTools            AiTool[]
   tasks              Task[]
+  queues             Queue[]
+  queueMembers       QueueMember[]
 
   @@map("tenants")
 }
@@ -68,6 +70,7 @@ model User {
 
   tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignedConversations Conversation[]
+  queueMemberships      QueueMember[]
 
   // Email é único globalmente (não só por tenant): simplifica o login, que não
   // exige saber a qual empresa o usuário pertence antes de autenticar.
@@ -127,27 +130,36 @@ enum AiMode {
 }
 
 model Conversation {
-  id             String               @id @default(uuid())
-  tenantId       String
-  customerId     String
-  channel        ConversationChannel  @default(INTERNAL)
-  status         ConversationStatus   @default(OPEN)
-  assignedUserId String?
-  aiMode         AiMode               @default(AI_ACTIVE)
-  priority       ConversationPriority @default(NORMAL)
-  lastMessageAt  DateTime?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  id                String               @id @default(uuid())
+  tenantId          String
+  customerId        String
+  channel           ConversationChannel  @default(INTERNAL)
+  status            ConversationStatus   @default(OPEN)
+  assignedUserId    String?
+  queueId           String?
+  aiMode            AiMode               @default(AI_ACTIVE)
+  priority          ConversationPriority @default(NORMAL)
+  // Preenchidos pela ferramenta transferToQueue — o "handoff inteligente"
+  // do escopo original: por que foi transferida, resumo pra quem for
+  // atender não perder contexto, e dados que a IA já coletou do cliente.
+  escalationReason  String?
+  escalationSummary String?
+  collectedData     Json?
+  lastMessageAt     DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   assignedUser User?     @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  queue        Queue?    @relation(fields: [queueId], references: [id], onDelete: SetNull)
   messages     Message[]
   tasks        Task[]
 
   @@index([tenantId, status])
   @@index([customerId])
   @@index([assignedUserId])
+  @@index([queueId])
   @@map("conversations")
 }
 
@@ -339,4 +351,45 @@ model Task {
   @@index([tenantId])
   @@index([conversationId])
   @@map("tasks")
+}
+
+// Fila/departamento pro qual a IA transfere um atendimento (ver
+// AiToolsService.transferToQueue). `key` é o identificador estável que a
+// IA usa pra escolher a fila certa — dado como enum dinâmico na
+// declaração da ferramenta, nunca texto livre adivinhado pelo modelo.
+model Queue {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  key                  String
+  name                 String
+  description          String?
+  // Ponteiro do rodízio: id do último membro que recebeu uma conversa
+  // desta fila. Sem relação formal de propósito — é só um bookmark, não
+  // precisa de integridade referencial (se o membro sair da fila, o
+  // próximo pickNextMember() simplesmente recomeça do início).
+  lastAssignedMemberId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members       QueueMember[]
+  conversations Conversation[]
+
+  @@unique([tenantId, key])
+  @@map("queues")
+}
+
+model QueueMember {
+  id        String   @id @default(uuid())
+  tenantId  String
+  queueId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  queue  Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([queueId, userId])
+  @@map("queue_members")
 }

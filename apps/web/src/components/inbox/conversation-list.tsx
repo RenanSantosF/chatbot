@@ -75,6 +75,11 @@ export function ConversationList({
                   {conversation.assignedUser.name.split(" ")[0]}
                 </Badge>
               ) : null}
+              {conversation.queue ? (
+                <Badge variant="outline" className="text-[10px]">
+                  {conversation.queue.name}
+                </Badge>
+              ) : null}
             </div>
           </div>
         </button>
