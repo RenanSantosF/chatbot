@@ -35,6 +35,10 @@ export class WhatsappSenderService {
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
     const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`;
 
+    this.logger.log(
+      `Enviando mensagem via WhatsApp: phoneNumberId=${settings.phoneNumberId}, to=${to}`,
+    );
+
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -50,10 +54,15 @@ export class WhatsappSenderService {
         }),
       });
 
+      const responseBody = await response.text();
+
       if (!response.ok) {
-        const errorBody = await response.text();
         this.logger.error(
-          `Falha ao enviar mensagem via WhatsApp (${response.status}): ${errorBody}`,
+          `Falha ao enviar mensagem via WhatsApp (${response.status}): ${responseBody}`,
+        );
+      } else {
+        this.logger.log(
+          `Mensagem enviada via WhatsApp com sucesso: ${responseBody}`,
         );
       }
     } catch (error) {

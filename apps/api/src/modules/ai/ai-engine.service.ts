@@ -1,7 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AiContextBuilder } from './ai-context-builder.service';
 import { AiCredentialsResolver } from './providers/ai-credentials.resolver';
-import { AI_PROVIDER, type AiProvider, type AiToolExecutor } from './providers/ai-provider.interface';
+import {
+  AI_PROVIDER,
+  type AiProvider,
+  type AiToolExecutor,
+} from './providers/ai-provider.interface';
 import { AiToolsService } from './tools/ai-tools.service';
 
 /**
@@ -31,6 +35,9 @@ export class AiEngineService {
   async generateReply(conversationId: string): Promise<string | null> {
     const { active, credentials } = await this.credentials.resolve();
     if (!active) {
+      this.logger.log(
+        `IA desativada pelo tenant — não respondendo a conversa ${conversationId}.`,
+      );
       return null;
     }
     if (!credentials) {
@@ -40,10 +47,20 @@ export class AiEngineService {
 
     const context = await this.contextBuilder.build(conversationId);
 
-    if (context.history.length === 0 || context.history[context.history.length - 1].role !== 'user') {
+    if (
+      context.history.length === 0 ||
+      context.history[context.history.length - 1].role !== 'user'
+    ) {
       // Não tem mensagem de cliente pra responder (ex: última mensagem já é da IA/atendente).
+      this.logger.log(
+        `Sem mensagem de cliente pra responder na conversa ${conversationId}.`,
+      );
       return null;
     }
+
+    this.logger.log(
+      `Chamando o provedor de IA pra conversa ${conversationId}.`,
+    );
 
     const toolDeclarations = await this.tools.getEnabledDeclarations();
     const executeTool: AiToolExecutor | undefined =
@@ -58,6 +75,7 @@ export class AiEngineService {
         tools: toolDeclarations,
         executeTool,
       });
+      this.logger.log(`IA respondeu a conversa ${conversationId}.`);
       return result.content;
     } catch (error) {
       this.logger.warn(
@@ -78,11 +96,16 @@ export class AiEngineService {
   async simulate(message: string): Promise<string> {
     const { credentials } = await this.credentials.resolve();
     if (!credentials) {
-      throw new Error('Nenhuma API key de IA configurada. Adicione uma em Configurações > IA.');
+      throw new Error(
+        'Nenhuma API key de IA configurada. Adicione uma em Configurações > IA.',
+      );
     }
 
     const context = await this.contextBuilder.buildStandalone(message);
-    const result = await this.provider.generateReply({ ...context, ...credentials });
+    const result = await this.provider.generateReply({
+      ...context,
+      ...credentials,
+    });
     return result.content;
   }
 }
