@@ -68,9 +68,10 @@ export class WhatsappWebhookController {
   ) {
     const value = body.entry?.[0]?.changes?.[0]?.value;
     const phoneNumberId = value?.metadata?.phone_number_id;
+    const wabaId = body.entry?.[0]?.id;
     const messages = value?.messages ?? [];
     this.logger.log(
-      `POST recebido: phoneNumberId=${phoneNumberId ?? 'ausente'}, mensagens=${messages.length}`,
+      `POST recebido: wabaId=${wabaId ?? 'ausente'}, phoneNumberId=${phoneNumberId ?? 'ausente'}, mensagens=${messages.length}`,
     );
 
     // Sem phone_number_id não tem como saber de qual tenant é — provavelmente

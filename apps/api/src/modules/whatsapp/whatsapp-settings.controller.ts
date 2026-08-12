@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Put } from '@nestjs/common';
 import { Roles } from '../../common/auth/roles.decorator';
 import { UpdateWhatsAppSettingsDto } from './dto/update-whatsapp-settings.dto';
 import { WhatsappSettingsService } from './whatsapp-settings.service';
@@ -24,5 +24,11 @@ export class WhatsappSettingsController {
   @Roles('OWNER', 'ADMIN')
   disconnect() {
     return this.whatsappSettingsService.disconnect();
+  }
+
+  @Post('subscribe')
+  @Roles('OWNER', 'ADMIN')
+  subscribeApp() {
+    return this.whatsappSettingsService.subscribeApp();
   }
 }

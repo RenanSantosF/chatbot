@@ -8,6 +8,7 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { UpdateWhatsAppSettingsDto } from './dto/update-whatsapp-settings.dto';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+const GRAPH_API_VERSION = 'v21.0';
 
 @Injectable()
 export class WhatsappSettingsService {
@@ -107,6 +108,55 @@ export class WhatsappSettingsService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Salvar a URL do webhook no app não é suficiente pra receber mensagens
+   * de verdade — o app também precisa estar inscrito na WABA (WhatsApp
+   * Business Account) especificamente. Isso normalmente acontece sozinho no
+   * fluxo guiado da Meta, mas fica pra trás quando os campos são
+   * preenchidos manualmente. Este endpoint chama a Graph API pra fazer essa
+   * inscrição diretamente, sem precisar de terminal.
+   */
+  async subscribeApp() {
+    const current = await this.getRaw();
+    if (!current) {
+      throw new BadRequestException(
+        'Conecte o WhatsApp primeiro (Phone number ID, token e App Secret).',
+      );
+    }
+    if (!current.wabaId) {
+      throw new BadRequestException(
+        'Falta o ID da conta comercial do WhatsApp (WABA ID). Preencha esse campo e salve antes de ativar.',
+      );
+    }
+
+    const accessToken = this.encryption.decrypt(current.accessTokenEncrypted);
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${current.wabaId}/subscribed_apps`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const body: unknown = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const message =
+        body &&
+        typeof body === 'object' &&
+        'error' in body &&
+        body.error &&
+        typeof body.error === 'object' &&
+        'message' in body.error
+          ? String(body.error.message)
+          : `Erro ${response.status} da Meta.`;
+      throw new BadRequestException(
+        `Não deu pra ativar o recebimento de mensagens: ${message}`,
+      );
+    }
+
+    return { subscribed: true };
   }
 
   async disconnect() {

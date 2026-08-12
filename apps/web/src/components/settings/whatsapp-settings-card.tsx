@@ -21,9 +21,11 @@ export function WhatsAppSettingsCard({
   const [editing, setEditing] = useState(!settings.connected);
   const [phoneNumberId, setPhoneNumberId] = useState(settings.phoneNumberId ?? "");
   const [displayPhoneNumber, setDisplayPhoneNumber] = useState(settings.displayPhoneNumber ?? "");
+  const [wabaId, setWabaId] = useState(settings.wabaId ?? "");
   const [accessToken, setAccessToken] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [saving, setSaving] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -35,6 +37,7 @@ export function WhatsAppSettingsCard({
         body: JSON.stringify({
           phoneNumberId,
           displayPhoneNumber: displayPhoneNumber || undefined,
+          wabaId: wabaId || undefined,
           accessToken: accessToken || undefined,
           appSecret: appSecret || undefined,
         }),
@@ -48,6 +51,18 @@ export function WhatsAppSettingsCard({
       toast.error(err instanceof ApiError ? err.message : "Não deu pra salvar as credenciais.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSubscribe() {
+    setSubscribing(true);
+    try {
+      await apiFetch("/whatsapp/settings/subscribe", { method: "POST" });
+      toast.success("Recebimento de mensagens ativado! Manda uma mensagem de teste pra confirmar.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Não deu pra ativar o recebimento.");
+    } finally {
+      setSubscribing(false);
     }
   }
 
@@ -123,6 +138,17 @@ export function WhatsAppSettingsCard({
               />
             </div>
             <div className="flex flex-col gap-2">
+              <Label htmlFor="wabaId" className="text-xs">
+                ID da conta comercial do WhatsApp (WABA ID, opcional por enquanto)
+              </Label>
+              <Input
+                id="wabaId"
+                placeholder="Ex: 987654321098765"
+                value={wabaId}
+                onChange={(e) => setWabaId(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
               <Label htmlFor="accessToken" className="text-xs">
                 Token de acesso {settings.hasAccessToken ? "(deixe em branco pra manter o atual)" : ""}
               </Label>
@@ -158,17 +184,32 @@ export function WhatsAppSettingsCard({
             </div>
           </form>
         ) : (
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              <p className="font-medium">{settings.displayPhoneNumber ?? settings.phoneNumberId}</p>
-              <p className="text-muted-foreground">Phone number ID: {settings.phoneNumberId}</p>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <p className="font-medium">{settings.displayPhoneNumber ?? settings.phoneNumberId}</p>
+                <p className="text-muted-foreground">Phone number ID: {settings.phoneNumberId}</p>
+                {settings.wabaId ? (
+                  <p className="text-muted-foreground">WABA ID: {settings.wabaId}</p>
+                ) : null}
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                  Editar
+                </Button>
+                <Button size="sm" variant="ghost" className="text-destructive" onClick={handleDisconnect}>
+                  Desconectar
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-                Editar
-              </Button>
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={handleDisconnect}>
-                Desconectar
+            <div className="rounded-lg border bg-muted/40 p-3">
+              <p className="text-sm font-medium">Recebimento de mensagens não ativado?</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Se o webhook está configurado mas mensagens reais não chegam, o app pode não estar
+                inscrito na sua WABA. Preencha o WABA ID acima (em &ldquo;Editar&rdquo;) e clica aqui.
+              </p>
+              <Button size="sm" className="mt-2" disabled={subscribing} onClick={handleSubscribe}>
+                {subscribing ? "Ativando..." : "Ativar recebimento de mensagens"}
               </Button>
             </div>
           </div>
