@@ -202,6 +202,17 @@ enum MessageType {
   OTHER
 }
 
+// Ciclo de vida de entrega de uma mensagem que a empresa mandou. Só faz
+// sentido pra mensagens de saída em canais que reportam entrega (hoje só
+// WhatsApp) — mensagem de cliente entra direto como SENT e fica assim.
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
 model Message {
   id             String            @id @default(uuid())
   tenantId       String
@@ -210,6 +221,10 @@ model Message {
   senderId       String?
   content        String
   messageType    MessageType       @default(TEXT)
+  status         MessageStatus     @default(SENT)
+  // ID da mensagem na Meta (wamid...), devolvido no envio. É por ele que
+  // os webhooks de status depois encontram a linha certa pra atualizar.
+  externalId     String?
   metadata       Json?
   createdAt      DateTime          @default(now())
 
@@ -218,6 +233,7 @@ model Message {
 
   @@index([tenantId])
   @@index([conversationId, createdAt])
+  @@index([externalId])
   @@map("messages")
 }
 
@@ -236,6 +252,17 @@ enum AiProviderKind {
   GEMINI
 }
 
+// Quanto a IA pode guardar sobre um cliente entre uma conversa e outra.
+// É decisão do dono da empresa, não da IA: NONE desliga a ferramenta de
+// memória por completo, IMPORTANT_ONLY deixa guardar só o que é preciso
+// pra atender de novo (ex: "é advogado", "prefere ser chamado de Dr."),
+// e FULL libera detalhes gerais que aparecerem na conversa.
+enum AiMemoryMode {
+  NONE
+  IMPORTANT_ONLY
+  FULL
+}
+
 // Identidade, comportamento e credencial de IA — uma linha por tenant
 // (1:1). Criada com valores padrão junto do tenant no registro (ver
 // AuthService.register). Cada empresa usa a própria API key: nunca
@@ -250,6 +277,7 @@ model AiSettings {
   provider           AiProviderKind @default(GEMINI)
   apiKeyEncrypted    String?
   model              String?
+  memoryMode         AiMemoryMode   @default(IMPORTANT_ONLY)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 

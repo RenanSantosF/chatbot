@@ -80,6 +80,17 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
         </div>
       ) : null}
 
+      {conversation.customer.metadata && Object.keys(conversation.customer.metadata).length > 0 ? (
+        <div>
+          <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            O que a IA lembra
+          </h3>
+          {Object.entries(conversation.customer.metadata).map(([key, value]) => (
+            <InfoRow key={key} label={key} value={String(value)} />
+          ))}
+        </div>
+      ) : null}
+
       {conversation.collectedData && Object.keys(conversation.collectedData).length > 0 ? (
         <div>
           <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">

@@ -47,6 +47,7 @@ export class AiContextBuilder {
     customInstructions: string | null;
     instructions: { title: string; content: string }[];
     relevantChunks: RelevantChunk[];
+    customerMemory: Record<string, string>;
   }): string {
     const lines = [
       `Você é ${params.aiName}, a assistente de atendimento da empresa "${params.tenantName}".`,
@@ -67,6 +68,17 @@ export class AiContextBuilder {
       }
     }
 
+    const memoryEntries = Object.entries(params.customerMemory);
+    if (memoryEntries.length > 0) {
+      lines.push(
+        '',
+        'O que você já sabe deste cliente de conversas anteriores (use com naturalidade, sem anunciar que "consultou um registro"):',
+      );
+      for (const [key, value] of memoryEntries) {
+        lines.push(`- ${key}: ${value}`);
+      }
+    }
+
     if (params.relevantChunks.length > 0) {
       lines.push(
         '',
@@ -80,7 +92,10 @@ export class AiContextBuilder {
     return lines.join('\n');
   }
 
-  private async buildIdentityPrompt(relevantChunks: RelevantChunk[]): Promise<string> {
+  private async buildIdentityPrompt(
+    relevantChunks: RelevantChunk[],
+    customerMemory: Record<string, string> = {},
+  ): Promise<string> {
     const tenantId = this.tenantPrisma.tenantId;
 
     const [tenant, settings, instructions] = await Promise.all([
@@ -99,7 +114,31 @@ export class AiContextBuilder {
       customInstructions: settings?.customInstructions ?? null,
       instructions,
       relevantChunks,
+      // Com a memória desligada, o que já estava guardado também para de ser
+      // usado — não é só a gravação nova que fica bloqueada.
+      customerMemory: settings?.memoryMode === 'NONE' ? {} : customerMemory,
     });
+  }
+
+  private async loadCustomerMemory(
+    conversationId: string,
+  ): Promise<Record<string, string>> {
+    const conversation = await this.tenantPrisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { customer: { select: { metadata: true } } },
+    });
+
+    const metadata = conversation?.customer.metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return {};
+    }
+
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(metadata)) {
+      if (value === null || typeof value === 'object') continue;
+      result[key] = String(value);
+    }
+    return result;
   }
 
   /** Nunca deixa uma falha na busca de conhecimento derrubar a resposta da IA. */
@@ -120,11 +159,12 @@ export class AiContextBuilder {
 
     const ordered = messages.reverse();
     const lastCustomerMessage = [...ordered].reverse().find((message) => message.senderType === 'CUSTOMER');
-    const relevantChunks = lastCustomerMessage
-      ? await this.searchKnowledgeSafely(lastCustomerMessage.content)
-      : [];
+    const [relevantChunks, customerMemory] = await Promise.all([
+      lastCustomerMessage ? this.searchKnowledgeSafely(lastCustomerMessage.content) : Promise.resolve([]),
+      this.loadCustomerMemory(conversationId),
+    ]);
 
-    const systemPrompt = await this.buildIdentityPrompt(relevantChunks);
+    const systemPrompt = await this.buildIdentityPrompt(relevantChunks, customerMemory);
 
     const history: AiMessage[] = ordered
       .filter((message) => message.senderType !== 'SYSTEM')

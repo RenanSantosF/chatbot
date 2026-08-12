@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 import { QueuesModule } from './modules/queues/queues.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -29,6 +30,7 @@ import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.modul
     RealtimeModule,
     AiModule,
     KnowledgeModule,
+    MetricsModule,
     TasksModule,
     QueuesModule,
     WhatsappModule,

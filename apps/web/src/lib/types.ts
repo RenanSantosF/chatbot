@@ -42,6 +42,8 @@ export interface Customer {
   createdAt: string;
 }
 
+export type MessageStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
+
 export interface ConversationMessage {
   id: string;
   conversationId: string;
@@ -49,6 +51,7 @@ export interface ConversationMessage {
   senderId: string | null;
   content: string;
   messageType: string;
+  status: MessageStatus;
   createdAt: string;
 }
 
@@ -129,6 +132,8 @@ export interface Task {
 
 export type AiTone = "PROFESSIONAL" | "FRIENDLY" | "CASUAL" | "OBJECTIVE" | "WARM";
 
+export type AiMemoryMode = "NONE" | "IMPORTANT_ONLY" | "FULL";
+
 export interface AiSettings {
   id: string;
   active: boolean;
@@ -138,6 +143,7 @@ export interface AiSettings {
   hasApiKey: boolean;
   apiKeyPreview: string | null;
   model: string | null;
+  memoryMode: AiMemoryMode;
 }
 
 export type KnowledgeDocumentStatus = "PROCESSING" | "READY" | "FAILED";
@@ -159,6 +165,27 @@ export interface AiInstruction {
   priority: number;
   active: boolean;
   createdAt: string;
+}
+
+export interface MetricsOverview {
+  range: { from: string; to: string };
+  totals: {
+    conversations: number;
+    messages: number;
+    resolvedByAi: number;
+    resolvedByHuman: number;
+    aiMessages: number;
+    agentMessages: number;
+  };
+  byDay: { day: string; conversations: number; messages: number }[];
+  byStatus: { status: ConversationStatus; count: number }[];
+  responseTime: {
+    aiSeconds: number | null;
+    humanSeconds: number | null;
+    overallSeconds: number | null;
+    answered: number;
+    unanswered: number;
+  };
 }
 
 export interface WhatsAppSettings {

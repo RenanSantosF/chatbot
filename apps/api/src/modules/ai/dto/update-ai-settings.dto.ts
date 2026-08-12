@@ -15,6 +15,12 @@ export enum AiToneDto {
   WARM = 'WARM',
 }
 
+export enum AiMemoryModeDto {
+  NONE = 'NONE',
+  IMPORTANT_ONLY = 'IMPORTANT_ONLY',
+  FULL = 'FULL',
+}
+
 export class UpdateAiSettingsDto {
   @IsOptional()
   @IsBoolean()
@@ -51,4 +57,9 @@ export class UpdateAiSettingsDto {
   @IsString()
   @MaxLength(100)
   model?: string;
+
+  /** O que a IA pode guardar do cliente entre uma conversa e outra. */
+  @IsOptional()
+  @IsEnum(AiMemoryModeDto)
+  memoryMode?: AiMemoryModeDto;
 }

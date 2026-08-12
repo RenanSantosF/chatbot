@@ -1,12 +1,14 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CustomerDetailSheet } from "@/components/customers/customer-detail-sheet";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 import { apiFetch } from "@/lib/api-client";
 import type { Customer } from "@/lib/types";
 
@@ -45,10 +47,7 @@ export default function CustomersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
-        <p className="text-muted-foreground">Cadastro e histórico dos clientes finais.</p>
-      </div>
+      <PageHeader title="Clientes" description="Cadastro e histórico dos clientes finais." />
 
       <div className="relative max-w-sm">
         <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -73,11 +72,15 @@ export default function CustomersPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
-          {customers.length === 0
-            ? "Nenhum cliente ainda — assim que alguém mandar mensagem, aparece aqui."
-            : "Nenhum cliente encontrado."}
-        </p>
+        <EmptyState
+          icon={Users}
+          title={customers.length === 0 ? "Nenhum cliente ainda" : "Nenhum cliente encontrado"}
+          description={
+            customers.length === 0
+              ? "Assim que alguém mandar mensagem, o cadastro aparece aqui automaticamente."
+              : "Tente outro nome, telefone ou e-mail."
+          }
+        />
       ) : (
         <div className="flex flex-col divide-y overflow-hidden rounded-lg border">
           {filtered.map((customer) => (

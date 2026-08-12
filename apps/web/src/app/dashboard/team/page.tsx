@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateMemberCard } from "@/components/team/create-member-card";
 import { TeamMemberRow } from "@/components/team/team-member-row";
+import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import type { MeResponse, TeamMember } from "@/lib/types";
 
@@ -29,13 +31,10 @@ export default function TeamPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Equipe</h1>
-        <p className="text-muted-foreground">Quem tem acesso ao painel desta empresa.</p>
-      </div>
+      <PageHeader title="Equipe" description="Quem tem acesso ao painel desta empresa." />
 
       {loading || !currentUserId ? (
-        <p className="text-sm text-muted-foreground">Carregando...</p>
+        <PageSkeleton rows={3} />
       ) : (
         <>
           <CreateMemberCard onCreated={(member) => setTeam((prev) => [...prev, member])} />

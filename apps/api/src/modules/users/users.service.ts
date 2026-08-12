@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'node:crypto';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { CreateUserDto } from './dto/create-user.dto';
+import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type { UpdateUserDto } from './dto/update-user.dto';
 
 const PASSWORD_SALT_ROUNDS = 12;
@@ -115,6 +116,59 @@ export class UsersService {
     return this.prisma.db.user.update({
       where: { id },
       data: dto,
+      select: teamSelect,
+    });
+  }
+
+  async getProfile(userId: string) {
+    return this.requireTeamMemberPublic(userId);
+  }
+
+  private async requireTeamMemberPublic(id: string) {
+    const user = await this.prisma.db.user.findFirst({
+      where: { id },
+      select: teamSelect,
+    });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado.');
+    }
+    return user;
+  }
+
+  /**
+   * Edição da própria conta. Trocar a senha exige a senha atual — sessão
+   * aberta esquecida numa máquina não pode virar troca de senha, que
+   * trancaria o dono legítimo pra fora.
+   */
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const data: { name?: string; passwordHash?: string } = {};
+
+    if (dto.name !== undefined) {
+      data.name = dto.name;
+    }
+
+    if (dto.newPassword !== undefined) {
+      const user = await this.requireTeamMember(userId);
+      const matches = await bcrypt.compare(
+        dto.currentPassword ?? '',
+        user.passwordHash,
+      );
+      if (!matches) {
+        throw new BadRequestException('Senha atual incorreta.');
+      }
+      data.passwordHash = await bcrypt.hash(
+        dto.newPassword,
+        PASSWORD_SALT_ROUNDS,
+      );
+    }
+
+    if (Object.keys(data).length === 0) {
+      return this.requireTeamMemberPublic(userId);
+    }
+
+    return this.prisma.db.user.update({
+      where: { id: userId },
+      data,
       select: teamSelect,
     });
   }

@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  Bell,
+  BellRing,
   Bot,
   Building2,
+  ChartNoAxesColumn,
   Inbox,
-  LayoutDashboard,
   LibraryBig,
   LogOut,
   ListTree,
@@ -14,6 +16,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -30,19 +33,36 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
-import type { SessionTenant, SessionUser } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type { SessionTenant, SessionUser, UserRole } from "@/lib/types";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
+// `roles` ausente = todo mundo vê. As telas de configuração da empresa
+// ficam só com quem administra — o mesmo recorte que os guards da API já
+// aplicam, aqui só pra não mostrar porta que vai bater em 403.
+const NAV_ITEMS: {
+  href: string;
+  label: string;
+  icon: typeof Inbox;
+  roles?: UserRole[];
+}[] = [
+  { href: "/dashboard", label: "Visão geral", icon: ChartNoAxesColumn },
   { href: "/dashboard/inbox", label: "Inbox", icon: Inbox },
   { href: "/dashboard/customers", label: "Clientes", icon: Users },
-  { href: "/dashboard/ai", label: "IA", icon: Bot },
-  { href: "/dashboard/knowledge", label: "Conhecimento", icon: LibraryBig },
-  { href: "/dashboard/team", label: "Equipe", icon: Building2 },
-  { href: "/dashboard/queues", label: "Filas", icon: ListTree },
-  { href: "/dashboard/settings", label: "Configurações", icon: Settings },
+  { href: "/dashboard/ai", label: "IA", icon: Bot, roles: ["OWNER", "ADMIN"] },
+  { href: "/dashboard/knowledge", label: "Conhecimento", icon: LibraryBig, roles: ["OWNER", "ADMIN"] },
+  { href: "/dashboard/team", label: "Equipe", icon: Building2, roles: ["OWNER", "ADMIN"] },
+  { href: "/dashboard/queues", label: "Filas", icon: ListTree, roles: ["OWNER", "ADMIN"] },
+  { href: "/dashboard/settings", label: "Configurações", icon: Settings, roles: ["OWNER", "ADMIN"] },
 ];
+
+const ROLE_LABEL: Record<UserRole, string> = {
+  OWNER: "Dono",
+  ADMIN: "Admin",
+  AGENT: "Atendente",
+};
 
 function initials(name: string) {
   return name
@@ -53,7 +73,66 @@ function initials(name: string) {
     .join("");
 }
 
-export function DashboardShell({
+function NotificationsButton() {
+  const { notifPermission, enableNotifications } = useRealtime();
+
+  if (notifPermission !== "default") {
+    return null;
+  }
+
+  return (
+    <Button size="sm" variant="ghost" onClick={enableNotifications} title="Receber aviso de mensagem nova">
+      <BellRing className="size-4" />
+      <span className="hidden sm:inline">Ativar avisos</span>
+    </Button>
+  );
+}
+
+function ConnectionBadge() {
+  const { connected } = useRealtime();
+  if (connected) return null;
+
+  return (
+    <Badge variant="outline" className="animate-pulse gap-1 text-amber-600">
+      <Bell className="size-3" />
+      Reconectando
+    </Badge>
+  );
+}
+
+function Nav({ role }: { role: UserRole }) {
+  const pathname = usePathname();
+  const { totalUnread } = useRealtime();
+
+  const visible = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(role));
+
+  return (
+    <SidebarMenu>
+      {visible.map((item) => {
+        const showBadge = item.href === "/dashboard/inbox" && totalUnread > 0;
+        return (
+          <SidebarMenuItem key={item.href}>
+            <SidebarMenuButton
+              render={<Link href={item.href} />}
+              isActive={pathname === item.href}
+              tooltip={item.label}
+            >
+              <item.icon />
+              <span>{item.label}</span>
+              {showBadge ? (
+                <span className="ml-auto flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground group-data-[collapsible=icon]:hidden">
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </span>
+              ) : null}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        );
+      })}
+    </SidebarMenu>
+  );
+}
+
+function Shell({
   user,
   tenant,
   children,
@@ -76,7 +155,7 @@ export function DashboardShell({
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center gap-2 px-2 py-1.5">
-            <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-semibold">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
               C
             </div>
             <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
@@ -89,52 +168,72 @@ export function DashboardShell({
           <SidebarGroup>
             <SidebarGroupLabel>Atendimento</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {NAV_ITEMS.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      render={<Link href={item.href} />}
-                      isActive={pathname === item.href}
-                      tooltip={item.label}
-                    >
-                      <item.icon />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
+              <Nav role={user.role} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-          <div className="flex items-center gap-2 px-2 py-1.5">
-            <Avatar className="size-7">
-              <AvatarFallback className="text-xs">{initials(user.name)}</AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-              <span className="truncate text-sm font-medium">{user.name}</span>
-              <span className="truncate text-xs text-muted-foreground">{user.role}</span>
-            </div>
-          </div>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={<Link href="/dashboard/profile" />}
+                isActive={pathname === "/dashboard/profile"}
+                tooltip="Meu perfil"
+                size="lg"
+              >
+                <Avatar className="size-7">
+                  <AvatarFallback className="text-xs">{initials(user.name)}</AvatarFallback>
+                </Avatar>
+                <div className="flex min-w-0 flex-col overflow-hidden">
+                  <span className="truncate text-sm font-medium">{user.name}</span>
+                  <span className="truncate text-xs text-muted-foreground">{ROLE_LABEL[user.role]}</span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-sm">
           <SidebarTrigger />
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="size-4" />
-            Sair
-          </Button>
+          <div className="flex items-center gap-2">
+            <ConnectionBadge />
+            <NotificationsButton />
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
+          </div>
         </header>
-        <main className="flex flex-1 flex-col overflow-y-auto p-6">
+        <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
           <div
             key={pathname}
-            className="flex flex-1 flex-col gap-6 duration-300 ease-out animate-in fade-in slide-in-from-bottom-2"
+            className={cn(
+              "mx-auto flex w-full flex-1 flex-col gap-6",
+              // O Inbox é um painel de três colunas e precisa de toda a
+              // largura; as telas de leitura/formulário ficam melhor com
+              // uma medida de linha limitada.
+              pathname === "/dashboard/inbox" ? "max-w-none" : "max-w-6xl",
+              "duration-300 ease-out animate-in fade-in slide-in-from-bottom-2",
+            )}
           >
             {children}
           </div>
         </main>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+export function DashboardShell(props: {
+  user: SessionUser;
+  tenant: SessionTenant;
+  children: React.ReactNode;
+}) {
+  return (
+    <RealtimeProvider>
+      <Shell {...props} />
+    </RealtimeProvider>
   );
 }

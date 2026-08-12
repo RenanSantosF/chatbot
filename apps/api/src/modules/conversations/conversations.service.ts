@@ -4,6 +4,7 @@ import type {
   ConversationChannel,
   ConversationStatus,
   MessageSenderType,
+  MessageStatus,
 } from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
@@ -16,6 +17,17 @@ const OPEN_STATUSES: ConversationStatus[] = [
   'WAITING_CUSTOMER',
   'WAITING_AGENT',
 ];
+
+// Ordem de progressão do ciclo de entrega — usada só pra impedir que um
+// webhook fora de ordem faça o status andar pra trás. FAILED fica no topo
+// porque é terminal: se a Meta disse que falhou, não volta pra "entregue".
+const STATUS_RANK: Record<MessageStatus, number> = {
+  PENDING: 0,
+  SENT: 1,
+  DELIVERED: 2,
+  READ: 3,
+  FAILED: 4,
+};
 
 const conversationInclude = {
   customer: true,
@@ -113,10 +125,45 @@ export class ConversationsService {
       conversation.channel === 'WHATSAPP' &&
       (data.senderType === 'AI' || data.senderType === 'AGENT')
     ) {
-      await this.whatsapp.sendText(conversation.customer.phone, data.content);
+      const externalId = await this.whatsapp.sendText(
+        conversation.customer.phone,
+        data.content,
+      );
+      if (externalId) {
+        await this.prisma.db.message.update({
+          where: { id: message.id },
+          data: { externalId },
+        });
+      }
     }
 
     return { message, conversation };
+  }
+
+  /**
+   * Aplica um evento de status vindo do webhook do WhatsApp (entregue, lido,
+   * falhou) na mensagem correspondente. Nunca regride o status: a Meta não
+   * garante ordem de entrega dos webhooks, então um "delivered" atrasado
+   * chegando depois de um "read" não pode apagar o tique azul.
+   */
+  async applyDeliveryStatus(externalId: string, status: MessageStatus) {
+    const message = await this.prisma.db.message.findFirst({
+      where: { externalId },
+    });
+    if (!message || STATUS_RANK[status] <= STATUS_RANK[message.status]) {
+      return;
+    }
+
+    const updated = await this.prisma.db.message.update({
+      where: { id: message.id },
+      data: { status },
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.status', {
+      conversationId: updated.conversationId,
+      messageId: updated.id,
+      status: updated.status,
+    });
   }
 
   async sendAgentMessage(

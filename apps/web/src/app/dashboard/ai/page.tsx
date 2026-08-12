@@ -5,6 +5,9 @@ import { toast } from "sonner";
 import { ApiKeyCard } from "@/components/ai-settings/api-key-card";
 import { IdentityForm } from "@/components/ai-settings/identity-form";
 import { InstructionsManager } from "@/components/ai-settings/instructions-manager";
+import { MemoryCard } from "@/components/ai-settings/memory-card";
+import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { Simulator } from "@/components/ai-settings/simulator";
 import { ToolsManager } from "@/components/ai-settings/tools-manager";
 import { apiFetch } from "@/lib/api-client";
@@ -38,17 +41,15 @@ export default function AiSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">IA</h1>
-        <p className="text-muted-foreground">Configure quem é sua IA e o que ela sabe.</p>
-      </div>
+      <PageHeader title="IA" description="Configure quem é sua IA e o que ela sabe." />
 
       {loading || !settings ? (
-        <p className="text-sm text-muted-foreground">Carregando...</p>
+        <PageSkeleton rows={3} />
       ) : (
         <>
           <IdentityForm settings={settings} onUpdated={setSettings} />
           <ApiKeyCard settings={settings} onUpdated={setSettings} />
+          <MemoryCard settings={settings} onUpdated={setSettings} />
           <ToolsManager tools={tools} onChange={setTools} />
           <InstructionsManager instructions={instructions} onChange={setInstructions} />
           <Simulator />

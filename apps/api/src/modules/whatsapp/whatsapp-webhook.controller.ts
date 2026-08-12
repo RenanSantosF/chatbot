@@ -13,12 +13,21 @@ import {
 import type { RawBodyRequest } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
+import type { MessageStatus } from '../../../generated/prisma/client';
 import { Public } from '../../common/auth/public.decorator';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ConversationsService } from '../conversations/conversations.service';
 import type { WhatsAppWebhookPayload } from './whatsapp-webhook.types';
+
+/** Vocabulário de status da Meta -> o nosso. O que não estiver aqui é ignorado. */
+const STATUS_MAP: Record<string, MessageStatus | undefined> = {
+  sent: 'SENT',
+  delivered: 'DELIVERED',
+  read: 'READ',
+  failed: 'FAILED',
+};
 
 /**
  * Entrada única de webhook pra plataforma inteira — a Meta chama esta
@@ -97,20 +106,6 @@ export class WhatsappWebhookController {
       throw new ForbiddenException('Assinatura inválida.');
     }
 
-    if (messages.length === 0) {
-      // Evento de status (enviado/entregue/lido/falhou) de uma mensagem que a
-      // gente mandou — só loga, não precisa fazer mais nada por enquanto.
-      for (const status of value?.statuses ?? []) {
-        const errorDetail = status.errors?.[0]
-          ? ` erro=${status.errors[0].code} ${status.errors[0].title ?? ''} ${status.errors[0].message ?? ''}`.trim()
-          : '';
-        this.logger.log(
-          `Status de mensagem: id=${status.id}, status=${status.status}, para=${status.recipient_id}.${errorDetail}`,
-        );
-      }
-      return { ok: true };
-    }
-
     // Injeta um "usuário" sintético pro resto do pipeline (TenantPrismaService,
     // usado por ConversationsService) resolver o tenant certo — não existe
     // JWT aqui, quem autentica essa requisição é a assinatura HMAC acima.
@@ -121,6 +116,28 @@ export class WhatsappWebhookController {
       email: 'webhook@whatsapp',
       name: 'WhatsApp',
     };
+
+    if (messages.length === 0) {
+      // Evento de status (enviado/entregue/lido/falhou) de uma mensagem que a
+      // gente mandou — vira o tique de entrega no painel.
+      for (const status of value?.statuses ?? []) {
+        const errorDetail = status.errors?.[0]
+          ? ` erro=${status.errors[0].code} ${status.errors[0].title ?? ''} ${status.errors[0].message ?? ''}`.trim()
+          : '';
+        this.logger.log(
+          `Status de mensagem: id=${status.id}, status=${status.status}, para=${status.recipient_id}.${errorDetail}`,
+        );
+
+        const mapped = STATUS_MAP[status.status ?? ''];
+        if (mapped && status.id) {
+          await this.conversationsService.applyDeliveryStatus(
+            status.id,
+            mapped,
+          );
+        }
+      }
+      return { ok: true };
+    }
 
     const contact = value?.contacts?.[0];
 

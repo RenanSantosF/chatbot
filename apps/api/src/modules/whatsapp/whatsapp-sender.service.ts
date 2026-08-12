@@ -23,13 +23,18 @@ export class WhatsappSenderService {
     private readonly encryption: EncryptionService,
   ) {}
 
-  async sendText(to: string, body: string): Promise<void> {
+  /**
+   * Devolve o wamid da mensagem na Meta quando o envio dá certo (e null em
+   * qualquer falha) — é por esse id que os webhooks de status depois
+   * encontram a mensagem pra marcar entregue/lida no painel.
+   */
+  async sendText(to: string, body: string): Promise<string | null> {
     const settings = await this.prisma.db.whatsAppSettings.findFirst();
     if (!settings) {
       this.logger.warn(
         `Tenant ${this.prisma.tenantId} sem WhatsApp conectado — mensagem não enviada.`,
       );
-      return;
+      return null;
     }
 
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
@@ -60,15 +65,29 @@ export class WhatsappSenderService {
         this.logger.error(
           `Falha ao enviar mensagem via WhatsApp (${response.status}): ${responseBody}`,
         );
-      } else {
-        this.logger.log(
-          `Mensagem enviada via WhatsApp com sucesso: ${responseBody}`,
-        );
+        return null;
       }
+
+      this.logger.log(
+        `Mensagem enviada via WhatsApp com sucesso: ${responseBody}`,
+      );
+      return this.extractMessageId(responseBody);
     } catch (error) {
       this.logger.error(
         `Erro de rede ao enviar mensagem via WhatsApp: ${error instanceof Error ? error.message : error}`,
       );
+      return null;
+    }
+  }
+
+  private extractMessageId(responseBody: string): string | null {
+    try {
+      const parsed = JSON.parse(responseBody) as {
+        messages?: { id?: string }[];
+      };
+      return parsed.messages?.[0]?.id ?? null;
+    } catch {
+      return null;
     }
   }
 }

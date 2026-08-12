@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { AiToolPermission, Prisma } from '../../../../generated/prisma/client';
+import type { AiMemoryMode, AiToolPermission, Prisma } from '../../../../generated/prisma/client';
 import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
 import { QueuesService } from '../../queues/queues.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
@@ -30,6 +30,24 @@ const conversationInclude = {
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
   queue: true,
 } as const;
+
+/**
+ * Normaliza um Json vindo do banco (ou um argumento solto da IA) num mapa
+ * plano de texto->texto, descartando o que não for escalar. Evita que a IA
+ * enfie objetos aninhados na memória do cliente e quebre a exibição.
+ */
+function toStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry === null || entry === undefined) continue;
+    if (typeof entry === 'object') continue;
+    result[key] = String(entry);
+  }
+  return result;
+}
 
 /**
  * Catálogo de ferramentas nativas + execução com permissão. O catálogo em
@@ -162,7 +180,59 @@ export class AiToolsService {
         return { status: 'transferred', queue: queue?.name ?? null, assigned: Boolean(assignedUserId) };
       },
     },
+    {
+      key: 'rememberCustomerInfo',
+      name: 'Lembrar dados do cliente',
+      description:
+        'Guarda informações do cliente pra lembrar nas próximas conversas. Use quando o cliente contar algo sobre ele que vá ajudar a atender melhor depois. Nunca guarde senha, cartão, ou dado que o cliente pediu pra não registrar.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          info: {
+            type: 'object',
+            description:
+              'Pares chave-valor do que vale lembrar (ex: {"profissão": "advogado", "prefere ser chamado de": "Dr. Silva"})',
+            additionalProperties: { type: 'string' },
+          },
+        },
+        required: ['info'],
+      },
+      execute: async (args, ctx) => {
+        const info = toStringRecord(args.info);
+        if (Object.keys(info).length === 0) {
+          return { status: 'nothing_to_save' };
+        }
+
+        const conversation = await this.prisma.db.conversation.findFirst({
+          where: { id: ctx.conversationId },
+          include: { customer: true },
+        });
+        if (!conversation) {
+          throw new NotFoundException('Conversa não encontrada.');
+        }
+
+        // Mescla com o que já sabia em vez de sobrescrever: cada conversa
+        // acrescenta ao histórico do cliente, não recomeça do zero.
+        const current = toStringRecord(conversation.customer.metadata);
+        const merged = { ...current, ...info };
+
+        await this.prisma.db.customer.update({
+          where: { id: conversation.customerId },
+          data: { metadata: merged as Prisma.InputJsonValue },
+        });
+
+        return { status: 'saved', remembered: Object.keys(info) };
+      },
+    },
   ];
+
+  /** NONE desliga a memória por completo — nem declarada pra IA ela é. */
+  private async memoryMode(): Promise<AiMemoryMode> {
+    const settings = await this.prisma.db.aiSettings.findFirst({
+      select: { memoryMode: true },
+    });
+    return settings?.memoryMode ?? 'IMPORTANT_ONLY';
+  }
 
   private findInRegistry(key: string): BuiltInTool {
     const tool = this.registry.find((item) => item.key === key);
@@ -214,11 +284,31 @@ export class AiToolsService {
   async getEnabledDeclarations(): Promise<AiToolDeclaration[]> {
     const configured = await this.prisma.db.aiTool.findMany({ where: { enabled: true } });
     const enabledKeys = new Set(configured.map((tool) => tool.key));
-    const enabledTools = this.registry.filter((tool) => enabledKeys.has(tool.key));
 
+    const memoryMode = enabledKeys.has('rememberCustomerInfo')
+      ? await this.memoryMode()
+      : 'NONE';
+    if (memoryMode === 'NONE') {
+      enabledKeys.delete('rememberCustomerInfo');
+    }
+
+    const enabledTools = this.registry.filter((tool) => enabledKeys.has(tool.key));
     const queues = enabledKeys.has('transferToQueue') ? await this.prisma.db.queue.findMany() : [];
 
     return enabledTools.map((tool) => {
+      // O limite do que pode ser guardado vai na própria descrição da
+      // ferramenta: é assim que a IA sabe onde parar antes de chamar.
+      if (tool.key === 'rememberCustomerInfo') {
+        return {
+          name: tool.key,
+          description:
+            memoryMode === 'IMPORTANT_ONLY'
+              ? `${tool.description} Guarde SOMENTE o essencial pra um próximo atendimento (como profissão, preferência de tratamento ou assunto recorrente). Não registre detalhes triviais da conversa.`
+              : `${tool.description} Pode registrar detalhes gerais úteis que aparecerem na conversa.`,
+          parametersSchema: tool.parametersSchema,
+        };
+      }
+
       if (tool.key !== 'transferToQueue' || queues.length === 0) {
         return { name: tool.key, description: tool.description, parametersSchema: tool.parametersSchema };
       }
@@ -251,6 +341,13 @@ export class AiToolsService {
 
     if (permission === 'DENY') {
       return { error: 'Esta ferramenta não está disponível.' };
+    }
+
+    // Segunda barreira do modo de memória: mesmo que a ferramenta escape na
+    // declaração (config antiga em cache do provedor, por exemplo), com
+    // NONE nada é gravado.
+    if (key === 'rememberCustomerInfo' && (await this.memoryMode()) === 'NONE') {
+      return { error: 'Guardar dados do cliente está desativado nesta empresa.' };
     }
 
     if (permission === 'REQUIRES_APPROVAL') {

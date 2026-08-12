@@ -3,6 +3,7 @@ import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { Roles } from '../../common/auth/roles.decorator';
 import type { RequestUser } from '../auth/auth.types';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
@@ -21,6 +22,22 @@ export class UsersController {
   @Roles('OWNER')
   create(@Body() dto: CreateUserDto) {
     return this.usersService.create(dto);
+  }
+
+  // As rotas de 'me' vêm antes de ':id' de propósito: o Nest casa na ordem
+  // de declaração, e se ':id' viesse antes ele engoliria 'me' como um id.
+  // Sem @Roles: qualquer usuário mexe na própria conta, inclusive AGENT.
+  @Get('me')
+  getProfile(@CurrentUser() user: RequestUser) {
+    return this.usersService.getProfile(user.userId);
+  }
+
+  @Patch('me')
+  updateProfile(
+    @Body() dto: UpdateProfileDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.usersService.updateProfile(user.userId, dto);
   }
 
   @Patch(':id')

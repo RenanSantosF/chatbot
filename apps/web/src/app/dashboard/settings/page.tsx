@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { WhatsAppSettingsCard } from "@/components/settings/whatsapp-settings-card";
+import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import type { WhatsAppSettings } from "@/lib/types";
 
@@ -19,13 +21,13 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Configurações</h1>
-        <p className="text-muted-foreground">Canais de atendimento e integrações da sua empresa.</p>
-      </div>
+      <PageHeader
+        title="Configurações"
+        description="Canais de atendimento e integrações da sua empresa."
+      />
 
       {loading || !whatsapp ? (
-        <p className="text-sm text-muted-foreground">Carregando...</p>
+        <PageSkeleton rows={2} />
       ) : (
         <WhatsAppSettingsCard settings={whatsapp} onUpdated={setWhatsapp} />
       )}

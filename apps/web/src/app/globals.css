@@ -127,4 +127,72 @@
   html {
     @apply font-sans;
   }
+
+  /* Barras de rolagem discretas: o painel tem várias colunas roláveis ao
+     mesmo tempo e a barra padrão do Windows/Linux polui demais. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Paleta dos gráficos. Fica separada dos tokens do produto de propósito: as
+   cores de série precisam passar nas checagens de daltonismo e contraste
+   contra a superfície do cartão, o que a cor de marca (teal) sozinha não
+   garante. Os dois modos foram validados como conjunto — o escuro é a
+   mesma dupla de matizes re-escalonada, não um espelho automático. */
+.viz {
+  --viz-grid: color-mix(in oklch, var(--foreground) 12%, transparent);
+  --viz-surface: var(--card);
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
+}
+
+.dark .viz {
+  --viz-series-1: #3987e5;
+  --viz-series-2: #d95926;
+}
+
+/* Brilho que atravessa os esqueletos de carregamento. Fica bem melhor que
+   o pulse puro, que só pisca a caixa inteira. */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--foreground) 8%, transparent),
+    transparent
+  );
+  animation: shimmer 1.6s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after {
+    animation: none;
+  }
 }
