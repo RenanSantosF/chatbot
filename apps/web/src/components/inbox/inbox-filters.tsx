@@ -50,24 +50,30 @@ export function InboxFilterBar({
   value,
   counts,
   onChange,
+  action,
 }: {
   value: InboxFilters;
   counts: FilterCounts;
   onChange: (filters: InboxFilters) => void;
+  /** Botão de ação que fica à direita da busca (ex.: simular cliente). */
+  action?: React.ReactNode;
 }) {
   const set = <K extends keyof InboxFilters>(key: K, next: InboxFilters[K]) =>
     onChange({ ...value, [key]: next });
 
   return (
     <div className="flex flex-col gap-2.5 border-b p-3">
-      <div className="relative">
-        <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={value.search}
-          onChange={(event) => set("search", event.target.value)}
-          placeholder="Buscar nome ou telefone"
-          className="h-8 pl-7 text-xs"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={value.search}
+            onChange={(event) => set("search", event.target.value)}
+            placeholder="Buscar nome ou telefone"
+            className="h-8 pl-7 text-xs"
+          />
+        </div>
+        {action}
       </div>
 
       <div className="grid grid-cols-3 gap-2">

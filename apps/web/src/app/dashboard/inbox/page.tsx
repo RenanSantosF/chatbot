@@ -13,7 +13,6 @@ import {
   type InboxFilters,
 } from "@/components/inbox/inbox-filters";
 import { SimulateInboundDialog } from "@/components/inbox/simulate-inbound-dialog";
-import { PageHeader } from "@/components/page-header";
 import { useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
 import { conversationCache } from "@/lib/conversation-cache";
@@ -368,46 +367,46 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] flex-col gap-3">
-      <PageHeader
-        title="Inbox"
-        description="Conversas em tempo real."
-        action={<SimulateInboundDialog onSimulated={() => loadConversations(filters)} />}
-      />
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-lg border bg-card shadow-sm md:grid-cols-[330px_1fr] xl:grid-cols-[330px_1fr_290px]">
-        <div className="hidden min-h-0 flex-col border-r md:flex">
-          <InboxFilterBar value={filters} counts={counts} onChange={setFilters} />
-          <ConversationList
-            conversations={conversations}
-            selectedId={selectedId}
-            liveUnread={unreadCounts}
-            loading={loadingList}
-            hasMore={Boolean(cursor)}
-            loadingMore={loadingMore}
-            onLoadMore={loadMore}
-            onSelect={setSelectedId}
-          />
-        </div>
-        <ChatPanel
-          conversation={detail}
-          sending={sending}
-          replyTo={replyTo}
-          hasOlder={Boolean(messagesCursor)}
-          onLoadOlder={loadOlderMessages}
-          onReply={setReplyTo}
-          onCancelReply={() => setReplyTo(null)}
-          onReact={handleReact}
-          onSend={handleSend}
-          onSendFile={handleSendFile}
-          onAssign={() => handleAction("assign", "Não deu pra assumir essa conversa.")}
-          onResolve={() => handleAction("resolve", "Não deu pra resolver essa conversa.")}
-          onReactivateAi={() => handleAction("reactivate-ai", "Não deu pra reativar a IA.")}
-          onChangePriority={handlePriority}
+    // Sem cartão, sem margem, sem título: a tela inteira é o painel, do
+    // jeito que o WhatsApp Web faz. O cabeçalho da conversa e a barra de
+    // filtros já dizem onde a pessoa está.
+    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[340px_1fr] xl:grid-cols-[340px_1fr_300px]">
+      <div className="hidden min-h-0 flex-col border-r md:flex">
+        <InboxFilterBar
+          value={filters}
+          counts={counts}
+          onChange={setFilters}
+          action={<SimulateInboundDialog onSimulated={() => loadConversations(filters)} />}
         />
-        <div className="hidden overflow-y-auto border-l xl:block">
-          <CustomerPanel conversation={detail} />
-        </div>
+        <ConversationList
+          conversations={conversations}
+          selectedId={selectedId}
+          liveUnread={unreadCounts}
+          loading={loadingList}
+          hasMore={Boolean(cursor)}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
+          onSelect={setSelectedId}
+        />
+      </div>
+      <ChatPanel
+        conversation={detail}
+        sending={sending}
+        replyTo={replyTo}
+        hasOlder={Boolean(messagesCursor)}
+        onLoadOlder={loadOlderMessages}
+        onReply={setReplyTo}
+        onCancelReply={() => setReplyTo(null)}
+        onReact={handleReact}
+        onSend={handleSend}
+        onSendFile={handleSendFile}
+        onAssign={() => handleAction("assign", "Não deu pra assumir essa conversa.")}
+        onResolve={() => handleAction("resolve", "Não deu pra resolver essa conversa.")}
+        onReactivateAi={() => handleAction("reactivate-ai", "Não deu pra reativar a IA.")}
+        onChangePriority={handlePriority}
+      />
+      <div className="hidden overflow-y-auto border-l xl:block">
+        <CustomerPanel conversation={detail} />
       </div>
     </div>
   );

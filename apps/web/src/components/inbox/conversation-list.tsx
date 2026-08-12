@@ -11,6 +11,16 @@ import { PRIORITY_META } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import type { ConversationStatus, ConversationSummary } from "@/lib/types";
 
+/** Prévia de mídia na lista, no espírito do "📷 Foto" do WhatsApp. */
+const MEDIA_PREVIEW: Record<string, string> = {
+  IMAGE: "Imagem",
+  AUDIO: "Áudio",
+  VIDEO: "Vídeo",
+  DOCUMENT: "Documento",
+  LOCATION: "Localização",
+  OTHER: "Anexo",
+};
+
 const STATUS_LABEL: Record<ConversationStatus, string> = {
   OPEN: "Aberta",
   WAITING_CUSTOMER: "Aguard. cliente",
@@ -110,6 +120,12 @@ export function ConversationList({
         const selected = selectedId === conversation.id;
         const priority = PRIORITY_META[conversation.priority];
         const showPriority = conversation.priority === "URGENT" || conversation.priority === "HIGH";
+        const last = conversation.lastMessage;
+        const preview = last
+          ? `${last.senderType === "CUSTOMER" ? "" : "Você: "}${
+              last.messageType === "TEXT" ? last.content : MEDIA_PREVIEW[last.messageType] ?? "Anexo"
+            }`
+          : "Sem mensagens ainda";
 
         return (
           <button
@@ -155,7 +171,15 @@ export function ConversationList({
                   ) : null}
                 </div>
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              <p
+                className={cn(
+                  "mt-0.5 truncate text-xs",
+                  unread > 0 ? "font-medium text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {preview}
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-1">
                 {showPriority ? (
                   <span
                     className={cn(

@@ -153,6 +153,7 @@ function Shell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isInbox = pathname === "/dashboard/inbox";
 
   async function handleLogout() {
     await apiFetch("/auth/logout", { method: "POST" });
@@ -230,15 +231,22 @@ function Shell({
             </span>
           </div>
         ) : null}
-        <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+        {/* O Inbox é a tela principal e ocupa tudo, colado nas bordas, como
+            no WhatsApp Web: sem respiro em volta, sem título por cima e sem
+            rolagem da página — quem rola são as colunas de dentro. As
+            demais telas são de leitura/formulário e ficam melhor com margem
+            e medida de linha limitada. */}
+        <main
+          className={cn(
+            "flex flex-1 flex-col",
+            isInbox ? "min-h-0 overflow-hidden" : "overflow-y-auto p-4 sm:p-6",
+          )}
+        >
           <div
             key={pathname}
             className={cn(
-              "mx-auto flex w-full flex-1 flex-col gap-6",
-              // O Inbox é um painel de três colunas e precisa de toda a
-              // largura; as telas de leitura/formulário ficam melhor com
-              // uma medida de linha limitada.
-              pathname === "/dashboard/inbox" ? "max-w-none" : "max-w-6xl",
+              "flex w-full flex-1 flex-col",
+              isInbox ? "min-h-0" : "mx-auto max-w-6xl gap-6",
               "duration-300 ease-out animate-in fade-in slide-in-from-bottom-2",
             )}
           >

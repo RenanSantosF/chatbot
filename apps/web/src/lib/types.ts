@@ -109,6 +109,8 @@ export interface ConversationSummary {
   escalationReason: string | null;
   escalationSummary: string | null;
   collectedData: Record<string, string> | null;
+  /** Só a mensagem mais recente, pra prévia na lista. */
+  lastMessage?: { content: string; senderType: MessageSenderType; messageType: MessageType } | null;
 }
 
 export interface ConversationDetail extends ConversationSummary {

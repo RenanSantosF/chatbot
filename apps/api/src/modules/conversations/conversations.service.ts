@@ -64,7 +64,25 @@ const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
   queue: { select: { id: true, key: true, name: true } },
+  // Prévia da última mensagem — é o que faz a lista parecer um mensageiro
+  // em vez de uma tabela de chamados. Uma só, a mais recente.
+  messages: {
+    take: 1,
+    orderBy: { createdAt: 'desc' },
+    select: { content: true, senderType: true, messageType: true },
+  },
 } as const;
+
+/**
+ * O include traz a última mensagem dentro de `messages`, mas esse nome
+ * colide com o histórico completo do detalhe da conversa — o painel faz
+ * `{...detalhe, ...resumo}` ao receber um evento, e o array de um item
+ * sobrescreveria o histórico inteiro. Por isso vira `lastMessage`.
+ */
+function toSummary<T extends { messages: unknown[] }>(conversation: T) {
+  const { messages, ...rest } = conversation;
+  return { ...rest, lastMessage: messages[0] ?? null };
+}
 
 // A mensagem citada vem junto, mas só com o essencial pra desenhar a
 // tarjinha de citação — sem isso a tela teria que caçar a original, que
@@ -153,7 +171,7 @@ export class ConversationsService {
     const page = hasMore ? items.slice(0, take) : items;
 
     return {
-      items: page,
+      items: page.map(toSummary),
       nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
     };
   }
@@ -271,7 +289,7 @@ export class ConversationsService {
       this.realtime.emitToTenant(
         this.prisma.tenantId,
         'conversation.updated',
-        updated,
+        toSummary(updated),
       );
       // Avisa a Meta que a empresa leu — só se a empresa quiser revelar
       // isso (ver InboxSettings.sendReadReceipts).
@@ -315,7 +333,7 @@ export class ConversationsService {
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
-      conversation,
+      toSummary(conversation),
     );
     return conversation;
   }
@@ -393,7 +411,7 @@ export class ConversationsService {
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
-      conversation,
+      toSummary(conversation),
     );
 
     // Só ecoa pro WhatsApp respostas da empresa (IA ou atendente) — mensagens
@@ -633,7 +651,7 @@ export class ConversationsService {
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
-      updated,
+      toSummary(updated),
     );
 
     return message;
@@ -655,7 +673,7 @@ export class ConversationsService {
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
-      conversation,
+      toSummary(conversation),
     );
     return conversation;
   }
@@ -686,7 +704,7 @@ export class ConversationsService {
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
-      conversation,
+      toSummary(conversation),
     );
     return conversation;
   }
@@ -703,7 +721,7 @@ export class ConversationsService {
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
-      conversation,
+      toSummary(conversation),
     );
     return conversation;
   }

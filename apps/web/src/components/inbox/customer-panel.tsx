@@ -1,4 +1,6 @@
+import { UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/empty-state";
 import type { AiMode, ConversationDetail, ConversationPriority, ConversationStatus } from "@/lib/types";
 import { TasksSection } from "./tasks-section";
 
@@ -35,7 +37,15 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export function CustomerPanel({ conversation }: { conversation: ConversationDetail | null }) {
   if (!conversation) {
-    return <div className="p-4 text-sm text-muted-foreground">Nenhuma conversa selecionada.</div>;
+    return (
+      <div className="p-4">
+        <EmptyState
+          icon={UserRound}
+          title="Sem conversa aberta"
+          description="Os dados do cliente aparecem aqui quando você abre uma conversa."
+        />
+      </div>
+    );
   }
 
   return (
@@ -103,7 +113,10 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
       ) : null}
 
       <div className="flex flex-wrap gap-1.5">
-        <Badge variant="secondary">{conversation.messages.length} mensagens</Badge>
+        <Badge variant="secondary">
+          {conversation.messages.length}{" "}
+          {conversation.messages.length === 1 ? "mensagem" : "mensagens"}
+        </Badge>
       </div>
 
       <TasksSection key={conversation.id} conversationId={conversation.id} />

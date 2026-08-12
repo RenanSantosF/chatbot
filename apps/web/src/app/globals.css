@@ -130,13 +130,13 @@
    data URI, não há requisição de rede nem risco de o padrão não carregar. */
 .chat-wallpaper {
   background-color: #efeae2;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M8 12c3-4 7-4 10 0'/%3E%3Cpath d='M40 6c2.5 3 2.5 6 0 9'/%3E%3Cpath d='M52 26c-3 2-6 1-8-2'/%3E%3Cpath d='M18 38c4-1 7 1 8 5'/%3E%3Cpath d='M44 48c-2 3-6 4-9 2'/%3E%3Cpath d='M6 54c3-3 7-3 10 0'/%3E%3Ccircle cx='30' cy='24' r='2.5'/%3E%3Ccircle cx='58' cy='42' r='2'/%3E%3Ccircle cx='12' cy='28' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Ccircle cx='6' cy='6' r='1' fill='%23000' fill-opacity='0.035'/%3E%3Ccircle cx='26' cy='18' r='1' fill='%23000' fill-opacity='0.035'/%3E%3Ccircle cx='14' cy='32' r='1' fill='%23000' fill-opacity='0.035'/%3E%3C/svg%3E");
   background-repeat: repeat;
 }
 
 .dark .chat-wallpaper {
   background-color: #0b141a;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23fff' stroke-opacity='0.05' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M8 12c3-4 7-4 10 0'/%3E%3Cpath d='M40 6c2.5 3 2.5 6 0 9'/%3E%3Cpath d='M52 26c-3 2-6 1-8-2'/%3E%3Cpath d='M18 38c4-1 7 1 8 5'/%3E%3Cpath d='M44 48c-2 3-6 4-9 2'/%3E%3Cpath d='M6 54c3-3 7-3 10 0'/%3E%3Ccircle cx='30' cy='24' r='2.5'/%3E%3Ccircle cx='58' cy='42' r='2'/%3E%3Ccircle cx='12' cy='28' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Ccircle cx='6' cy='6' r='1' fill='%23fff' fill-opacity='0.04'/%3E%3Ccircle cx='26' cy='18' r='1' fill='%23fff' fill-opacity='0.04'/%3E%3Ccircle cx='14' cy='32' r='1' fill='%23fff' fill-opacity='0.04'/%3E%3C/svg%3E");
 }
 
 /* Paleta dos gráficos. Fica separada dos tokens do produto de propósito: as
