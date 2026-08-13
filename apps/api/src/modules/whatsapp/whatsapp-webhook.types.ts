@@ -44,6 +44,24 @@ export interface WhatsAppMessageEcho extends WhatsAppInboundMessage {
   to?: string;
 }
 
+/**
+ * Um contato da agenda do aparelho, vindo do campo `smb_app_state_sync`.
+ *
+ * Só existe em coexistência: a Meta sincroniza a agenda do WhatsApp Business
+ * do celular e avisa a cada inclusão, alteração ou remoção. Em `remove` o
+ * nome não vem — só o telefone.
+ */
+export interface WhatsAppStateSync {
+  type?: string;
+  action?: 'add' | 'remove';
+  contact?: {
+    full_name?: string;
+    first_name?: string;
+    phone_number?: string;
+  };
+  metadata?: { timestamp?: string };
+}
+
 export interface WhatsAppWebhookPayload {
   object?: string;
   entry?: Array<{
@@ -56,6 +74,8 @@ export interface WhatsAppWebhookPayload {
         messages?: WhatsAppInboundMessage[];
         /** Campo `smb_message_echoes` — respostas dadas pelo celular. */
         message_echoes?: WhatsAppMessageEcho[];
+        /** Campo `smb_app_state_sync` — agenda de contatos do aparelho. */
+        state_sync?: WhatsAppStateSync[];
         statuses?: Array<{
           id?: string;
           status?: string;

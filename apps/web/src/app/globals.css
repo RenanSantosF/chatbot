@@ -152,25 +152,32 @@ button:disabled,
  * parece neutro, parece encardido; é o azul levíssimo que faz o preto
  * parecer limpo.
  *
- * Cada valor abaixo traz o hexadecimal de origem justamente pra isso poder
- * ser conferido contra o aplicativo em vez de discutido no olho.
+ * Um degrau ACIMA do WhatsApp, de propósito: a paleta original é desenhada
+ * pra celular no escuro, e #0B141A puro cansa em oito horas de painel. O que
+ * subiu foi só a claridade — o matiz 238 e o croma de cada superfície são os
+ * mesmos, porque era o azul (e não a claridade) que tirava o aspecto sujo.
+ * Cada token traz o hexadecimal resultante; o comentário do bloco anterior
+ * no histórico tem os hexadecimais originais da Meta pra comparação.
+ *
+ * Contraste conferido: texto sobre fundo 14.2:1, texto sobre balão recebido
+ * 10.1:1, texto fraco sobre fundo 6.3:1 — todos com folga sobre o mínimo.
  *
  * O verde continua restrito a ação (botão, balão de saída, seleção) — em
  * nenhuma superfície de fundo. */
 .dark {
-  --background: oklch(0.1854 0.0182 238.2); /* #0B141A */
+  --background: oklch(0.235 0.018 238.2); /* #161F26 */
   --foreground: oklch(0.9436 0.0051 228.8); /* #E9EDEF */
-  --card: oklch(0.2153 0.0187 235.1); /* #111B21 */
+  --card: oklch(0.268 0.019 235.1); /* #1D282E */
   --card-foreground: oklch(0.9436 0.0051 228.8);
-  --popover: oklch(0.3036 0.0226 230); /* #233138 */
+  --popover: oklch(0.355 0.023 230); /* #303E46 */
   --popover-foreground: oklch(0.9436 0.0051 228.8);
   --primary: oklch(0.6509 0.1283 170.4); /* #00A884 */
-  --primary-foreground: oklch(0.1854 0.0182 238.2);
-  --secondary: oklch(0.2851 0.0209 234.1); /* #202C33 */
+  --primary-foreground: oklch(0.235 0.018 238.2);
+  --secondary: oklch(0.335 0.021 234.1); /* #2C3940 */
   --secondary-foreground: oklch(0.9436 0.0051 228.8);
-  --muted: oklch(0.2851 0.0209 234.1); /* #202C33 */
-  --muted-foreground: oklch(0.6637 0.0236 235.2); /* #8696A0 */
-  --accent: oklch(0.3036 0.0226 230); /* #233138 */
+  --muted: oklch(0.335 0.021 234.1); /* #2C3940 */
+  --muted-foreground: oklch(0.70 0.024 235.2);
+  --accent: oklch(0.355 0.023 230); /* #303E46 */
   --accent-foreground: oklch(0.9436 0.0051 228.8);
   --destructive: oklch(0.68 0.19 22);
   /* 5%, não os 3% de antes: a divisória é medida contra o fundo, e o fundo
@@ -179,26 +186,26 @@ button:disabled,
   --border: oklch(1 0 0 / 5%);
   --input: oklch(1 0 0 / 9%);
   --ring: oklch(0.6509 0.1283 170.4);
-  --chat-bg: oklch(0.1854 0.0182 238.2); /* #0B141A */
+  --chat-bg: oklch(0.235 0.018 238.2); /* #161F26 */
   --chat-dot: oklch(1 0 0 / 3%);
-  --bubble-out: oklch(0.4237 0.0803 174.4); /* #005C4B */
+  --bubble-out: oklch(0.465 0.080 174.4); /* #176856 */
   --bubble-out-foreground: oklch(0.9436 0.0051 228.8);
   /* Token próprio, e não `card`: o balão recebido precisa se destacar do
      papel de parede (#0B141A), enquanto a superfície de painel fica um
      degrau abaixo (#111B21). Usando `card` nos dois, o balão do cliente
      praticamente sumia no fundo do chat. */
-  --bubble-in: oklch(0.2851 0.0209 234.1); /* #202C33 */
+  --bubble-in: oklch(0.335 0.021 234.1); /* #2C3940 */
   --bubble-in-foreground: oklch(0.9436 0.0051 228.8);
   --chart-1: oklch(0.6509 0.1283 170.4);
   --chart-2: oklch(0.6637 0.0236 235.2);
   --chart-3: oklch(0.52 0.02 235);
   --chart-4: oklch(0.4 0.02 235);
-  --chart-5: oklch(0.3036 0.0226 230);
-  --sidebar: oklch(0.2153 0.0187 235.1); /* #111B21 */
+  --chart-5: oklch(0.355 0.023 230);
+  --sidebar: oklch(0.268 0.019 235.1); /* #1D282E */
   --sidebar-foreground: oklch(0.9436 0.0051 228.8);
   --sidebar-primary: oklch(0.6509 0.1283 170.4);
-  --sidebar-primary-foreground: oklch(0.1854 0.0182 238.2);
-  --sidebar-accent: oklch(0.2983 0.0477 168.6); /* #103529, a pílula verde */
+  --sidebar-primary-foreground: oklch(0.235 0.018 238.2);
+  --sidebar-accent: oklch(0.345 0.048 168.6); /* #1D4135, a pílula verde */
   --sidebar-accent-foreground: oklch(0.9436 0.0051 228.8);
   --sidebar-border: oklch(1 0 0 / 5%);
   --sidebar-ring: oklch(0.6509 0.1283 170.4);

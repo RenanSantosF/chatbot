@@ -71,6 +71,46 @@ export class CustomersService {
     return { criados, atualizados };
   }
 
+  /**
+   * Um contato vindo da agenda do celular (coexistência,
+   * `smb_app_state_sync`).
+   *
+   * O nome do celular só preenche quem ainda não tem nome de verdade: se o
+   * cliente já apareceu numa conversa, o nome do perfil do WhatsApp dele
+   * vale mais que a etiqueta que a empresa deu na agenda. E como o telefone
+   * costuma ser o próprio "nome" de quem chegou por mensagem, ele conta
+   * como vazio pra esse fim.
+   *
+   * `remove` na agenda não apaga o cliente daqui: ele pode ter histórico de
+   * atendimento, e sumir com a conversa por causa de uma faxina na agenda do
+   * celular seria perda de dado.
+   */
+  async upsertFromAddressBook(input: { phone: string; name?: string }) {
+    const existing = await this.prisma.db.customer.findFirst({
+      where: { phone: input.phone },
+    });
+
+    if (!existing) {
+      return this.prisma.db.customer.create({
+        data: {
+          tenantId: this.prisma.tenantId,
+          phone: input.phone,
+          name: input.name?.trim() || input.phone,
+        },
+      });
+    }
+
+    const semNomeDeVerdade = !existing.name?.trim() || existing.name === existing.phone;
+    if (input.name?.trim() && semNomeDeVerdade) {
+      return this.prisma.db.customer.update({
+        where: { id: existing.id },
+        data: { name: input.name.trim() },
+      });
+    }
+
+    return existing;
+  }
+
   async findOrCreateByPhone({ phone, name }: FindOrCreateInput) {
     const existing = await this.prisma.db.customer.findFirst({ where: { phone } });
     if (existing) {

@@ -36,17 +36,23 @@ const EMPTY_COUNTS: FilterCounts = {
   unread: 0,
   mine: 0,
   unassigned: 0,
+  pendentes: 0,
+  aguardando: 0,
+  resolvidas: 0,
   status: {},
   priority: {},
 };
 
 function buildQuery(filters: InboxFilters, cursor?: string | null): string {
   const params = new URLSearchParams();
+  if (filters.grupo !== "ALL") params.set("statusGroup", filters.grupo);
   if (filters.status !== "ALL") params.set("status", filters.status);
   if (filters.priority !== "ALL") params.set("priority", filters.priority);
-  if (filters.scope === "MINE") params.set("mine", "true");
-  if (filters.scope === "UNREAD") params.set("unread", "true");
-  if (filters.scope === "UNASSIGNED") params.set("unassigned", "true");
+  // Interruptores independentes: dá pra pedir "minhas E não lidas", coisa
+  // que a versão anterior (opções exclusivas) não permitia.
+  if (filters.mine) params.set("mine", "true");
+  if (filters.unread) params.set("unread", "true");
+  if (filters.unassigned) params.set("unassigned", "true");
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (cursor) params.set("cursor", cursor);
   const query = params.toString();

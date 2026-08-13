@@ -28,6 +28,27 @@ import {
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
 
+/**
+ * Os três estados que importam pra quem atende, montados a partir dos cinco
+ * status internos.
+ *
+ * A lista de status crua ("Abertas", "Aguard. atendente", "Aguard.
+ * cliente", "Resolvidas", "Fechadas") descreve a máquina de estados, não o
+ * trabalho. Quem abre o painel de manhã pergunta outra coisa: o que é minha
+ * vez de responder, o que está esperando o cliente, e o que já acabou.
+ *
+ * PENDING junta OPEN e WAITING_AGENT porque nos dois a bola está com a
+ * empresa. DONE junta RESOLVED e CLOSED porque a diferença entre os dois
+ * não muda nada pra quem está escolhendo o que fazer agora.
+ */
+export const STATUS_GROUPS = {
+  PENDING: ['OPEN', 'WAITING_AGENT'],
+  WAITING: ['WAITING_CUSTOMER'],
+  DONE: ['RESOLVED', 'CLOSED'],
+} as const satisfies Record<string, readonly ConversationStatus[]>;
+
+export type StatusGroup = keyof typeof STATUS_GROUPS;
+
 const OPEN_STATUSES: ConversationStatus[] = [
   'OPEN',
   'WAITING_CUSTOMER',
@@ -130,6 +151,8 @@ export class ConversationsService {
    */
   async list(filter: {
     status?: ConversationStatus;
+    /** Grupo de trabalho (ver STATUS_GROUPS). Ignorado se `status` vier. */
+    statusGroup?: StatusGroup;
     assignedUserId?: string;
     queueId?: string;
     customerId?: string;
@@ -149,7 +172,13 @@ export class ConversationsService {
     const items = await this.prisma.db.conversation.findMany({
       where: {
         ...recorte,
-        ...(filter.status ? { status: filter.status } : {}),
+        // Status exato ganha do grupo: se alguém pediu "só as fechadas",
+        // não faz sentido devolver também as resolvidas.
+        ...(filter.status
+          ? { status: filter.status }
+          : filter.statusGroup
+            ? { status: { in: [...STATUS_GROUPS[filter.statusGroup]] } }
+            : {}),
         ...(filter.assignedUserId
           ? { assignedUserId: filter.assignedUserId }
           : {}),
@@ -226,12 +255,33 @@ export class ConversationsService {
 
   /** Contadores de cada filtro, calculados no banco pra não depender da página carregada. */
   async counts(userId: string) {
-    const [total, unread, mine, unassigned, byStatus, byPriority] =
-      await Promise.all([
+    const [
+      total,
+      unread,
+      mine,
+      unassigned,
+      pendentes,
+      aguardando,
+      resolvidas,
+      byStatus,
+      byPriority,
+    ] = await Promise.all([
         this.prisma.db.conversation.count(),
         this.prisma.db.conversation.count({ where: { unreadCount: { gt: 0 } } }),
         this.prisma.db.conversation.count({ where: { assignedUserId: userId } }),
         this.prisma.db.conversation.count({ where: { assignedUserId: null } }),
+        // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
+        // quem atende faz de manhã — o que é minha vez, o que está com o
+        // cliente, o que já acabou.
+        this.prisma.db.conversation.count({
+          where: { status: { in: [...STATUS_GROUPS.PENDING] } },
+        }),
+        this.prisma.db.conversation.count({
+          where: { status: { in: [...STATUS_GROUPS.WAITING] } },
+        }),
+        this.prisma.db.conversation.count({
+          where: { status: { in: [...STATUS_GROUPS.DONE] } },
+        }),
         this.prisma.db.conversation.groupBy({
           by: ['status'],
           _count: { _all: true },
@@ -247,6 +297,9 @@ export class ConversationsService {
       unread,
       mine,
       unassigned,
+      pendentes,
+      aguardando,
+      resolvidas,
       status: Object.fromEntries(
         byStatus.map((row) => [row.status, row._count._all]),
       ),

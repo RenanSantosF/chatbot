@@ -17,7 +17,7 @@ import type {
   ConversationStatus,
 } from '../../../generated/prisma/client';
 import type { RequestUser } from '../auth/auth.types';
-import { ConversationsService } from './conversations.service';
+import { ConversationsService, type StatusGroup } from './conversations.service';
 import { StartConversationDto } from './dto/start-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetPriorityDto } from './dto/set-priority.dto';
@@ -30,6 +30,7 @@ export class ConversationsController {
   @Get()
   list(
     @Query('status') status: ConversationStatus | undefined,
+    @Query('statusGroup') statusGroup: StatusGroup | undefined,
     @Query('mine') mine: string | undefined,
     @Query('queueId') queueId: string | undefined,
     @Query('customerId') customerId: string | undefined,
@@ -43,6 +44,7 @@ export class ConversationsController {
   ) {
     return this.conversationsService.list({
       status,
+      statusGroup,
       assignedUserId: mine === 'true' ? user.userId : undefined,
       unassignedOnly: unassigned === 'true',
       queueId,

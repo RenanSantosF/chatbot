@@ -1,23 +1,40 @@
 "use client";
 
-import { ListFilter, Search, X } from "lucide-react";
+import { CheckCheck, Clock3, Inbox, Search, SlidersHorizontal, X } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import type { ConversationPriority, ConversationStatus } from "@/lib/types";
 
+/** Os três grupos de trabalho vindos da API (ver STATUS_GROUPS no backend). */
+export type StatusGroup = "PENDING" | "WAITING" | "DONE";
+
 export interface InboxFilters {
+  /** Grupo de trabalho. "ALL" = não filtra. */
+  grupo: StatusGroup | "ALL";
   status: ConversationStatus | "ALL";
   priority: ConversationPriority | "ALL";
-  scope: "ALL" | "MINE" | "UNREAD" | "UNASSIGNED";
+  mine: boolean;
+  unread: boolean;
+  unassigned: boolean;
   search: string;
 }
 
+/**
+ * Abre em "Pendentes", não em "Tudo".
+ *
+ * A tela existe pra responder "o que eu preciso fazer agora". Abrir com
+ * tudo misturado — inclusive o que já foi resolvido — obriga a pessoa a
+ * filtrar antes de começar a trabalhar, todo dia.
+ */
 export const DEFAULT_FILTERS: InboxFilters = {
+  grupo: "PENDING",
   status: "ALL",
   priority: "ALL",
-  scope: "ALL",
+  mine: false,
+  unread: false,
+  unassigned: false,
   search: "",
 };
 
@@ -27,6 +44,9 @@ export interface FilterCounts {
   unread: number;
   mine: number;
   unassigned: number;
+  pendentes: number;
+  aguardando: number;
+  resolvidas: number;
   status: Partial<Record<ConversationStatus, number>>;
   priority: Partial<Record<ConversationPriority, number>>;
 }
@@ -47,79 +67,32 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   CLOSED: "Fechadas",
 };
 
-interface ChipOption {
-  value: string;
+const GRUPOS: {
+  value: StatusGroup | "ALL";
   label: string;
-  count?: number;
-  dot?: string;
-}
-
-/**
- * Fila de pastilhas no lugar de um seletor. É o mesmo gesto do WhatsApp
- * Web ("Tudo · Não lidas · Favoritas"): o valor ativo fica à vista e trocar
- * custa um clique, não dois. Rola na horizontal porque a coluna é estreita
- * e quebrar linha faria a lista pular de altura conforme o filtro.
- */
-/**
- * Segmentos, não pastilhas soltas. A versão anterior era uma fila de
- * pílulas do mesmo tamanho e peso: dava pra ver que existiam filtros, mas
- * não qual estava valendo, e a contagem competia com o rótulo. Aqui o
- * fundo do trilho agrupa as opções, o segmento ativo ganha superfície
- * elevada, e a contagem vira uma bolinha à direita do rótulo.
- */
-function SegmentRow({
-  name,
-  value,
-  options,
-  onChange,
-}: {
-  name: string;
-  value: string;
-  options: ChipOption[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={name}
-      className="flex gap-0.5 overflow-x-auto rounded-lg bg-muted p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
-      {options.map((option) => {
-        const active = value === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(option.value)}
-            className={cn(
-              "flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] whitespace-nowrap transition-all duration-150",
-              active
-                ? "bg-card font-semibold text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {option.dot ? (
-              <span className={cn("size-2 rounded-full", option.dot)} aria-hidden />
-            ) : null}
-            {option.label}
-            {option.count === undefined || option.count === 0 ? null : (
-              <span
-                className={cn(
-                  "rounded-full px-1.5 py-px text-[11px] leading-none tabular-nums",
-                  active ? "bg-primary text-primary-foreground" : "bg-foreground/10",
-                )}
-              >
-                {option.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+  icon: typeof Inbox;
+  ajuda: string;
+}[] = [
+  {
+    value: "PENDING",
+    label: "Pendentes",
+    icon: Inbox,
+    ajuda: "É a sua vez de responder",
+  },
+  {
+    value: "WAITING",
+    label: "Aguardando",
+    icon: Clock3,
+    ajuda: "A bola está com o cliente",
+  },
+  {
+    value: "DONE",
+    label: "Resolvidas",
+    icon: CheckCheck,
+    ajuda: "Atendimento encerrado",
+  },
+  { value: "ALL", label: "Tudo", icon: SlidersHorizontal, ajuda: "Sem filtro de situação" },
+];
 
 export function InboxFilterBar({
   value,
@@ -133,20 +106,25 @@ export function InboxFilterBar({
   /** Botão de ação que fica à direita da busca (ex.: simular cliente). */
   action?: React.ReactNode;
 }) {
-  // Situação e prioridade são filtros de exceção: quem atende passa o dia
-  // em "tudo". Ficam atrás do funil pra não ocupar altura o tempo todo,
-  // mas já abrem se houver algum aplicado (filtro escondido é armadilha).
-  const [showMore, setShowMore] = useState(
+  const [maisAberto, setMaisAberto] = useState(
     value.status !== "ALL" || value.priority !== "ALL",
   );
 
   const set = <K extends keyof InboxFilters>(key: K, next: InboxFilters[K]) =>
     onChange({ ...value, [key]: next });
 
-  const refining = value.status !== "ALL" || value.priority !== "ALL";
+  const contagemDoGrupo: Record<StatusGroup | "ALL", number> = {
+    PENDING: counts.pendentes,
+    WAITING: counts.aguardando,
+    DONE: counts.resolvidas,
+    ALL: counts.total,
+  };
+
+  const refinando =
+    value.status !== "ALL" || value.priority !== "ALL" || value.mine || value.unread || value.unassigned;
 
   return (
-    <div className="flex flex-col gap-2 p-3">
+    <div className="flex flex-col gap-2.5 p-3">
       <div className="flex items-center gap-1.5">
         <div className="relative flex-1">
           <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -157,79 +135,95 @@ export function InboxFilterBar({
             className="h-10 rounded-lg border-transparent bg-muted pl-8 text-[13px] shadow-none"
           />
         </div>
-        <button
-          type="button"
-          aria-label="Mais filtros"
-          aria-pressed={showMore}
-          title="Situação e prioridade"
-          onClick={() => setShowMore((open) => !open)}
-          className={cn(
-            "relative flex size-10 shrink-0 items-center justify-center rounded-lg transition-colors",
-            showMore ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent",
-          )}
-        >
-          <ListFilter className="size-5" />
-          {refining ? (
-            <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
-          ) : null}
-        </button>
         {action}
       </div>
 
-      {/* Resumo do que está aplicado, sempre visível. Antes, fechar o
-          painel escondia os filtros mas não os desligava — dava pra ficar
-          filtrando sem saber. */}
-      {refining ? (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-muted-foreground">Filtrando por:</span>
-          {value.status !== "ALL" ? (
+      {/* Grade de 4, não fila rolável. A versão anterior usava rolagem
+          horizontal com a barra escondida: "Sem dono" ficava cortado na
+          borda e não havia nada indicando que dava pra rolar. Em grade
+          todas as opções cabem sempre, e a largura é previsível. */}
+      <div role="radiogroup" aria-label="Situação do atendimento" className="grid grid-cols-4 gap-1">
+        {GRUPOS.map((grupo) => {
+          const ativo = value.grupo === grupo.value;
+          const quantos = contagemDoGrupo[grupo.value];
+          return (
             <button
+              key={grupo.value}
               type="button"
-              onClick={() => set("status", "ALL")}
-              title="Remover este filtro"
-              className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 font-medium text-primary"
+              role="radio"
+              aria-checked={ativo}
+              title={grupo.ajuda}
+              onClick={() => set("grupo", grupo.value)}
+              className={cn(
+                "flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors",
+                ativo
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
             >
-              {STATUS_LABEL[value.status]}
-              <X className="size-3" />
+              <span className="flex items-center gap-1">
+                <grupo.icon className="size-3.5 shrink-0" />
+                <span className="text-[15px] leading-none font-semibold tabular-nums">
+                  {quantos}
+                </span>
+              </span>
+              <span className="text-[11px] leading-tight font-medium">{grupo.label}</span>
             </button>
-          ) : null}
-          {value.priority !== "ALL" ? (
-            <button
-              type="button"
-              onClick={() => set("priority", "ALL")}
-              title="Remover este filtro"
-              className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 font-medium text-primary"
-            >
-              {PRIORITY_META[value.priority].label}
-              <X className="size-3" />
-            </button>
-          ) : null}
+          );
+        })}
+      </div>
+
+      {/* Recortes que se somam ao grupo, como interruptores. Antes eram
+          opções exclusivas na mesma fila do grupo, então não dava pra ver
+          "minhas pendentes" — escolher uma desligava a outra. */}
+      <div className="flex flex-wrap gap-1">
+        <Interruptor
+          ligado={value.mine}
+          onToggle={() => set("mine", !value.mine)}
+          rotulo="Minhas"
+          quantos={counts.mine}
+        />
+        <Interruptor
+          ligado={value.unread}
+          onToggle={() => set("unread", !value.unread)}
+          rotulo="Não lidas"
+          quantos={counts.unread}
+        />
+        <Interruptor
+          ligado={value.unassigned}
+          onToggle={() => set("unassigned", !value.unassigned)}
+          rotulo="Sem dono"
+          quantos={counts.unassigned}
+        />
+        <button
+          type="button"
+          aria-pressed={maisAberto}
+          onClick={() => setMaisAberto((aberto) => !aberto)}
+          className={cn(
+            "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+            value.status !== "ALL" || value.priority !== "ALL"
+              ? "bg-primary/15 text-primary"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          <SlidersHorizontal className="size-3.5" />
+          Mais
+        </button>
+        {refinando ? (
           <button
             type="button"
-            onClick={() => onChange({ ...value, status: "ALL", priority: "ALL" })}
-            className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => onChange({ ...DEFAULT_FILTERS, grupo: value.grupo, search: value.search })}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
           >
             limpar
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
-      <SegmentRow
-        name="Mostrar quais conversas"
-        value={value.scope}
-        onChange={(next) => set("scope", next as InboxFilters["scope"])}
-        options={[
-          { value: "ALL", label: "Tudo", count: counts.total },
-          { value: "UNREAD", label: "Não lidas", count: counts.unread },
-          { value: "MINE", label: "Minhas", count: counts.mine },
-          { value: "UNASSIGNED", label: "Sem dono", count: counts.unassigned },
-        ]}
-      />
-
-      {showMore ? (
-        <div className="flex flex-col gap-1.5 duration-200 animate-in fade-in slide-in-from-top-1">
-          <SegmentRow
-            name="Filtrar por situação"
+      {maisAberto ? (
+        <div className="flex flex-col gap-2 duration-200 animate-in fade-in slide-in-from-top-1">
+          <Grupo
+            titulo="Situação exata"
             value={value.status}
             onChange={(next) => set("status", next as InboxFilters["status"])}
             options={[
@@ -241,8 +235,8 @@ export function InboxFilterBar({
               })),
             ]}
           />
-          <SegmentRow
-            name="Filtrar por prioridade"
+          <Grupo
+            titulo="Prioridade"
             value={value.priority}
             onChange={(next) => set("priority", next as InboxFilters["priority"])}
             options={[
@@ -257,6 +251,89 @@ export function InboxFilterBar({
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function Interruptor({
+  ligado,
+  onToggle,
+  rotulo,
+  quantos,
+}: {
+  ligado: boolean;
+  onToggle: () => void;
+  rotulo: string;
+  quantos: number;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ligado}
+      onClick={onToggle}
+      className={cn(
+        "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+        ligado
+          ? "bg-primary/15 text-primary"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      {ligado ? <X className="size-3" /> : null}
+      {rotulo}
+      <span className="tabular-nums opacity-70">{quantos}</span>
+    </button>
+  );
+}
+
+/**
+ * Filtro secundário em linhas que QUEBRAM, não que rolam. Rolagem
+ * horizontal escondida some com opção sem avisar; quebrar linha custa
+ * altura, mas mostra tudo o que existe.
+ */
+function Grupo({
+  titulo,
+  value,
+  options,
+  onChange,
+}: {
+  titulo: string;
+  value: string;
+  options: { value: string; label: string; count?: number; dot?: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        {titulo}
+      </span>
+      <div role="radiogroup" aria-label={titulo} className="flex flex-wrap gap-1">
+        {options.map((option) => {
+          const ativo = value === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={ativo}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors",
+                ativo
+                  ? "bg-primary/15 font-medium text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {option.dot ? (
+                <span className={cn("size-1.5 rounded-full", option.dot)} aria-hidden />
+              ) : null}
+              {option.label}
+              {option.count ? (
+                <span className="tabular-nums opacity-70">{option.count}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

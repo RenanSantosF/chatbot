@@ -23,6 +23,7 @@ import { EncryptionService } from '../../common/crypto/encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ConversationsService } from '../conversations/conversations.service';
+import { CustomersService } from '../customers/customers.service';
 import type {
   WhatsAppInboundMessage,
   WhatsAppWebhookPayload,
@@ -127,6 +128,7 @@ export class WhatsappWebhookController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversationsService: ConversationsService,
+    private readonly customers: CustomersService,
     private readonly encryption: EncryptionService,
   ) {}
 
@@ -200,6 +202,33 @@ export class WhatsappWebhookController {
       email: 'webhook@whatsapp',
       name: 'WhatsApp',
     };
+
+    // Agenda de contatos do aparelho (coexistência). É por aqui que os
+    // contatos do WhatsApp da empresa entram no sistema — a Cloud API não
+    // tem endpoint pra listar contatos, ela EMPURRA cada mudança da agenda
+    // por este webhook.
+    for (const evento of value?.state_sync ?? []) {
+      if (evento.type !== 'contact') continue;
+
+      const telefone = evento.contact?.phone_number;
+      if (!telefone) continue;
+
+      if (evento.action === 'remove') {
+        // Apagar da agenda do celular não apaga o cliente daqui: ele pode
+        // ter histórico de atendimento, e perder isso por uma faxina na
+        // agenda seria perda de dado.
+        this.logger.log(`Contato ${telefone} saiu da agenda; mantido no sistema.`);
+        continue;
+      }
+
+      await this.customers.upsertFromAddressBook({
+        phone: telefone,
+        name: evento.contact?.full_name ?? evento.contact?.first_name,
+      });
+      this.logger.log(
+        `Contato sincronizado da agenda pro tenant ${settings.tenantId}: ${telefone}.`,
+      );
+    }
 
     // Respostas dadas pelo celular (coexistência). Vêm num campo separado —
     // `message_echoes`, não `messages` — porque quem escreveu foi a empresa,
