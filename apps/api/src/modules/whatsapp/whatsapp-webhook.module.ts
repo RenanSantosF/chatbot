@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { CustomersModule } from '../customers/customers.module';
+import { WhatsappModule } from './whatsapp.module';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 
 @Module({
-  imports: [ConversationsModule, CustomersModule],
+  imports: [ConversationsModule, CustomersModule, WhatsappModule],
   controllers: [WhatsappWebhookController],
 })
 export class WhatsappWebhookModule {}

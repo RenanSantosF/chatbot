@@ -25,8 +25,11 @@ import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.module';
 
+import { StorageModule } from './modules/storage/storage.module';
+
 @Module({
   imports: [
+    StorageModule,
     CryptoModule,
     PrismaModule,
     AuthModule,

@@ -24,6 +24,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ConversationsService } from '../conversations/conversations.service';
 import { CustomersService } from '../customers/customers.service';
+import { WhatsappMediaService } from './whatsapp-media.service';
 import type {
   WhatsAppInboundMessage,
   WhatsAppWebhookPayload,
@@ -129,6 +130,7 @@ export class WhatsappWebhookController {
     private readonly prisma: PrismaService,
     private readonly conversationsService: ConversationsService,
     private readonly customers: CustomersService,
+    private readonly media: WhatsappMediaService,
     private readonly encryption: EncryptionService,
   ) {}
 
@@ -395,6 +397,16 @@ export class WhatsappWebhookController {
         externalId: message.id,
         replyToExternalId: message.context?.id,
       });
+      // Anexo vai pro armazenamento próprio em segundo plano, SEM await: a
+      // Meta reenvia o webhook (e chega a desativá-lo) se a resposta
+      // demorar, e baixar um vídeo de 15 MB aqui estouraria esse orçamento.
+      // Falhar não atrapalha nada — o arquivo continua na Meta por 30 dias,
+      // e a próxima abertura da conversa tenta guardar de novo.
+      const midia = parsed.metadata as { mediaId?: string; fileName?: string } | undefined;
+      if (midia?.mediaId) {
+        void this.media.arquivar(midia.mediaId, midia.fileName);
+      }
+
       this.logger.log(
         `Mensagem ${parsed.messageType} processada pro tenant ${settings.tenantId} (de ${message.from}).`,
       );
