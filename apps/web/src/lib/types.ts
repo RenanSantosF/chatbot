@@ -74,6 +74,8 @@ export interface ConversationMessage {
   conversationId: string;
   senderType: MessageSenderType;
   senderId: string | null;
+  /** Nome de quem respondeu, só em mensagem de atendente. */
+  senderName?: string | null;
   content: string;
   messageType: MessageType;
   metadata: MessageMetadata | null;
@@ -288,4 +290,17 @@ export interface InboxSettings {
   groupWindowHours: number;
   autoCloseIdle: boolean;
   autoCloseHours: number;
+  showAgentName: boolean;
+  queueVisibility: "ALL" | "OWN_QUEUES";
+}
+
+/** Anotação interna na ficha do cliente. Nunca vai pro cliente. */
+export interface CustomerNote {
+  id: string;
+  content: string;
+  isPending: boolean;
+  dueAt: string | null;
+  doneAt: string | null;
+  createdAt: string;
+  author: { id: string; name: string } | null;
 }

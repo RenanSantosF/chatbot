@@ -18,6 +18,7 @@ import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import type { AiMode, ConversationDetail, ConversationStatus } from "@/lib/types";
+import { CustomerNotes } from "./customer-notes";
 import { TasksSection } from "./tasks-section";
 
 const STATUS_LABEL: Record<ConversationStatus, string> = {
@@ -156,6 +157,13 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
           />
         </div>
       </Section>
+
+      {/* Fora de <Section>: as anotações têm cabeçalho próprio, que serve de
+          botão pra abrir e fechar. Fechado é uma linha só — a ficha não
+          precisa carregar isso à mostra o tempo todo. */}
+      <div className="px-4 py-3">
+        <CustomerNotes key={customer.id} customerId={customer.id} />
+      </div>
 
       {customer.email ? (
         <Section title="Contato" icon={AtSign}>

@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -49,4 +50,12 @@ export class UpdateInboxSettingsDto {
   @Min(1)
   @Max(23)
   autoCloseHours?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  showAgentName?: boolean;
+
+  @IsOptional()
+  @IsIn(['ALL', 'OWN_QUEUES'])
+  queueVisibility?: 'ALL' | 'OWN_QUEUES';
 }

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
-import type { Assignable, ConversationDetail } from "@/lib/types";
+import type { Assignable, ConversationDetail, Queue } from "@/lib/types";
 
 /**
  * Ações de responsabilidade da conversa. Três estados, nunca dois ao mesmo
@@ -40,6 +40,9 @@ export function AssignmentActions({
 }) {
   const [abrindo, setAbrindo] = useState(false);
   const [equipe, setEquipe] = useState<Assignable[]>([]);
+  const [setores, setSetores] = useState<Queue[]>([]);
+  // "Pra quem" tem duas naturezas: uma pessoa ou um setor inteiro. Um estado
+  // só, com prefixo, evita o caso impossível de os dois estarem escolhidos.
   const [destino, setDestino] = useState("");
   const [ocupado, setOcupado] = useState(false);
 
@@ -51,11 +54,15 @@ export function AssignmentActions({
     // `/users/assignable`, não `/users`: a lista completa da equipe é
     // restrita a dono e admin, e transferir conversa é trabalho de quem
     // atende.
-    apiFetch<Assignable[]>("/users/assignable")
-      .then((lista) => {
+    Promise.all([
+      apiFetch<Assignable[]>("/users/assignable"),
+      apiFetch<Queue[]>("/queues").catch(() => [] as Queue[]),
+    ])
+      .then(([lista, filas]) => {
         const outros = lista.filter((u) => u.id !== conversation.assignedUser?.id);
         setEquipe(outros);
-        setDestino(outros[0]?.id ?? "");
+        setSetores(filas);
+        setDestino(filas[0] ? `setor:${filas[0].id}` : (outros[0] ? `pessoa:${outros[0].id}` : ""));
       })
       .catch(() => toast.error("Não deu pra carregar a equipe."));
   }, [abrindo, equipe.length, conversation.assignedUser?.id]);
@@ -118,28 +125,43 @@ export function AssignmentActions({
           <SheetHeader>
             <SheetTitle>Transferir atendimento</SheetTitle>
             <SheetDescription>
-              A pessoa escolhida recebe a conversa como indicação e confirma antes de virar
-              responsável — assim ninguém acorda dono de um caso que não aceitou.
+              Escolha um setor, quando qualquer pessoa dele resolve, ou uma pessoa, quando o caso é
+              dela.
             </SheetDescription>
           </SheetHeader>
 
           <div className="flex flex-col gap-4 px-4 py-2">
-            {equipe.length === 0 ? (
+            {equipe.length === 0 && setores.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Não há outros colaboradores ativos para receber esta conversa.
+                Não há setores nem colaboradores ativos para receber esta conversa.
               </p>
             ) : (
               <SelectField
                 label="Para quem"
                 value={destino}
                 onChange={setDestino}
-                options={equipe.map((u) => ({ value: u.id, label: u.name }))}
+                options={[
+                  ...setores.map((f) => ({ value: `setor:${f.id}`, label: `Setor · ${f.name}` })),
+                  ...equipe.map((u) => ({ value: `pessoa:${u.id}`, label: u.name })),
+                ]}
               />
             )}
+
+            <p className="text-xs text-muted-foreground text-pretty">
+              {destino.startsWith("setor:")
+                ? "A conversa fica disponível para o setor inteiro e quem estiver livre assume — não fica presa esperando uma pessoa específica."
+                : "A pessoa escolhida recebe como indicação e confirma antes de virar responsável."}
+            </p>
+
             <SheetFooter className="px-0">
               <Button
                 disabled={ocupado || !destino}
-                onClick={() => void chamar("transfer", { toUserId: destino })}
+                onClick={() => {
+                  const [tipo, id] = destino.split(":");
+                  void (tipo === "setor"
+                    ? chamar("transfer-queue", { queueId: id })
+                    : chamar("transfer", { toUserId: id }));
+                }}
               >
                 Transferir
               </Button>

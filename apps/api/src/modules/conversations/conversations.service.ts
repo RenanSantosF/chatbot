@@ -12,6 +12,7 @@ import type {
   MessageStatus,
   MessageType,
   Prisma,
+  UserRole,
 } from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
@@ -138,12 +139,16 @@ export class ConversationsService {
     search?: string;
     cursor?: string;
     limit?: number;
+    /** Quem está olhando — define o que ela pode enxergar. */
+    viewer?: { userId: string; role: UserRole };
   }) {
     const take = Math.min(Math.max(filter.limit ?? 30, 1), 100);
     const search = filter.search?.trim();
+    const recorte = await this.recorteDeVisibilidade(filter.viewer);
 
     const items = await this.prisma.db.conversation.findMany({
       where: {
+        ...recorte,
         ...(filter.status ? { status: filter.status } : {}),
         ...(filter.assignedUserId
           ? { assignedUserId: filter.assignedUserId }
@@ -181,6 +186,42 @@ export class ConversationsService {
       items: page.map(toSummary),
       nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
     };
+  }
+
+  /**
+   * Filtro extra de "o que esta pessoa pode ver" no Inbox.
+   *
+   * Com `queueVisibility: ALL` (padrão) não recorta nada — equipe pequena
+   * trabalha melhor vendo tudo. Com `OWN_QUEUES`, cada um vê só os setores
+   * de que participa: o financeiro não abre conversa do jurídico.
+   *
+   * Três coisas ficam sempre visíveis, mesmo no modo restrito, porque
+   * escondê-las criaria buraco em vez de organização:
+   *
+   * - conversa atribuída à própria pessoa (senão ela perde de vista um caso
+   *   que é dela, se o setor mudar);
+   * - conversa sem setor nenhum (não é de ninguém — se sumisse pra todo
+   *   mundo, ficaria sem atendimento);
+   * - tudo, pra dono e admin: sem isso não dá pra chefiar.
+   */
+  private async recorteDeVisibilidade(viewer?: { userId: string; role: UserRole }) {
+    if (!viewer || viewer.role === 'OWNER' || viewer.role === 'ADMIN') return {};
+
+    const settings = await this.inboxSettings.get();
+    if (settings.queueVisibility === 'ALL') return {};
+
+    const setores = await this.prisma.db.queueMember.findMany({
+      where: { userId: viewer.userId },
+      select: { queueId: true },
+    });
+
+    return {
+      OR: [
+        { queueId: null },
+        { queueId: { in: setores.map((s) => s.queueId) } },
+        { assignedUserId: viewer.userId },
+      ],
+    } satisfies Prisma.ConversationWhereInput;
   }
 
   /** Contadores de cada filtro, calculados no banco pra não depender da página carregada. */
@@ -239,9 +280,48 @@ export class ConversationsService {
     const page = hasMore ? items.slice(0, take) : items;
 
     return {
-      items: [...page].reverse(),
+      items: await this.comNomeDeQuemEnviou([...page].reverse()),
       nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
     };
+  }
+
+  /**
+   * Acrescenta `senderName` nas mensagens de atendente.
+   *
+   * Numa conversa que passou por três pessoas, o balão verde sozinho não
+   * conta a história: quem lê depois não sabe quem prometeu o quê. O nome
+   * resolve isso dentro do painel, independente da empresa querer ou não
+   * assinar a mensagem que vai pro cliente (ver `assinar`).
+   *
+   * Resolve os nomes numa consulta só, e não por relação no schema, porque
+   * `senderId` guarda tanto id de usuário quanto nada (mensagem da IA, do
+   * cliente, do sistema) — uma chave estrangeira ali obrigaria a coluna a
+   * ser sempre um usuário válido, que é justamente o que ela não é.
+   */
+  private async comNomeDeQuemEnviou<T extends { senderType: string; senderId: string | null }>(
+    mensagens: T[],
+  ): Promise<(T & { senderName: string | null })[]> {
+    const ids = [
+      ...new Set(
+        mensagens
+          .filter((m) => m.senderType === 'AGENT' && m.senderId)
+          .map((m) => m.senderId as string),
+      ),
+    ];
+    if (ids.length === 0) {
+      return mensagens.map((m) => ({ ...m, senderName: null }));
+    }
+
+    const pessoas = await this.prisma.db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    });
+    const porId = new Map(pessoas.map((p) => [p.id, p.name]));
+
+    return mensagens.map((m) => ({
+      ...m,
+      senderName: m.senderId ? (porId.get(m.senderId) ?? null) : null,
+    }));
   }
 
   private async requireConversationExists(id: string) {
@@ -413,9 +493,14 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
+    // O nome de quem enviou vai junto no evento também: sem isso a mensagem
+    // que chega em tempo real apareceria sem assinatura e só ganharia o nome
+    // quando a conversa fosse recarregada.
+    const [comNome] = await this.comNomeDeQuemEnviou([message]);
+
     this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
       conversationId,
-      message,
+      message: comNome,
     });
     this.realtime.emitToTenant(
       this.prisma.tenantId,
@@ -439,7 +524,7 @@ export class ConversationsService {
 
       const externalId = await this.whatsapp.sendText(
         conversation.customer.phone,
-        data.content,
+        await this.assinar(data.senderType, data.senderId, data.content),
         quoted?.externalId,
       );
       if (externalId) {
@@ -451,6 +536,39 @@ export class ConversationsService {
     }
 
     return { message, conversation };
+  }
+
+  /**
+   * Assina a mensagem com o nome de quem respondeu, se a empresa quiser.
+   *
+   * Vai só pro que sai daqui — o texto guardado no banco fica limpo, porque
+   * no painel o nome já aparece no balão. Guardar a assinatura junto do
+   * conteúdo faria a busca dentro da conversa casar com nome de atendente e
+   * sujaria o histórico com prefixo repetido em toda linha.
+   *
+   * O asterisco é a marcação de negrito do próprio WhatsApp, e a IA não
+   * assina: ela já se apresenta pelo nome configurado.
+   */
+  private async assinar(
+    senderType: MessageSenderType,
+    senderId: string | undefined,
+    content: string,
+  ): Promise<string> {
+    if (senderType !== 'AGENT' || !senderId) return content;
+
+    const settings = await this.inboxSettings.get();
+    if (!settings.showAgentName) return content;
+
+    const autor = await this.prisma.db.user.findFirst({
+      where: { id: senderId },
+      select: { name: true },
+    });
+    if (!autor) return content;
+
+    // Só o primeiro nome: "Renan" comunica tanto quanto "Renan Santos
+    // Ferreira" e não come a primeira linha da mensagem no aparelho.
+    const primeiroNome = autor.name.trim().split(/\s+/)[0];
+    return `*${primeiroNome}:*\n${content}`;
   }
 
   /**
@@ -788,7 +906,7 @@ export class ConversationsService {
    * existe pra indicação automática.
    */
   async assign(conversationId: string, userId: string) {
-    await this.requireConversation(conversationId);
+    const antes = await this.requireConversation(conversationId);
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
@@ -800,6 +918,16 @@ export class ConversationsService {
       },
       include: conversationInclude,
     });
+
+    // Só registra quando o dono muda de fato: aceitar uma indicação passa
+    // por aqui, e nesse caso a linha "Fulano assumiu" viria depois de
+    // "encaminhada para Fulano" — duas notas dizendo a mesma coisa.
+    if (antes.assignedUserId !== userId) {
+      await this.registrarNota(
+        conversationId,
+        `${conversation.assignedUser?.name ?? 'Um atendente'} assumiu o atendimento.`,
+      );
+    }
 
     this.realtime.emitToTenant(
       this.prisma.tenantId,
@@ -1067,6 +1195,80 @@ export class ConversationsService {
       toSummary(conversation),
     );
     return conversation;
+  }
+
+  /**
+   * Passa a conversa pra um setor, sem escolher pessoa.
+   *
+   * É o caso mais comum na prática: "isso é do financeiro" raramente
+   * significa "isso é da Ana do financeiro". Mandar pro setor deixa a
+   * conversa visível pra quem é do setor, e quem estiver livre assume — em
+   * vez de ficar parada esperando uma pessoa específica que pode estar de
+   * férias.
+   *
+   * Por isso aqui não há indicação a aceitar: ninguém foi nomeado. A
+   * conversa fica sem dono e em WAITING_AGENT, que é exatamente o estado de
+   * "alguém do setor precisa pegar isto".
+   */
+  async transferToQueue(conversationId: string, queueId: string, byUserId: string) {
+    await this.requireConversation(conversationId);
+
+    const setor = await this.prisma.db.queue.findFirst({
+      where: { id: queueId },
+      select: { id: true, name: true },
+    });
+    if (!setor) {
+      throw new NotFoundException('Setor não encontrado.');
+    }
+
+    const autor = await this.prisma.db.user.findFirst({
+      where: { id: byUserId },
+      select: { name: true },
+    });
+
+    const conversation = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: {
+        queueId,
+        assignedUserId: null,
+        assignmentAccepted: true,
+        aiMode: 'HUMAN_ACTIVE',
+        status: 'WAITING_AGENT',
+      },
+      include: conversationInclude,
+    });
+
+    await this.registrarNota(
+      conversationId,
+      autor?.name
+        ? `${autor.name} encaminhou a conversa para o setor ${setor.name}.`
+        : `Conversa encaminhada para o setor ${setor.name}.`,
+    );
+
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(conversation),
+    );
+    return conversation;
+  }
+
+  /**
+   * Nota do sistema na conversa. Serve pro histórico contar o que aconteceu:
+   * quem assumiu, quem passou pra quem, quando o setor mudou. Sem isso, a
+   * conversa muda de dono e o registro fica só no estado atual — quem abrir
+   * amanhã não sabe como chegou ali.
+   */
+  private async registrarNota(conversationId: string, texto: string) {
+    await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId,
+        senderType: 'SYSTEM',
+        content: texto,
+        messageType: 'TEXT',
+      },
+    });
   }
 
   /** Quem foi indicado confirma que vai atender. */

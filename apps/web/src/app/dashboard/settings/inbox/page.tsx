@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCheck, Clock, Layers, MessageSquareX } from "lucide-react";
+import { CheckCheck, Clock, Eye, Layers, MessageSquareX, PenLine } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -132,6 +132,77 @@ export default function InboxSettingsPage() {
               </div>
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PenLine className="size-4" />
+            Assinar as respostas
+          </CardTitle>
+          <CardDescription>
+            Coloca o primeiro nome de quem respondeu, em negrito, antes do texto que chega no
+            aparelho do cliente. No painel o nome sempre aparece no balão — isto decide só o que o
+            cliente vê.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <label className="flex items-center justify-between gap-4 rounded-md border p-3">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">Mostrar o nome do atendente</span>
+              <span className="block text-xs text-muted-foreground text-pretty">
+                Ligue se quiser que o cliente saiba com quem falou. Desligado, a empresa fala como
+                uma voz só. A IA nunca assina — ela já se apresenta pelo nome configurado.
+              </span>
+            </span>
+            <Switch
+              checked={settings.showAgentName}
+              onCheckedChange={(checked) => patch({ showAgentName: checked })}
+              aria-label="Assinar mensagens com o nome do atendente"
+            />
+          </label>
+          <p className="rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground">
+            Como chega:{" "}
+            {settings.showAgentName ? (
+              <>
+                <strong className="text-foreground">Renan:</strong> Bom dia, já verifiquei aqui.
+              </>
+            ) : (
+              "Bom dia, já verifiquei aqui."
+            )}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="size-4" />
+            Quem vê quais conversas
+          </CardTitle>
+          <CardDescription>
+            Em equipe pequena todo mundo ver tudo funciona melhor. Quando há setores com assuntos
+            separados, restringir evita que o financeiro leia conversa do jurídico.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <label className="flex items-center justify-between gap-4 rounded-md border p-3">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">Cada um vê só o próprio setor</span>
+              <span className="block text-xs text-muted-foreground text-pretty">
+                Conversa sem setor e conversa atribuída à própria pessoa continuam visíveis pra
+                todos — senão ficariam sem atendimento. Dono e admin veem tudo de qualquer forma.
+              </span>
+            </span>
+            <Switch
+              checked={settings.queueVisibility === "OWN_QUEUES"}
+              onCheckedChange={(checked) =>
+                patch({ queueVisibility: checked ? "OWN_QUEUES" : "ALL" })
+              }
+              aria-label="Restringir visibilidade por setor"
+            />
+          </label>
         </CardContent>
       </Card>
 

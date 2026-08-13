@@ -55,6 +55,7 @@ model Tenant {
   routingRules       RoutingRule[]
   rolePermissions    RolePermission[]
   collectionFields   CollectionField[]
+  customerNotes      CustomerNote[]
   retention          RetentionSettings?
   billing            BillingAccount?
   inboxSettings      InboxSettings?
@@ -104,6 +105,7 @@ model User {
   assignedConversations Conversation[]
   queueMemberships      QueueMember[]
   routingRules          RoutingRule[]
+  customerNotes         CustomerNote[]
 
   // Email é único globalmente (não só por tenant): simplifica o login, que não
   // exige saber a qual empresa o usuário pertence antes de autenticar.
@@ -126,6 +128,7 @@ model Customer {
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  notes         CustomerNote[]
 
   // Telefone é a chave de identificação de um cliente dentro de um tenant
   // (é por onde ele chega pelo WhatsApp), mas o mesmo telefone pode ser
@@ -138,6 +141,11 @@ model Customer {
 // Preferências de atendimento da empresa, separadas das credenciais do
 // canal: valem pra qualquer canal e são o tipo de coisa que o dono mexe
 // sem precisar tocar em token nenhum.
+enum QueueVisibility {
+  ALL
+  OWN_QUEUES
+}
+
 model InboxSettings {
   id               String   @id @default(uuid())
   tenantId         String   @unique
@@ -163,12 +171,56 @@ model InboxSettings {
   // quando responder passa a exigir modelo aprovado (e pago).
   autoCloseIdle    Boolean  @default(false)
   autoCloseHours   Int      @default(20)
+  // Assina a mensagem com o nome de quem respondeu ("*Renan:*" em negrito,
+  // antes do texto). Desligado por padrão porque é decisão de imagem: tem
+  // empresa que quer que o cliente saiba com quem falou, e tem empresa que
+  // prefere falar como uma voz só.
+  showAgentName    Boolean  @default(false)
+  // Quem enxerga o quê no Inbox. ALL: todo mundo vê tudo, que é o certo pra
+  // equipe pequena. OWN_QUEUES: cada um vê só os setores de que participa —
+  // o financeiro não abre conversa do jurídico. Dono e admin veem tudo nos
+  // dois modos, senão não dá pra chefiar.
+  queueVisibility  QueueVisibility @default(ALL)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("inbox_settings")
+}
+
+/// Anotação interna sobre um cliente. Nunca vai pro cliente.
+///
+/// Nasceu de uma necessidade concreta do atendimento: "Nilma Transportes,
+/// aguardando prazo de coleta das informações". Isso não é mensagem, não é
+/// tarefa do sistema e não pertence a uma conversa específica — é memória
+/// da relação com aquele cliente, que precisa sobreviver ao fim do assunto
+/// e estar à mão de quem pegar a próxima conversa dele.
+///
+/// Uma anotação vira pendência marcando `isPending`. A diferença é só de
+/// estado: pendência aparece em destaque enquanto não for concluída;
+/// anotação comum é registro e pronto.
+model CustomerNote {
+  id         String    @id @default(uuid())
+  tenantId   String
+  customerId String
+  /// Quem escreveu. Nulo se a pessoa saiu da empresa — a anotação continua
+  /// valendo mesmo sem o autor.
+  authorId   String?
+  content    String
+  isPending  Boolean   @default(false)
+  dueAt      DateTime?
+  doneAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  author   User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([customerId, createdAt])
+  @@map("customer_notes")
 }
 
 enum ConversationChannel {

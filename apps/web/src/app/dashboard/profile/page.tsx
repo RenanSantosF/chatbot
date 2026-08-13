@@ -1,6 +1,7 @@
 "use client";
 
-import { KeyRound, Pencil, ShieldCheck } from "lucide-react";
+import { KeyRound, Network, Pencil, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -14,7 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { PageHeader } from "@/components/page-header";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
-import type { TeamMember, UserRole } from "@/lib/types";
+import type { Queue, TeamMember, UserRole } from "@/lib/types";
 
 const ROLE_LABEL: Record<UserRole, string> = {
   OWNER: "Dono",
@@ -57,11 +58,23 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
+  const [meusSetores, setMeusSetores] = useState<Queue[] | null>(null);
+
   useEffect(() => {
     apiFetch<TeamMember>("/users/me")
       .then((result) => {
         setProfile(result);
         setName(result.name);
+        // Os setores vêm da lista de filas com seus membros — não existe
+        // rota "minhas filas", e criar uma só pra isto seria mais código
+        // pra manter do que um filtro aqui.
+        return apiFetch<Queue[]>("/queues")
+          .then((filas) =>
+            setMeusSetores(
+              filas.filter((f) => f.members.some((m) => m.userId === result.id)),
+            ),
+          )
+          .catch(() => setMeusSetores([]));
       })
       .catch(() => toast.error("Não deu pra carregar seu perfil."));
   }, []);
@@ -272,6 +285,54 @@ export default function ProfilePage() {
           {editingPassword ? (
             <p className="mt-3 text-xs text-muted-foreground">Mínimo de 8 caracteres.</p>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Network className="size-4" />
+            Seus setores
+          </CardTitle>
+          <CardDescription>
+            Setores de que você participa. Conversa encaminhada pra um deles aparece pra você
+            assumir.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {meusSetores === null ? (
+            <p className="text-sm text-muted-foreground">Carregando…</p>
+          ) : meusSetores.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-pretty">
+              Você ainda não está em nenhum setor.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {meusSetores.map((setor) => (
+                <span
+                  key={setor.id}
+                  className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium"
+                >
+                  {setor.name}
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Sair de um setor mudaria o que você enxerga quando a empresa
+              restringe visibilidade por setor — então quem mexe nisso é
+              quem administra, não a própria pessoa. */}
+          {profile.role === "OWNER" || profile.role === "ADMIN" ? (
+            <Link
+              href="/dashboard/settings/queues"
+              className="text-xs font-medium underline underline-offset-4"
+            >
+              Gerenciar setores e participantes
+            </Link>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Pra entrar ou sair de um setor, fale com quem administra a conta.
+            </p>
+          )}
         </CardContent>
       </Card>
 

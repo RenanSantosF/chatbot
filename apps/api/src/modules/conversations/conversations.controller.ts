@@ -52,6 +52,7 @@ export class ConversationsController {
       search,
       cursor,
       limit: limit ? Number(limit) : undefined,
+      viewer: { userId: user.userId, role: user.role },
     });
   }
 
@@ -142,6 +143,16 @@ export class ConversationsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.transferTo(id, toUserId, user.userId);
+  }
+
+  /** Encaminha pro setor, sem nomear pessoa — quem estiver livre pega. */
+  @Post(':id/transfer-queue')
+  transferQueue(
+    @Param('id') id: string,
+    @Body('queueId') queueId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.transferToQueue(id, queueId, user.userId);
   }
 
   @Post(':id/accept')

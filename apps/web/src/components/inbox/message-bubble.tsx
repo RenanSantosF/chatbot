@@ -95,11 +95,17 @@ export function MessageBubble({
   onReact?: (messageId: string, emoji: string) => Promise<void>;
   onForward?: (message: ConversationMessage) => void;
 }) {
+  // Aviso do sistema: "Fulano assumiu", "encaminhada para o Financeiro". Usa
+  // a mesma tarja do separador de dia de propósito — os dois são marcos na
+  // linha do tempo, não fala de ninguém, e ler igual ajuda a bater o olho e
+  // entender por que a conversa mudou de mão.
   if (message.senderType === "SYSTEM") {
     return (
-      <p className="self-center rounded-full bg-muted/80 px-3 py-1 text-center text-xs text-muted-foreground shadow-xs">
-        {message.content}
-      </p>
+      <div className="flex justify-center py-1.5">
+        <span className="max-w-[80%] rounded-full bg-background/90 px-3 py-1 text-center text-xs font-medium text-muted-foreground shadow-xs ring-1 ring-foreground/5">
+          {message.content}
+        </span>
+      </div>
     );
   }
 
@@ -185,6 +191,15 @@ export function MessageBubble({
             : "duration-200 ease-out animate-in fade-in slide-in-from-right-2"),
       )}
     >
+      {/* Quem respondeu, em negrito no topo do balão. Numa conversa que
+          passou por três pessoas o balão verde sozinho não conta a
+          história: quem lê depois não sabe quem prometeu o quê. */}
+      {message.senderName ? (
+        <span className="text-[13px] font-semibold text-bubble-out-foreground/80">
+          {message.senderName}
+        </span>
+      ) : null}
+
       {message.replyTo ? (
         <div
           className={cn(
