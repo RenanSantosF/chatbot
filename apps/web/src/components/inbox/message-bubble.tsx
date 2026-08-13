@@ -117,9 +117,12 @@ export function MessageBubble({
           onDoubleClick={() => onReply(message)}
           title="Clique duas vezes para responder"
           aria-hidden
+          // Cobre TODA a faixa vazia ao lado da mensagem, até a borda do
+          // chat — não só uns pixels colados no balão. `w-screen` com
+          // overflow escondido no pai resolve sem precisar medir largura.
           className={cn(
-            "absolute inset-y-0 w-10 cursor-cell select-none",
-            fromCustomer ? "left-full ml-1" : "right-full mr-1",
+            "absolute inset-y-0 w-screen cursor-cell select-none",
+            fromCustomer ? "left-full" : "right-full",
           )}
         />
       ) : null}
@@ -180,7 +183,7 @@ export function MessageBubble({
         // brigava com o cinza da interface.
         "flex flex-col gap-0.5 rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
         fromCustomer
-          ? "rounded-bl-sm bg-card text-card-foreground ring-1 ring-foreground/5 slide-in-from-left-2"
+          ? "rounded-bl-sm bg-card text-card-foreground slide-in-from-left-2"
           : "rounded-br-sm bg-bubble-out text-bubble-out-foreground slide-in-from-right-2",
       )}
     >

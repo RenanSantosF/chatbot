@@ -6,7 +6,14 @@ import {
   type AiProvider,
   type AiToolExecutor,
 } from './providers/ai-provider.interface';
+import { verificarResposta, type VerificacaoDaResposta } from './ai-guardrails';
 import { AiToolsService } from './tools/ai-tools.service';
+
+export interface AiReply {
+  content: string;
+  /** O que as travas concluíram sobre esta resposta (ver ai-guardrails). */
+  verificacao: VerificacaoDaResposta;
+}
 
 /**
  * O "cérebro": decide se responde e, se sim, o quê. Nunca escreve no banco
@@ -32,7 +39,7 @@ export class AiEngineService {
    * humano assumir, em vez de quebrar o recebimento da mensagem do
    * cliente).
    */
-  async generateReply(conversationId: string): Promise<string | null> {
+  async generateReply(conversationId: string): Promise<AiReply | null> {
     const { active, credentials } = await this.credentials.resolve();
     if (!active) {
       this.logger.log(
@@ -63,9 +70,16 @@ export class AiEngineService {
     );
 
     const toolDeclarations = await this.tools.getEnabledDeclarations();
+    // Guardamos o que a IA de fato executou. É o que permite comparar a
+    // promessa do texto com a ação — sem isso, "vou transferir" e uma
+    // transferência real são indistinguíveis pro sistema.
+    const usadas: string[] = [];
     const executeTool: AiToolExecutor | undefined =
       toolDeclarations.length > 0
-        ? (name, args) => this.tools.execute(name, args, conversationId)
+        ? (name, args) => {
+            usadas.push(name);
+            return this.tools.execute(name, args, conversationId);
+          }
         : undefined;
 
     try {
@@ -76,7 +90,18 @@ export class AiEngineService {
         executeTool,
       });
       this.logger.log(`IA respondeu a conversa ${conversationId}.`);
-      return result.content;
+
+      const ultimaDoCliente =
+        [...context.history].reverse().find((m) => m.role === 'user')?.content ?? '';
+      const verificacao = verificarResposta(result.content, ultimaDoCliente, usadas);
+
+      if (verificacao.precisaHandoff || verificacao.prioridadeMinima) {
+        this.logger.warn(
+          `Trava da IA na conversa ${conversationId}: ${verificacao.motivo}`,
+        );
+      }
+
+      return { content: result.content, verificacao };
     } catch (error) {
       this.logger.warn(
         `IA não conseguiu responder a conversa ${conversationId}: ${error instanceof Error ? error.message : error}`,

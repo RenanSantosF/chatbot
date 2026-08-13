@@ -15,6 +15,7 @@ import type {
 } from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
+import type { VerificacaoDaResposta } from '../ai/ai-guardrails';
 import { CustomersService } from '../customers/customers.service';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -915,6 +916,71 @@ export class ConversationsService {
     return { conversationId: conversation.id };
   }
 
+  /**
+   * Executa o que as travas da IA concluíram (ver ai-guardrails.ts).
+   *
+   * Existe porque a IA errou o mesmo erro três vezes: escrever "vou
+   * transferir" e não transferir. Prompt não corrigiu. Aqui o sistema
+   * torna a promessa verdadeira — a conversa vai pra fila humana com o
+   * motivo registrado, e a IA para de responder pra não atropelar quem
+   * assumir.
+   */
+  private async aplicarTravasDaIa(
+    conversationId: string,
+    verificacao: VerificacaoDaResposta,
+    prioridadeAtual: ConversationPriority,
+  ) {
+    if (!verificacao.precisaHandoff && !verificacao.prioridadeMinima) {
+      return null;
+    }
+
+    const data: Prisma.ConversationUpdateInput = {};
+
+    if (verificacao.precisaHandoff) {
+      data.status = 'WAITING_AGENT';
+      data.aiMode = 'HUMAN_ACTIVE';
+      data.escalationReason = verificacao.motivo ?? 'Trava automática.';
+    }
+
+    if (verificacao.prioridadeMinima) {
+      // Só sobe, nunca desce: se um atendente já marcou como urgente, uma
+      // trava automática não pode rebaixar.
+      const ordem = { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 } as const;
+      if (ordem[verificacao.prioridadeMinima] > ordem[prioridadeAtual]) {
+        data.priority = verificacao.prioridadeMinima;
+      }
+    }
+
+    if (Object.keys(data).length === 0) return null;
+
+    const conversation = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data,
+      include: conversationInclude,
+    });
+
+    // Nota visível na conversa: quem abrir precisa entender por que a
+    // conversa mudou de estado sozinha.
+    if (verificacao.precisaHandoff && verificacao.motivo) {
+      await this.prisma.db.message.create({
+        data: {
+          tenantId: this.prisma.tenantId,
+          conversationId,
+          senderType: 'SYSTEM',
+          content: `Encaminhado automaticamente: ${verificacao.motivo}`,
+          messageType: 'TEXT',
+        },
+      });
+    }
+
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(conversation),
+    );
+    return conversation;
+  }
+
   async reopen(conversationId: string) {
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
@@ -1046,9 +1112,20 @@ export class ConversationsService {
       if (reply) {
         const aiTurn = await this.persistMessage(conversation.id, {
           senderType: 'AI',
-          content: reply,
+          content: reply.content,
         });
         latestConversation = aiTurn.conversation;
+
+        // As travas rodam DEPOIS de gravar a resposta e por último: se a
+        // IA prometeu gente e não chamou a ferramenta, o sistema cumpre a
+        // promessa por ela. Aplicar antes seria sobrescrito pelo próprio
+        // persistMessage, que mexe no status.
+        const travada = await this.aplicarTravasDaIa(
+          conversation.id,
+          reply.verificacao,
+          latestConversation.priority,
+        );
+        if (travada) latestConversation = travada;
       }
     }
 

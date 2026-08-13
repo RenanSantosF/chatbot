@@ -23,6 +23,27 @@
   border-color: var(--border);
 }
 
+/* Mãozinha em tudo que clica. O Tailwind v4 mudou o padrão dos botões pra
+   `cursor: default` (segue o comportamento nativo), e num painel web isso
+   deixa metade da interface parecendo morta. Regra única em vez de sair
+   pendurando `cursor-pointer` em cada componente. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="radio"],
+[role="tab"],
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]),
+summary,
+a[href],
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Tentei tambem afinar a largura pra 0.5px e a regra do Tailwind ganhava —
    como nao consegui comprovar o efeito, tirei em vez de deixar CSS morto.
    O que manda de fato na presenca da linha e a opacidade, e ela esta em
@@ -126,25 +147,25 @@
    trabalho por dia. Cuidado que já custou uma rodada: o L do OKLCH não é
    a claridade percebida — oklch(0.17) sai como #1a1a1a, quase preto. */
 .dark {
-  --background: oklch(0.315 0 0);
+  --background: oklch(0.28 0 0);
   --foreground: oklch(1 0 0);
-  --card: oklch(0.325 0 0);
+  --card: oklch(0.295 0 0);
   --card-foreground: oklch(1 0 0);
-  --popover: oklch(0.355 0 0);
+  --popover: oklch(0.34 0 0);
   --popover-foreground: oklch(1 0 0);
   --primary: oklch(0.72 0.13 163);
   --primary-foreground: oklch(0.16 0 0);
-  --secondary: oklch(0.37 0 0);
+  --secondary: oklch(0.35 0 0);
   --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.365 0 0);
-  --muted-foreground: oklch(0.78 0 0);
-  --accent: oklch(0.395 0 0);
+  --muted: oklch(0.345 0 0);
+  --muted-foreground: oklch(0.75 0 0);
+  --accent: oklch(0.375 0 0);
   --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.68 0.19 22);
   --border: oklch(1 0 0 / 3%);
   --input: oklch(1 0 0 / 7%);
   --ring: oklch(0.68 0 0);
-  --chat-bg: oklch(0.3 0 0);
+  --chat-bg: oklch(0.27 0 0);
   --chat-dot: oklch(1 0 0 / 2.5%);
   --bubble-out: oklch(0.44 0.06 163);
   --bubble-out-foreground: oklch(1 0 0);
@@ -153,11 +174,11 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.305 0 0);
+  --sidebar: oklch(0.265 0 0);
   --sidebar-foreground: oklch(1 0 0);
   --sidebar-primary: oklch(0.72 0.13 163);
   --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.4 0 0);
+  --sidebar-accent: oklch(0.38 0 0);
   --sidebar-accent-foreground: oklch(1 0 0);
   --sidebar-border: oklch(1 0 0 / 3%);
   --sidebar-ring: oklch(0.68 0 0);
@@ -215,6 +236,19 @@
     transparent
   );
   animation: shimmer 1.6s infinite;
+}
+
+/* Bolinhas do carregamento da conversa. */
+@keyframes pulsando {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Barrinhas do gravador de áudio. */

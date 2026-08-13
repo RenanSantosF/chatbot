@@ -410,6 +410,7 @@ export default function InboxPage() {
       <ChatPanel
         key={selectedId ?? "vazio"}
         conversation={detail}
+        loading={Boolean(selectedId) && !detail}
         sending={sending}
         replyTo={replyTo}
         hasOlder={Boolean(messagesCursor)}

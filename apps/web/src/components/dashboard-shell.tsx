@@ -101,7 +101,7 @@ function Nav({ role }: { role: UserRole }) {
   // Configurações abre sozinho quando você já está dentro de alguma seção
   // dela — assim o submenu não some justo quando ele é útil.
   const inSettings =
-    pathname.startsWith("/dashboard/settings") || pathname === "/dashboard/knowledge";
+    pathname.startsWith("/dashboard/settings") || pathname === "/dashboard/settings/knowledge";
   const canConfigure = role === "OWNER" || role === "ADMIN";
 
   return (
@@ -209,7 +209,10 @@ function Shell({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-sm">
+        <header // h-16 e fundo sólido: com os ícones em 23px a barra de 14 ficava
+          // apertada e os ícones desalinhados. O fundo translúcido também
+          // deixava a cor "suja" onde havia conteúdo por baixo.
+          className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-2 border-b bg-background px-4">
           <div />
           <div className="flex items-center gap-2">
             <ConnectionBadge />

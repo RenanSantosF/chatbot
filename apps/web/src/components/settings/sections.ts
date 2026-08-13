@@ -20,7 +20,7 @@ export const SETTINGS_SECTIONS = [
   { href: "/dashboard/settings/whatsapp", label: "WhatsApp", icon: MessageCircle },
   { href: "/dashboard/settings/inbox", label: "Atendimento", icon: Inbox },
   { href: "/dashboard/settings/ai", label: "IA", icon: Bot },
-  { href: "/dashboard/knowledge", label: "Conhecimento", icon: LibraryBig },
+  { href: "/dashboard/settings/knowledge", label: "Conhecimento", icon: LibraryBig },
   { href: "/dashboard/settings/collection", label: "Dados a coletar", icon: ClipboardList },
   { href: "/dashboard/settings/routing", label: "Direcionamento", icon: Route },
   { href: "/dashboard/settings/queues", label: "Filas", icon: ListTree },

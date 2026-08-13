@@ -1,6 +1,6 @@
 "use client";
 
-import { ListFilter, Search } from "lucide-react";
+import { ListFilter, Search, X } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
@@ -175,6 +175,44 @@ export function InboxFilterBar({
         </button>
         {action}
       </div>
+
+      {/* Resumo do que está aplicado, sempre visível. Antes, fechar o
+          painel escondia os filtros mas não os desligava — dava pra ficar
+          filtrando sem saber. */}
+      {refining ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">Filtrando por:</span>
+          {value.status !== "ALL" ? (
+            <button
+              type="button"
+              onClick={() => set("status", "ALL")}
+              title="Remover este filtro"
+              className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 font-medium text-primary"
+            >
+              {STATUS_LABEL[value.status]}
+              <X className="size-3" />
+            </button>
+          ) : null}
+          {value.priority !== "ALL" ? (
+            <button
+              type="button"
+              onClick={() => set("priority", "ALL")}
+              title="Remover este filtro"
+              className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 font-medium text-primary"
+            >
+              {PRIORITY_META[value.priority].label}
+              <X className="size-3" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onChange({ ...value, status: "ALL", priority: "ALL" })}
+            className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            limpar
+          </button>
+        </div>
+      ) : null}
 
       <SegmentRow
         name="Mostrar quais conversas"

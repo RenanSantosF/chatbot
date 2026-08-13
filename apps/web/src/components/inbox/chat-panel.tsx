@@ -96,8 +96,25 @@ function PriorityPicker({
   );
 }
 
+/** Três bolinhas pulsando, no ritmo de "digitando" — carregamento que não
+ *  finge ser conteúdo, só diz que algo está a caminho. */
+function ChatLoading() {
+  return (
+    <div className="flex items-center gap-1.5" role="status" aria-label="Carregando conversa">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="size-2.5 animate-[pulsando_1s_ease-in-out_infinite] rounded-full bg-foreground/35"
+          style={{ animationDelay: `${i * 160}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function ChatPanel({
   conversation,
+  loading,
   sending,
   onSend,
   onAssign,
@@ -114,6 +131,8 @@ export function ChatPanel({
   onReact,
 }: {
   conversation: ConversationDetail | null;
+  /** Há conversa escolhida, mas os dados ainda estão vindo. */
+  loading?: boolean;
   sending: boolean;
   onSend: (content: string) => Promise<void>;
   onAssign: () => Promise<void>;
@@ -163,11 +182,12 @@ export function ChatPanel({
   useEffect(() => {
     // Não puxa pro fim enquanto a pessoa está navegando pelos resultados.
     if (currentMatchId) return;
-    // Suave quando é mensagem nova numa conversa já aberta; instantâneo ao
-    // abrir a conversa, senão a tela desce rolando na frente da pessoa.
+    // Sempre instantâneo: a conversa abre já no fim, sem a tela descer
+    // rolando na frente da pessoa. Só mensagem nova numa conversa que já
+    // estava aberta é que desliza.
     bottomRef.current?.scrollIntoView({
       block: "end",
-      behavior: firstPaintRef.current ? "auto" : "smooth",
+      behavior: firstPaintRef.current ? "instant" : "smooth",
     });
     firstPaintRef.current = false;
   }, [conversation?.id, conversation?.messages.length, currentMatchId]);
@@ -175,11 +195,18 @@ export function ChatPanel({
   if (!conversation) {
     return (
       <div className="chat-wallpaper flex min-h-0 flex-1 items-center justify-center p-6">
-        <EmptyState
-          icon={MessagesSquare}
-          title="Nenhuma conversa aberta"
-          description="Escolha uma conversa na lista ao lado para começar a atender."
-        />
+        {/* Carregando é diferente de vazio: quando há conversa escolhida
+            mas os dados ainda não chegaram, mostrar "escolha uma conversa"
+            é mentira e assusta. */}
+        {loading ? (
+          <ChatLoading />
+        ) : (
+          <EmptyState
+            icon={MessagesSquare}
+            title="Nenhuma conversa aberta"
+            description="Escolha uma conversa na lista ao lado para começar a atender."
+          />
+        )}
       </div>
     );
   }

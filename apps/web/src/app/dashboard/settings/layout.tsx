@@ -15,14 +15,14 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
         title="Configurações"
         description="Canal, inteligência, direcionamento e acessos da sua empresa."
       />
 
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-        <nav aria-label="Seções de configuração" className="lg:sticky lg:top-20 lg:self-start">
+        <nav aria-label="Seções de configuração" className="lg:sticky lg:top-4 lg:self-start">
           <ul className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {SETTINGS_SECTIONS.map((section) => {
               const active = pathname === section.href;
