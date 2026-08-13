@@ -6,7 +6,7 @@ Três serviços, cada um cuidando de uma parte:
 |---|---|---|
 | Banco de dados (Postgres + pgvector) | **Supabase** | Já vem com a extensão `vector` pronta pra habilitar |
 | API (NestJS + Socket.io) | **Railway** (ou Render) | Processo Node de vida longa — Vercel é serverless e não segura WebSocket bem |
-| Frontend (Next.js) | **Vercel** | É o que o Next.js faz de melhor |
+| Frontend (Next.js) | **Railway** | Mesmo lugar da API, um serviço separado. (A Vercel também serve, mas é bloqueada por proxy em muitas redes corporativas.) |
 
 Todos têm plano free suficiente pra testar. Depois, se validar o negócio, dá pra subir de tier sem trocar nada de arquitetura.
 
@@ -53,7 +53,7 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `JWT_EXPIRES_IN` | `7d` |
    | `PORT` | `3001` |
    | `ENCRYPTION_KEY` | gere do mesmo jeito que o `JWT_SECRET`, mas **guarde separado** — se perder, ninguém decripta as chaves de IA/WhatsApp já salvas |
-   | `WEB_APP_URL` | a URL que a Vercel vai te dar no passo 3 (ex: `https://seu-app.vercel.app`) — sem isso, CORS bloqueia o frontend |
+   | `WEB_APP_URL` | a URL do serviço web (passo 3, ex: `https://seu-app.up.railway.app`) — sem isso, CORS bloqueia o frontend |
    | `WHATSAPP_VERIFY_TOKEN` | qualquer string que você escolher (ex: `token-secreto-webhook`) — vai reaparecer no passo 4 |
    | `API_PUBLIC_URL` | a URL pública que o Railway vai te dar (Settings > Networking > Generate Domain) — só usada pra mostrar a URL do webhook pronta na tela de Configurações |
    | `GEMINI_API_KEY` / `GEMINI_MODEL` | opcional — deixe em branco. Cada empresa cadastra a própria chave pela tela `/dashboard/ai` |
@@ -64,18 +64,47 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
 
 ---
 
-## 3. Frontend (Vercel)
+## 3. Frontend (Railway)
 
-1. Importe o repositório na [Vercel](https://vercel.com), branch `main`.
-2. Root directory: `apps/web`
-3. Variáveis de ambiente:
+É um **segundo serviço** no mesmo projeto do Railway, apontando pro mesmo
+repositório. O que muda é o arquivo de configuração que ele obedece.
+
+1. No projeto do Railway: **New > GitHub Repo**, escolha o mesmo repositório.
+2. Em **Settings > Source**: Root Directory = *(vazio, a raiz do repo)*.
+
+   Este é o passo que quebra o build se estiver errado. Apontar pra
+   `apps/web` faz o Nixpacks procurar o `pnpm-lock.yaml` lá dentro, não
+   achar (ele mora na raiz, como em todo monorepo pnpm) e falhar com
+   `ERR_PNPM_NO_LOCKFILE ... frozen-lockfile`.
+
+3. Em **Settings > Config-as-code**, defina o caminho como `railway.web.json`.
+
+   Sem isso, os dois serviços leriam o `railway.json` da raiz e o frontend
+   tentaria subir a API. O `railway.web.json` já está no repositório com o
+   build e o start certos:
+
+   ```json
+   {
+     "build": { "buildCommand": "pnpm --filter web run build" },
+     "deploy": { "startCommand": "pnpm --filter web exec next start -H 0.0.0.0" }
+   }
+   ```
+
+4. Variáveis de ambiente:
 
    | Variável | Valor |
    |---|---|
-   | `API_INTERNAL_URL` | a URL pública da API (Railway ou Render) |
+   | `API_INTERNAL_URL` | a URL pública da API (ex: `https://sua-api.up.railway.app`) |
    | `NEXT_PUBLIC_SOCKET_URL` | a mesma URL pública da API |
 
-4. Deploy. Depois de pronto, volte na API e confirme que `WEB_APP_URL` bate exatamente com a URL que a Vercel gerou (com `https://`, sem barra no final).
+   As duas precisam existir **antes do build**, não só no deploy:
+   `NEXT_PUBLIC_*` é embutida no JavaScript durante o `next build`, e o
+   rewrite de `/api/*` é resolvido no mesmo momento. Se você criar a
+   variável depois, force um redeploy.
+
+5. **Settings > Networking > Generate Domain** pra ter a URL pública.
+6. Volte no serviço da API e ajuste `WEB_APP_URL` pra essa URL (com
+   `https://`, sem barra no final). Sem isso o CORS barra o frontend.
 
 ---
 
