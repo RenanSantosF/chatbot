@@ -169,11 +169,14 @@ export default function InboxPage() {
     setReplyTo(null);
     // Pinta do cache na hora (troca de conversa fica instantânea) e busca
     // do servidor em segundo plano só pra reconciliar.
+    //
+    // O `setDetail(null)` antes é o que mata o piscar: sem ele, o React
+    // mantinha a conversa ANTERIOR na tela durante o quadro em que a nova
+    // ainda não chegou — dava a impressão de a conversa errada abrir e só
+    // depois trocar. Melhor um instante vazio que a conversa errada.
     const cached = conversationCache.get(selectedId);
-    if (cached) {
-      setDetail(cached.detail);
-      setMessagesCursor(cached.messagesCursor);
-    }
+    setDetail(cached ? cached.detail : null);
+    setMessagesCursor(cached ? cached.messagesCursor : null);
     loadDetail(selectedId).catch(() => toast.error("Não deu pra carregar essa conversa."));
   }, [selectedId, loadDetail]);
 
@@ -383,7 +386,7 @@ export default function InboxPage() {
     // Sem cartão, sem margem, sem título: a tela inteira é o painel, do
     // jeito que o WhatsApp Web faz. O cabeçalho da conversa e a barra de
     // filtros já dizem onde a pessoa está.
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[340px_1fr] xl:grid-cols-[340px_1fr_300px] [&>*]:min-h-0">
+    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[400px_1fr] xl:grid-cols-[400px_1fr_330px] [&>*]:min-h-0">
       <div className="hidden min-h-0 flex-col border-r md:flex">
         <InboxFilterBar
           value={filters}

@@ -153,7 +153,7 @@ export function ConversationList({
             </Avatar>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <span className={cn("truncate text-sm", unread > 0 ? "font-semibold" : "font-medium")}>
+                <span className={cn("truncate text-[15px]", unread > 0 ? "font-semibold" : "font-medium")}>
                   {conversation.customer.name}
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -179,7 +179,7 @@ export function ConversationList({
               <div className="mt-0.5 flex items-center gap-1.5">
                 <p
                   className={cn(
-                    "min-w-0 flex-1 truncate text-xs",
+                    "min-w-0 flex-1 truncate text-[13px]",
                     unread > 0 ? "font-medium text-foreground" : "text-muted-foreground",
                   )}
                 >

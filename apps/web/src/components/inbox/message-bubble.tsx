@@ -104,22 +104,33 @@ export function MessageBubble({
   return (
     <div
       data-message-id={message.id}
-      // Dois cliques respondem, igual ao aplicativo. `select-none` no
-      // duplo clique evita que o gesto saia selecionando o texto todo.
-      onDoubleClick={onReply ? () => onReply(message) : undefined}
       className={cn(
         "group/msg relative flex max-w-[75%] flex-col",
         fromCustomer ? "self-start" : "self-end",
-        onReply && "select-none",
         isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
       )}
     >
+      {/* Faixa de duplo clique AO LADO do balão, nunca sobre ele: dentro,
+          o gesto competia com selecionar e copiar o texto da mensagem. */}
+      {onReply ? (
+        <span
+          onDoubleClick={() => onReply(message)}
+          title="Clique duas vezes para responder"
+          aria-hidden
+          className={cn(
+            "absolute inset-y-0 w-10 cursor-cell select-none",
+            fromCustomer ? "left-full ml-1" : "right-full mr-1",
+          )}
+        />
+      ) : null}
       {onReply || onReact || onForward ? (
         <div
           className={cn(
-            // Fica inteiro acima do balão (bottom-full), não por cima dele: com
-            // -top-3 o menu tapava a primeira linha da mensagem.
-            "absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-full border bg-popover px-1 py-0.5 opacity-0 shadow-sm transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
+            // Fica inteiro acima do balão (bottom-full), não por cima dele.
+            // Sem borda: a sombra já destaca, e o traço em volta de um menu
+            // pequeno vira moldura. Emoji em 20px porque abaixo disso o
+            // navegador rasteriza a fonte de emoji e ela sai serrilhada.
+            "absolute bottom-full z-10 mb-1.5 flex items-center gap-1 rounded-full bg-popover px-1.5 py-1 opacity-0 shadow-[0_2px_12px_oklch(0_0_0/18%)] transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
             fromCustomer ? "left-2" : "right-2",
           )}
         >
@@ -130,7 +141,7 @@ export function MessageBubble({
                   type="button"
                   title={`Reagir com ${emoji}`}
                   onClick={() => void onReact(message.id, emoji)}
-                  className="rounded-full px-1 text-sm leading-none transition-transform hover:scale-125"
+                  className="rounded-full px-1 text-[20px] leading-none transition-transform hover:scale-125"
                 >
                   {emoji}
                 </button>
@@ -144,7 +155,7 @@ export function MessageBubble({
               onClick={() => onReply(message)}
               className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
             >
-              <Reply className="size-3.5" />
+              <Reply className="size-4.5" />
             </button>
           ) : null}
           {onForward ? (
@@ -155,7 +166,7 @@ export function MessageBubble({
               onClick={() => onForward(message)}
               className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
             >
-              <Forward className="size-3.5" />
+              <Forward className="size-4.5" />
             </button>
           ) : null}
         </div>
@@ -167,7 +178,7 @@ export function MessageBubble({
         // papel de parede sem parecer um cartão empilhado. O verde de saída
         // no escuro é dessaturado de propósito — o verde cheio do app
         // brigava com o cinza da interface.
-        "flex flex-col gap-0.5 rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
+        "flex flex-col gap-0.5 rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
         fromCustomer
           ? "rounded-bl-sm bg-card text-card-foreground ring-1 ring-foreground/5 slide-in-from-left-2"
           : "rounded-br-sm bg-bubble-out text-bubble-out-foreground slide-in-from-right-2",
@@ -197,7 +208,7 @@ export function MessageBubble({
       ) : null}
       <span
         className={cn(
-          "flex items-center justify-end gap-1 text-[10px] leading-none",
+          "flex items-center justify-end gap-1 text-[11px] leading-none",
           fromCustomer ? "text-muted-foreground" : "text-bubble-out-foreground/70",
         )}
       >

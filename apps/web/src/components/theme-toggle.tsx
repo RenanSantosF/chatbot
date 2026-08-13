@@ -36,13 +36,13 @@ export function ThemeToggle() {
             aria-pressed={active}
             onClick={() => setTheme(option.value)}
             className={cn(
-              "flex size-6.5 items-center justify-center rounded-md transition-colors",
+              "flex size-8 items-center justify-center rounded-md transition-colors",
               active
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
-            <option.icon className="size-3.5" />
+            <option.icon className="size-5" />
           </button>
         );
       })}

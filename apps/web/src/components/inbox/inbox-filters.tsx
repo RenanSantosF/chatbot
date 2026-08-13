@@ -60,7 +60,14 @@ interface ChipOption {
  * custa um clique, não dois. Rola na horizontal porque a coluna é estreita
  * e quebrar linha faria a lista pular de altura conforme o filtro.
  */
-function ChipRow({
+/**
+ * Segmentos, não pastilhas soltas. A versão anterior era uma fila de
+ * pílulas do mesmo tamanho e peso: dava pra ver que existiam filtros, mas
+ * não qual estava valendo, e a contagem competia com o rótulo. Aqui o
+ * fundo do trilho agrupa as opções, o segmento ativo ganha superfície
+ * elevada, e a contagem vira uma bolinha à direita do rótulo.
+ */
+function SegmentRow({
   name,
   value,
   options,
@@ -75,7 +82,7 @@ function ChipRow({
     <div
       role="radiogroup"
       aria-label={name}
-      className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="flex gap-0.5 overflow-x-auto rounded-lg bg-muted p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {options.map((option) => {
         const active = value === option.value;
@@ -87,18 +94,25 @@ function ChipRow({
             aria-checked={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs whitespace-nowrap transition-colors duration-150",
+              "flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] whitespace-nowrap transition-all duration-150",
               active
-                ? "bg-primary/15 font-medium text-primary"
-                : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground",
+                ? "bg-card font-semibold text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {option.dot ? (
-              <span className={cn("size-1.5 rounded-full", option.dot)} aria-hidden />
+              <span className={cn("size-2 rounded-full", option.dot)} aria-hidden />
             ) : null}
             {option.label}
-            {option.count === undefined ? null : (
-              <span className="tabular-nums opacity-70">{option.count}</span>
+            {option.count === undefined || option.count === 0 ? null : (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-px text-[11px] leading-none tabular-nums",
+                  active ? "bg-primary text-primary-foreground" : "bg-foreground/10",
+                )}
+              >
+                {option.count}
+              </span>
             )}
           </button>
         );
@@ -135,12 +149,12 @@ export function InboxFilterBar({
     <div className="flex flex-col gap-2 p-3">
       <div className="flex items-center gap-1.5">
         <div className="relative flex-1">
-          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={value.search}
             onChange={(event) => set("search", event.target.value)}
             placeholder="Buscar nome ou telefone"
-            className="h-9 rounded-full border-transparent bg-muted/70 pl-7 text-xs shadow-none"
+            className="h-10 rounded-lg border-transparent bg-muted pl-8 text-[13px] shadow-none"
           />
         </div>
         <button
@@ -150,11 +164,11 @@ export function InboxFilterBar({
           title="Situação e prioridade"
           onClick={() => setShowMore((open) => !open)}
           className={cn(
-            "relative flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
+            "relative flex size-10 shrink-0 items-center justify-center rounded-lg transition-colors",
             showMore ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent",
           )}
         >
-          <ListFilter className="size-4" />
+          <ListFilter className="size-5" />
           {refining ? (
             <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
           ) : null}
@@ -162,7 +176,7 @@ export function InboxFilterBar({
         {action}
       </div>
 
-      <ChipRow
+      <SegmentRow
         name="Mostrar quais conversas"
         value={value.scope}
         onChange={(next) => set("scope", next as InboxFilters["scope"])}
@@ -176,7 +190,7 @@ export function InboxFilterBar({
 
       {showMore ? (
         <div className="flex flex-col gap-1.5 duration-200 animate-in fade-in slide-in-from-top-1">
-          <ChipRow
+          <SegmentRow
             name="Filtrar por situação"
             value={value.status}
             onChange={(next) => set("status", next as InboxFilters["status"])}
@@ -189,7 +203,7 @@ export function InboxFilterBar({
               })),
             ]}
           />
-          <ChipRow
+          <SegmentRow
             name="Filtrar por prioridade"
             value={value.priority}
             onChange={(next) => set("priority", next as InboxFilters["priority"])}

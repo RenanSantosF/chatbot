@@ -9,8 +9,24 @@
    pediu letra maior, e subir a raiz escala tudo junto — texto, altura de
    botão, ícone dimensionado em rem — sem caçar classe por classe. */
 :root {
-  font-size: 17px;
+  font-size: 18px;
 }
+
+/* Toda borda do sistema, em um lugar só e sem depender de utilitário.
+   Já tentei resolver isso pelos tokens e não pegou em tudo — regra
+   explícita no elemento fecha a questão: linha de 1px de dispositivo
+   (mais fina que 1px lógico em telas retina) e opacidade baixíssima. É
+   pra separar quando você procura e sumir quando você lê. */
+*,
+::before,
+::after {
+  border-color: var(--border);
+}
+
+/* Tentei tambem afinar a largura pra 0.5px e a regra do Tailwind ganhava —
+   como nao consegui comprovar o efeito, tirei em vez de deixar CSS morto.
+   O que manda de fato na presenca da linha e a opacidade, e ela esta em
+   3% (escuro) e 4% (claro) nos tokens abaixo. */
 
 @theme inline {
   --color-chat-bg: var(--chat-bg);
@@ -79,8 +95,8 @@
   --accent: oklch(0.958 0 0);
   --accent-foreground: oklch(0.18 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0 0 0 / 6%);
-  --input: oklch(0 0 0 / 10%);
+  --border: oklch(0 0 0 / 4%);
+  --input: oklch(0 0 0 / 8%);
   --ring: oklch(0.6 0 0);
   --chat-bg: oklch(0.988 0 0);
   --chat-dot: oklch(0 0 0 / 2.5%);
@@ -98,7 +114,7 @@
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0 0);
   --sidebar-accent-foreground: oklch(0.14 0 0);
-  --sidebar-border: oklch(0 0 0 / 6%);
+  --sidebar-border: oklch(0 0 0 / 4%);
   --sidebar-ring: oklch(0.6 0 0);
 }
 
@@ -125,8 +141,8 @@
   --accent: oklch(0.395 0 0);
   --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.68 0.19 22);
-  --border: oklch(1 0 0 / 5%);
-  --input: oklch(1 0 0 / 9%);
+  --border: oklch(1 0 0 / 3%);
+  --input: oklch(1 0 0 / 7%);
   --ring: oklch(0.68 0 0);
   --chat-bg: oklch(0.3 0 0);
   --chat-dot: oklch(1 0 0 / 2.5%);
@@ -143,7 +159,7 @@
   --sidebar-primary-foreground: oklch(0.16 0 0);
   --sidebar-accent: oklch(0.4 0 0);
   --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(1 0 0 / 5%);
+  --sidebar-border: oklch(1 0 0 / 3%);
   --sidebar-ring: oklch(0.68 0 0);
 }
 

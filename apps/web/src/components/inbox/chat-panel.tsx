@@ -55,8 +55,11 @@ function sameDay(a: string, b: string): boolean {
 
 function DaySeparator({ label }: { label: string }) {
   return (
-    <div className="sticky top-0 z-10 flex justify-center py-1.5">
-      <span className="rounded-full bg-background/90 px-3 py-1 text-[11px] font-medium text-muted-foreground capitalize shadow-xs ring-1 ring-foreground/5 backdrop-blur-sm">
+    // Sem `sticky`: grudado no topo ele passava POR CIMA do texto da
+    // primeira mensagem do dia. Separador que tapa conteúdo não separa
+    // nada — melhor ocupar a própria linha.
+    <div className="flex justify-center py-2">
+      <span className="rounded-full bg-background/90 px-3 py-1 text-xs font-medium text-muted-foreground capitalize shadow-xs ring-1 ring-foreground/5">
         {label}
       </span>
     </div>
@@ -362,7 +365,7 @@ export function ChatPanel({
       />
 
       {replyTo ? (
-        <div className="flex items-center gap-2 bg-muted/60 px-3 py-2">
+        <div className="flex items-center gap-2 bg-muted/60 px-3 py-2 duration-200 ease-out animate-in fade-in slide-in-from-bottom-2">
           <div className="min-w-0 flex-1 border-l-2 border-primary pl-2">
             <p className="text-[11px] font-medium text-primary">
               {replyTo.senderType === "CUSTOMER" ? "Cliente" : "Você"}

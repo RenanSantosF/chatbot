@@ -197,7 +197,9 @@ function Shell({
                 <Avatar className="size-7">
                   <AvatarFallback className="text-xs">{initials(user.name)}</AvatarFallback>
                 </Avatar>
-                <div className="flex min-w-0 flex-col overflow-hidden">
+                {/* O menu vive recolhido; sem esconder o texto aqui, o nome
+                    e o papel vazavam por baixo do avatar. */}
+                <div className="flex min-w-0 flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
                   <span className="truncate text-sm font-medium">{user.name}</span>
                   <span className="truncate text-xs text-muted-foreground">{ROLE_LABEL[user.role]}</span>
                 </div>
