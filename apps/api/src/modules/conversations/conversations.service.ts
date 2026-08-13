@@ -1173,6 +1173,27 @@ export class ConversationsService {
   async setAiMode(conversationId: string, aiMode: AiMode) {
     await this.requireConversation(conversationId);
 
+    // Religar a IA numa conversa não pode contrariar a chave geral. Dava
+    // pra "reativar a IA" no chat com ela desligada nas configurações: o
+    // botão respondia, a conversa voltava pra AI_ACTIVE e o cliente
+    // escrevia pra ninguém — a IA continuava calada, e agora sem nenhum
+    // humano marcado como responsável.
+    if (aiMode === 'AI_ACTIVE') {
+      const settings = await this.prisma.db.aiSettings.findFirst({
+        select: { active: true, apiKeyEncrypted: true },
+      });
+      if (!settings?.active) {
+        throw new BadRequestException(
+          'A IA está desligada nas configurações. Ligue-a em Configurações > IA antes de reativar numa conversa.',
+        );
+      }
+      if (!settings.apiKeyEncrypted) {
+        throw new BadRequestException(
+          'A IA está sem chave de API. Configure-a em Configurações > IA antes de reativar numa conversa.',
+        );
+      }
+    }
+
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
       data: { aiMode },
@@ -1215,6 +1236,13 @@ export class ConversationsService {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Nada em aberto: ou o cliente volta pra conversa que já teve, ou começa
+    // uma nova. Quem decide é a configuração de agrupamento — ver
+    // reabrirParaAgrupamento.
+    if (!conversation) {
+      conversation = await this.reabrirParaAgrupamento(customer.id);
+    }
+
     if (!conversation) {
       conversation = await this.prisma.db.conversation.create({
         data: {
@@ -1246,11 +1274,12 @@ export class ConversationsService {
     let latestConversation = inbound.conversation;
 
     if (conversation.aiMode === 'AI_ACTIVE') {
-      const reply = await this.aiEngine.generateReply(conversation.id);
-      if (reply) {
+      const resultado = await this.aiEngine.generateReply(conversation.id);
+
+      if (resultado.tipo === 'respondeu') {
         const aiTurn = await this.persistMessage(conversation.id, {
           senderType: 'AI',
-          content: reply.content,
+          content: resultado.resposta.content,
         });
         latestConversation = aiTurn.conversation;
 
@@ -1260,14 +1289,82 @@ export class ConversationsService {
         // persistMessage, que mexe no status.
         const travada = await this.aplicarTravasDaIa(
           conversation.id,
-          reply.verificacao,
+          resultado.resposta.verificacao,
           latestConversation.priority,
         );
         if (travada) latestConversation = travada;
+      } else if (resultado.tipo === 'indisponivel') {
+        // A IA não pode responder — desligada no meio do atendimento, sem
+        // chave, provedor fora. Antes isso virava silêncio: a mensagem
+        // entrava, a IA calava e nada marcava a conversa como pendente de
+        // gente. O cliente ficava falando sozinho e ninguém era chamado
+        // porque ninguém sabia que precisava chamar.
+        //
+        // Agora cai no mesmo caminho de escalonamento das travas, então as
+        // regras de "quem atende o quê" também valem aqui.
+        const escalada = await this.aplicarTravasDaIa(
+          conversation.id,
+          { precisaHandoff: true, motivo: resultado.motivo },
+          latestConversation.priority,
+        );
+        if (escalada) latestConversation = escalada;
       }
     }
 
     return { conversation: latestConversation, message: inbound.message };
+  }
+
+  /**
+   * O cliente voltou a escrever depois de um assunto encerrado. Reaproveita
+   * a conversa anterior em vez de abrir um card novo.
+   *
+   * O ponto é o atendente: no WhatsApp de verdade a pessoa tem UMA conversa
+   * com a empresa e o histórico inteiro à vista. Abrir um card por assunto
+   * espalha o mesmo cliente por vários lugares, e quem atende a segunda
+   * mensagem não vê o que foi combinado na primeira.
+   *
+   * A janela existe porque isso deixa de valer com o tempo: quem escreve
+   * três meses depois traz outro caso, e ressuscitar a conversa antiga só
+   * confunde. Fora da janela, conversa nova — o histórico continua no
+   * perfil do cliente de qualquer forma.
+   */
+  private async reabrirParaAgrupamento(customerId: string) {
+    const settings = await this.inboxSettings.get();
+    if (!settings.groupByCustomer) return null;
+
+    const limite = new Date(
+      Date.now() - settings.groupWindowHours * 60 * 60 * 1000,
+    );
+
+    const anterior = await this.prisma.db.conversation.findFirst({
+      where: {
+        customerId,
+        status: { in: ['RESOLVED', 'CLOSED'] },
+        lastMessageAt: { gte: limite },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+    });
+    if (!anterior) return null;
+
+    // Volta a ser um atendimento de verdade. A IA reassume só se ela é que
+    // estava conduzindo antes: se um humano tinha assumido, ele continua
+    // dono — o cliente que volta é o mesmo caso, não um atendimento novo.
+    const reaberta = await this.prisma.db.conversation.update({
+      where: { id: anterior.id },
+      data: { status: 'OPEN' },
+    });
+
+    await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId: reaberta.id,
+        senderType: 'SYSTEM',
+        content: 'O cliente voltou a escrever e o atendimento foi reaberto.',
+        messageType: 'TEXT',
+      },
+    });
+
+    return reaberta;
   }
 
   /**

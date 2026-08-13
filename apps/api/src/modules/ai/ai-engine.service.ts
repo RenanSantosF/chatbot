@@ -16,6 +16,23 @@ export interface AiReply {
 }
 
 /**
+ * Por que a IA não respondeu — e não só *que* não respondeu.
+ *
+ * Antes isto era um `null` só. O resultado é que desligar a IA no meio de um
+ * atendimento deixava o cliente falando sozinho: a mensagem era gravada, a
+ * IA calava, e nada marcava a conversa como pendente de gente. Ninguém era
+ * chamado porque ninguém sabia que precisava chamar.
+ *
+ * `indisponivel` é problema nosso (desligada, sem chave, provedor fora) e
+ * precisa de um humano. `semPergunta` é normal — a última mensagem já era da
+ * casa, não há nada a responder — e não deve acordar ninguém.
+ */
+export type ResultadoDaIa =
+  | { tipo: 'respondeu'; resposta: AiReply }
+  | { tipo: 'indisponivel'; motivo: string }
+  | { tipo: 'semPergunta' };
+
+/**
  * O "cérebro": decide se responde e, se sim, o quê. Nunca escreve no banco
  * nem mexe em Socket.io — isso é responsabilidade de quem chama
  * (ConversationsService), que trata a resposta da IA exatamente como
@@ -33,23 +50,28 @@ export class AiEngineService {
   ) {}
 
   /**
-   * Retorna o texto da resposta, ou null quando a IA não deve responder
-   * (desligada pelo tenant, sem API key configurada, ou falha na chamada ao
-   * provedor — nesses casos o atendimento simplesmente fica visível pra um
-   * humano assumir, em vez de quebrar o recebimento da mensagem do
-   * cliente).
+   * Decide se responde e, se sim, o quê. Quando não responde, diz por quê —
+   * quem chama precisa saber se deve chamar um humano (ver ResultadoDaIa).
+   * Erro de provedor nunca estoura daqui: quebrar o recebimento da mensagem
+   * do cliente seria pior do que ficar sem resposta automática.
    */
-  async generateReply(conversationId: string): Promise<AiReply | null> {
+  async generateReply(conversationId: string): Promise<ResultadoDaIa> {
     const { active, credentials } = await this.credentials.resolve();
     if (!active) {
       this.logger.log(
         `IA desativada pelo tenant — não respondendo a conversa ${conversationId}.`,
       );
-      return null;
+      return {
+        tipo: 'indisponivel',
+        motivo: 'A IA está desligada nas configurações.',
+      };
     }
     if (!credentials) {
       this.logger.warn('Sem API key de IA configurada.');
-      return null;
+      return {
+        tipo: 'indisponivel',
+        motivo: 'A IA está sem chave de API configurada.',
+      };
     }
 
     const context = await this.contextBuilder.build(conversationId);
@@ -62,7 +84,7 @@ export class AiEngineService {
       this.logger.log(
         `Sem mensagem de cliente pra responder na conversa ${conversationId}.`,
       );
-      return null;
+      return { tipo: 'semPergunta' };
     }
 
     this.logger.log(
@@ -101,12 +123,15 @@ export class AiEngineService {
         );
       }
 
-      return { content: result.content, verificacao };
+      return { tipo: 'respondeu', resposta: { content: result.content, verificacao } };
     } catch (error) {
       this.logger.warn(
         `IA não conseguiu responder a conversa ${conversationId}: ${error instanceof Error ? error.message : error}`,
       );
-      return null;
+      return {
+        tipo: 'indisponivel',
+        motivo: 'A IA falhou ao responder (erro no provedor).',
+      };
     }
   }
 

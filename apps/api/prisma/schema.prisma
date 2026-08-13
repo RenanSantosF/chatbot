@@ -149,6 +149,20 @@ model InboxSettings {
   // atendimento foi encerrado e continua esperando resposta.
   notifyOnResolve  Boolean  @default(true)
   resolveMessage   String   @default("Atendimento encerrado por aqui. Se precisar de mais alguma coisa, é só mandar mensagem que a gente volta a te atender.")
+  // Agrupar conversas do mesmo cliente: quando ligado, quem volta a
+  // escrever depois de um assunto resolvido cai na MESMA conversa, com o
+  // histórico anterior à vista, em vez de abrir um card novo do zero.
+  // Desligado, cada assunto vira um atendimento separado — que é o que
+  // uma operação com métrica por chamado costuma querer.
+  groupByCustomer  Boolean  @default(true)
+  // Janela em horas pro reagrupamento. Passou disso, o assunto é outro e
+  // a conversa nova começa limpa.
+  groupWindowHours Int      @default(72)
+  // Encerra sozinho o que ficou parado. Serve pra não deixar assunto
+  // pendurado até estourar a janela de 24h de atendimento do WhatsApp,
+  // quando responder passa a exigir modelo aprovado (e pago).
+  autoCloseIdle    Boolean  @default(false)
+  autoCloseHours   Int      @default(20)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

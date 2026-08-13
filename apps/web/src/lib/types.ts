@@ -284,4 +284,8 @@ export interface InboxSettings {
   sendReadReceipts: boolean;
   notifyOnResolve: boolean;
   resolveMessage: string;
+  groupByCustomer: boolean;
+  groupWindowHours: number;
+  autoCloseIdle: boolean;
+  autoCloseHours: number;
 }

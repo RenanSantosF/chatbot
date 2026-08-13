@@ -17,6 +17,7 @@ import { SelectField } from "@/components/ui/select-field";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useSession } from "@/components/session-provider";
+import { apiFetch } from "@/lib/api-client";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,12 @@ import { MessageBubble } from "./message-bubble";
 import { AttachmentComposer } from "./attachment-composer";
 import { ForwardDialog } from "./forward-dialog";
 import { VoiceRecorder } from "./voice-recorder";
-import type { ConversationDetail, ConversationMessage, ConversationPriority } from "@/lib/types";
+import type {
+  AiSettings,
+  ConversationDetail,
+  ConversationMessage,
+  ConversationPriority,
+} from "@/lib/types";
 
 /**
  * Rótulo do separador de dia, no mesmo espírito do WhatsApp: os dois dias
@@ -152,6 +158,10 @@ export function ChatPanel({
   onReact: (messageId: string, emoji: string) => Promise<void>;
 }) {
   const { user } = useSession();
+  // A IA só pode ser religada numa conversa se estiver ligada e com chave no
+  // nível da empresa — a API recusa o contrário, então mostrar o botão seria
+  // oferecer uma ação que não existe.
+  const [iaDisponivel, setIaDisponivel] = useState(false);
   const [draft, setDraft] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [needle, setNeedle] = useState("");
@@ -176,6 +186,31 @@ export function ChatPanel({
   }, [needle, conversation]);
 
   const currentMatchId = matches[matchIndex] ?? null;
+
+  // Quais balões podem animar a entrada.
+  //
+  // A queixa de "a tela abre rolando com animação" não era o scroll: era
+  // que TODO balão tinha `animate-in slide-in`, então abrir uma conversa
+  // disparava trinta animações de uma vez e o conjunto parecia rolagem.
+  // Aqui só anima o que chegou depois que o painel já estava aberto.
+  //
+  // A varredura é de trás pra frente e para no primeiro balão conhecido:
+  // assim mensagem nova (que entra no fim) anima, e histórico antigo
+  // carregado pelo "ver anteriores" (que entra no começo) não.
+  // O critério é a hora: anima só o que foi escrito depois que este painel
+  // abriu. O painel é remontado a cada troca de conversa (key={selectedId}
+  // no Inbox), então este marco é sempre "quando esta conversa apareceu".
+  //
+  // Comparar por hora, e não por "id que eu já tinha visto", resolve de
+  // graça o histórico carregado pelo "ver anteriores": aquelas mensagens
+  // são antigas, então entram sem animação nenhuma, que é o certo.
+  const [abertoEm] = useState(() => Date.now());
+
+  useEffect(() => {
+    apiFetch<AiSettings>("/ai/settings")
+      .then((ia) => setIaDisponivel(ia.active && ia.hasApiKey))
+      .catch(() => setIaDisponivel(false));
+  }, []);
 
   useEffect(() => {
     if (!currentMatchId) return;
@@ -303,7 +338,11 @@ export function ChatPanel({
               Reabrir
             </Button>
           )}
-          {!isResolved && conversation.aiMode !== "AI_ACTIVE" && (
+          {/* Só aparece se a IA estiver realmente disponível. Antes o botão
+              ficava lá com a IA desligada nas configurações: reativar
+              "funcionava", a conversa voltava pra IA e o cliente escrevia
+              pra ninguém — a IA calada e nenhum humano marcado. */}
+          {!isResolved && conversation.aiMode !== "AI_ACTIVE" && iaDisponivel && (
             <Button size="sm" variant="ghost" onClick={onReactivateAi}>
               Reativar IA
             </Button>
@@ -418,6 +457,7 @@ export function ChatPanel({
               >
               <MessageBubble
                 message={message}
+                animar={new Date(message.createdAt).getTime() > abertoEm}
                 highlight={needle.trim()}
                 isCurrentMatch={message.id === currentMatchId}
                 onReply={onReply}

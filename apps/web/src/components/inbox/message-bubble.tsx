@@ -73,6 +73,7 @@ function Highlighted({ text, term }: { text: string; term: string }) {
 
 export function MessageBubble({
   message,
+  animar = false,
   highlight = "",
   isCurrentMatch = false,
   onReply,
@@ -80,6 +81,12 @@ export function MessageBubble({
   onForward,
 }: {
   message: ConversationMessage;
+  /**
+   * Anima a entrada do balão. Só vale pra mensagem que chegou com a
+   * conversa já aberta: animar o histórico inteiro na abertura fazia a tela
+   * parecer que estava rolando sozinha.
+   */
+  animar?: boolean;
   /** Termo buscado na conversa, pra pintar dentro do balão. */
   highlight?: string;
   /** Resultado em foco na navegação da busca. */
@@ -168,10 +175,14 @@ export function MessageBubble({
         // cursor-text: a linha em volta é clicável pra responder e usa
         // cursor-pointer; dentro do balão o cursor volta ao de texto pra não
         // parecer que o texto não pode ser selecionado.
-        "flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
+        "flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)]",
         fromCustomer
-          ? "rounded-bl-sm bg-card text-card-foreground slide-in-from-left-2"
-          : "rounded-br-sm bg-bubble-out text-bubble-out-foreground slide-in-from-right-2",
+          ? "rounded-bl-sm bg-card text-card-foreground"
+          : "rounded-br-sm bg-bubble-out text-bubble-out-foreground",
+        animar &&
+          (fromCustomer
+            ? "duration-200 ease-out animate-in fade-in slide-in-from-left-2"
+            : "duration-200 ease-out animate-in fade-in slide-in-from-right-2"),
       )}
     >
       {message.replyTo ? (
