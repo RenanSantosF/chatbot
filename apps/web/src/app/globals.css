@@ -184,31 +184,53 @@ button:disabled,
   --sidebar-ring: oklch(0.68 0 0);
 }
 
-/* Barra de rolagem fininha e discreta. Firefox pelo `scrollbar-*`, resto
-   pelo pseudo-elemento do WebKit — os dois precisam ser declarados, não
-   existe propriedade única que cubra ambos. Fica visível só o suficiente
-   pra você saber onde está na conversa. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
+/* Barra de rolagem fininha e discreta.
+ *
+ * A ordem aqui importa e não é óbvia: no Chrome, declarar `scrollbar-width`
+ * num elemento faz o navegador IGNORAR os pseudo-elementos
+ * `::-webkit-scrollbar` dele. Era esse o motivo da barra continuar larga
+ * mesmo com `width: 4px` escrito logo abaixo — o `thin` do Chrome tem uns
+ * 11px, bem mais grosso do que o pedido.
+ *
+ * Por isso `scrollbar-width` fica trancado atrás de um @supports que só o
+ * Firefox satisfaz (ele não conhece o pseudo-elemento do WebKit). Chrome e
+ * Safari caem nas regras de baixo e ficam com os 4px de verdade. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 12%, transparent) transparent;
+  }
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
+/* Bem apagada em repouso: a barra é uma referência de posição, não um
+   elemento da interface. Só ganha contraste quando o ponteiro chega perto
+   (o :hover do container, abaixo) ou quando você a arrasta. */
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
   border-radius: 999px;
 }
 
+:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--foreground) 28%, transparent);
+  background: color-mix(in oklch, var(--foreground) 32%, transparent);
+}
+
+/* O canto onde as duas barras se encontram vinha com o cinza padrão do
+   navegador e aparecia como um quadradinho solto no rodapé do chat. */
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Papel de parede do chat. O fundo chapado deixava a conversa com cara de
