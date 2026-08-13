@@ -102,7 +102,7 @@ export function MessageBubble({
   if (message.senderType === "SYSTEM") {
     return (
       <div className="flex justify-center py-1.5">
-        <span className="max-w-[80%] rounded-full bg-background/90 px-3 py-1 text-center text-xs font-medium text-muted-foreground shadow-xs ring-1 ring-foreground/5">
+        <span className="max-w-[80%] rounded-full bg-bubble-in px-3 py-1 text-center text-xs font-medium text-muted-foreground shadow-xs">
           {message.content}
         </span>
       </div>
@@ -183,7 +183,7 @@ export function MessageBubble({
         // parecer que o texto não pode ser selecionado.
         "flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)]",
         fromCustomer
-          ? "rounded-bl-sm bg-card text-card-foreground"
+          ? "rounded-bl-sm bg-bubble-in text-bubble-in-foreground"
           : "rounded-br-sm bg-bubble-out text-bubble-out-foreground",
         animar &&
           (fromCustomer

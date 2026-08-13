@@ -53,6 +53,8 @@ button:disabled,
   --color-chat-bg: var(--chat-bg);
   --color-bubble-out: var(--bubble-out);
   --color-bubble-out-foreground: var(--bubble-out-foreground);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-in-foreground: var(--bubble-in-foreground);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -107,7 +109,7 @@ button:disabled,
   --card-foreground: oklch(0.16 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.16 0 0);
-  --primary: oklch(0.55 0.11 165);
+  --primary: oklch(0.5352 0.1016 174.2); /* #008069 */
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.975 0 0);
   --secondary-foreground: oklch(0.22 0 0);
@@ -121,8 +123,10 @@ button:disabled,
   --ring: oklch(0.6 0 0);
   --chat-bg: oklch(0.988 0 0);
   --chat-dot: oklch(0 0 0 / 2.5%);
-  --bubble-out: oklch(0.945 0.055 150);
-  --bubble-out-foreground: oklch(0.2 0.01 160);
+  --bubble-out: oklch(0.9575 0.0669 141.1); /* #D9FDD3 */
+  --bubble-out-foreground: oklch(0.2153 0.0187 235.1);
+  --bubble-in: oklch(1 0 0); /* #FFFFFF */
+  --bubble-in-foreground: oklch(0.2153 0.0187 235.1);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -131,7 +135,7 @@ button:disabled,
   --radius: 0.375rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.16 0 0);
-  --sidebar-primary: oklch(0.55 0.11 165);
+  --sidebar-primary: oklch(0.5352 0.1016 174.2); /* #008069 */
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0 0);
   --sidebar-accent-foreground: oklch(0.14 0 0);
@@ -139,49 +143,65 @@ button:disabled,
   --sidebar-ring: oklch(0.6 0 0);
 }
 
-/* Escuro: cinza neutro puro, croma ZERO em toda superfície. Nada de matiz
-   fria nem "meio esverdeada" — o verde aparece só onde é ação (botão,
-   badge, balão de saída), nunca no fundo. O texto é branco de verdade.
-   As superfícies vivem entre 0.30 e 0.40 de OKLCH (#2e2e2e a #414141), um
-   degrau acima do WhatsApp real, que é escuro demais pra oito horas de
-   trabalho por dia. Cuidado que já custou uma rodada: o L do OKLCH não é
-   a claridade percebida — oklch(0.17) sai como #1a1a1a, quase preto. */
+/* Escuro: a paleta do WhatsApp, convertida dos hexadecimais oficiais.
+ *
+ * A versão anterior era cinza neutro em oklch(0.28) e lia como "suja". O
+ * motivo apareceu ao medir, não ao olhar: o fundo do WhatsApp é
+ * oklch(0.185) com croma 0.018 no matiz 238 — quase METADE da claridade e
+ * com um azul frio de fundo. Cinza puro e claro demais nesse patamar não
+ * parece neutro, parece encardido; é o azul levíssimo que faz o preto
+ * parecer limpo.
+ *
+ * Cada valor abaixo traz o hexadecimal de origem justamente pra isso poder
+ * ser conferido contra o aplicativo em vez de discutido no olho.
+ *
+ * O verde continua restrito a ação (botão, balão de saída, seleção) — em
+ * nenhuma superfície de fundo. */
 .dark {
-  --background: oklch(0.28 0 0);
-  --foreground: oklch(1 0 0);
-  --card: oklch(0.295 0 0);
-  --card-foreground: oklch(1 0 0);
-  --popover: oklch(0.34 0 0);
-  --popover-foreground: oklch(1 0 0);
-  --primary: oklch(0.72 0.13 163);
-  --primary-foreground: oklch(0.16 0 0);
-  --secondary: oklch(0.35 0 0);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.345 0 0);
-  --muted-foreground: oklch(0.75 0 0);
-  --accent: oklch(0.375 0 0);
-  --accent-foreground: oklch(1 0 0);
+  --background: oklch(0.1854 0.0182 238.2); /* #0B141A */
+  --foreground: oklch(0.9436 0.0051 228.8); /* #E9EDEF */
+  --card: oklch(0.2153 0.0187 235.1); /* #111B21 */
+  --card-foreground: oklch(0.9436 0.0051 228.8);
+  --popover: oklch(0.3036 0.0226 230); /* #233138 */
+  --popover-foreground: oklch(0.9436 0.0051 228.8);
+  --primary: oklch(0.6509 0.1283 170.4); /* #00A884 */
+  --primary-foreground: oklch(0.1854 0.0182 238.2);
+  --secondary: oklch(0.2851 0.0209 234.1); /* #202C33 */
+  --secondary-foreground: oklch(0.9436 0.0051 228.8);
+  --muted: oklch(0.2851 0.0209 234.1); /* #202C33 */
+  --muted-foreground: oklch(0.6637 0.0236 235.2); /* #8696A0 */
+  --accent: oklch(0.3036 0.0226 230); /* #233138 */
+  --accent-foreground: oklch(0.9436 0.0051 228.8);
   --destructive: oklch(0.68 0.19 22);
-  --border: oklch(1 0 0 / 3%);
-  --input: oklch(1 0 0 / 7%);
-  --ring: oklch(0.68 0 0);
-  --chat-bg: oklch(0.27 0 0);
-  --chat-dot: oklch(1 0 0 / 2.5%);
-  --bubble-out: oklch(0.44 0.06 163);
-  --bubble-out-foreground: oklch(1 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.265 0 0);
-  --sidebar-foreground: oklch(1 0 0);
-  --sidebar-primary: oklch(0.72 0.13 163);
-  --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.38 0 0);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(1 0 0 / 3%);
-  --sidebar-ring: oklch(0.68 0 0);
+  /* 5%, não os 3% de antes: a divisória é medida contra o fundo, e o fundo
+     ficou bem mais escuro. Em 3% sobre #0B141A ela sumia de vez e as
+     colunas perdiam o contorno. Continua imperceptível na leitura. */
+  --border: oklch(1 0 0 / 5%);
+  --input: oklch(1 0 0 / 9%);
+  --ring: oklch(0.6509 0.1283 170.4);
+  --chat-bg: oklch(0.1854 0.0182 238.2); /* #0B141A */
+  --chat-dot: oklch(1 0 0 / 3%);
+  --bubble-out: oklch(0.4237 0.0803 174.4); /* #005C4B */
+  --bubble-out-foreground: oklch(0.9436 0.0051 228.8);
+  /* Token próprio, e não `card`: o balão recebido precisa se destacar do
+     papel de parede (#0B141A), enquanto a superfície de painel fica um
+     degrau abaixo (#111B21). Usando `card` nos dois, o balão do cliente
+     praticamente sumia no fundo do chat. */
+  --bubble-in: oklch(0.2851 0.0209 234.1); /* #202C33 */
+  --bubble-in-foreground: oklch(0.9436 0.0051 228.8);
+  --chart-1: oklch(0.6509 0.1283 170.4);
+  --chart-2: oklch(0.6637 0.0236 235.2);
+  --chart-3: oklch(0.52 0.02 235);
+  --chart-4: oklch(0.4 0.02 235);
+  --chart-5: oklch(0.3036 0.0226 230);
+  --sidebar: oklch(0.2153 0.0187 235.1); /* #111B21 */
+  --sidebar-foreground: oklch(0.9436 0.0051 228.8);
+  --sidebar-primary: oklch(0.6509 0.1283 170.4);
+  --sidebar-primary-foreground: oklch(0.1854 0.0182 238.2);
+  --sidebar-accent: oklch(0.2983 0.0477 168.6); /* #103529, a pílula verde */
+  --sidebar-accent-foreground: oklch(0.9436 0.0051 228.8);
+  --sidebar-border: oklch(1 0 0 / 5%);
+  --sidebar-ring: oklch(0.6509 0.1283 170.4);
 }
 
 /* Barra de rolagem fininha e discreta.
