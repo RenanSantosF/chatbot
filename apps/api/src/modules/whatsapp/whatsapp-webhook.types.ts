@@ -32,6 +32,18 @@ export interface WhatsAppInboundMessage {
   reaction?: { message_id?: string; emoji?: string };
 }
 
+/**
+ * Mensagem que a empresa mandou pelo aplicativo do celular, não por aqui.
+ *
+ * Chega quando o número está em coexistência (aplicativo WhatsApp Business e
+ * Cloud API no mesmo número). Repare que aqui o destinatário é o cliente:
+ * `from` é a empresa e `to` é quem vamos procurar na base — o oposto de uma
+ * mensagem recebida.
+ */
+export interface WhatsAppMessageEcho extends WhatsAppInboundMessage {
+  to?: string;
+}
+
 export interface WhatsAppWebhookPayload {
   object?: string;
   entry?: Array<{
@@ -42,6 +54,8 @@ export interface WhatsAppWebhookPayload {
         metadata?: { phone_number_id?: string; display_phone_number?: string };
         contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
         messages?: WhatsAppInboundMessage[];
+        /** Campo `smb_message_echoes` — respostas dadas pelo celular. */
+        message_echoes?: WhatsAppMessageEcho[];
         statuses?: Array<{
           id?: string;
           status?: string;

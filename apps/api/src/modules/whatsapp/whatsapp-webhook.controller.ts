@@ -201,6 +201,39 @@ export class WhatsappWebhookController {
       name: 'WhatsApp',
     };
 
+    // Respostas dadas pelo celular (coexistência). Vêm num campo separado —
+    // `message_echoes`, não `messages` — porque quem escreveu foi a empresa,
+    // não o cliente. Sem tratar isto o painel mostraria a pergunta e nunca a
+    // resposta, e a IA ainda responderia por cima de quem já respondeu.
+    const echoes = value?.message_echoes ?? [];
+    for (const echo of echoes) {
+      if (!echo.to) continue;
+
+      if (echo.type === 'revoke' || echo.type === 'edit') {
+        // Apagar e editar mudariam uma mensagem já gravada. Fica de fora por
+        // ora, e de propósito: some do celular, permanece no histórico daqui.
+        this.logger.log(`Eco do tipo ${echo.type} ignorado (${echo.id}).`);
+        continue;
+      }
+
+      const parsed = parseInboundMessage(echo);
+      if (!parsed) {
+        this.logger.warn(`Eco de tipo não suportado: ${echo.type}`);
+        continue;
+      }
+
+      await this.conversationsService.recordOutboundEcho({
+        customerPhone: echo.to,
+        content: parsed.content,
+        messageType: parsed.messageType,
+        metadata: parsed.metadata,
+        externalId: echo.id,
+      });
+      this.logger.log(
+        `Resposta enviada pelo celular registrada pro tenant ${settings.tenantId} (para ${echo.to}).`,
+      );
+    }
+
     if (messages.length === 0) {
       // Evento de status (enviado/entregue/lido/falhou) de uma mensagem que a
       // gente mandou — vira o tique de entrega no painel.

@@ -363,6 +363,8 @@ export class ConversationsService {
       metadata?: Prisma.InputJsonValue;
       externalId?: string;
       replyToId?: string;
+      /** Só pra mensagem que já saiu por fora (eco do celular). */
+      status?: MessageStatus;
     },
   ) {
     const before = await this.prisma.db.conversation.findFirst({
@@ -1266,5 +1268,80 @@ export class ConversationsService {
     }
 
     return { conversation: latestConversation, message: inbound.message };
+  }
+
+  /**
+   * Registra uma mensagem que a empresa mandou pelo celular, não por aqui.
+   *
+   * Existe por causa do modo de coexistência da Meta: o mesmo número pode
+   * ficar no aplicativo WhatsApp Business e na Cloud API ao mesmo tempo, e
+   * o que é digitado no celular chega aqui pelo webhook `smb_message_echoes`
+   * em vez de `messages`. Sem tratar isso, o painel mostraria a pergunta do
+   * cliente e nunca a resposta — o histórico ficaria mentindo.
+   *
+   * Duas decisões que não são óbvias:
+   *
+   * 1. A IA é desligada nessa conversa. Alguém de carne e osso acabou de
+   *    responder; deixar a IA responder de novo produziria duas respostas
+   *    para a mesma pergunta, vindas do mesmo número.
+   * 2. A mensagem entra como SENT, não PENDING. Ela já saiu — quem entregou
+   *    foi o WhatsApp do celular, e não temos entrega nossa pra confirmar.
+   */
+  async recordOutboundEcho(input: {
+    customerPhone: string;
+    content: string;
+    messageType?: MessageType;
+    metadata?: Prisma.InputJsonValue;
+    externalId?: string;
+  }) {
+    // Só entra se já existir uma conversa aberta: a empresa responder pelo
+    // celular pressupõe que o cliente escreveu antes. Criar conversa a partir
+    // de um eco encheria o painel de conversas sem pergunta nenhuma.
+    const customer = await this.prisma.db.customer.findFirst({
+      where: { phone: input.customerPhone },
+      select: { id: true },
+    });
+    if (!customer) return null;
+
+    const conversation = await this.prisma.db.conversation.findFirst({
+      where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!conversation) return null;
+
+    // Idempotência: a Meta reenvia webhook quando não recebe 2xx a tempo, e
+    // sem isto a mesma mensagem apareceria duas vezes na conversa.
+    if (input.externalId) {
+      const jaTemos = await this.prisma.db.message.findFirst({
+        where: { externalId: input.externalId },
+        select: { id: true },
+      });
+      if (jaTemos) return null;
+    }
+
+    const gravada = await this.persistMessage(conversation.id, {
+      senderType: 'AGENT',
+      content: input.content,
+      messageType: input.messageType,
+      metadata: input.metadata,
+      externalId: input.externalId,
+      status: 'SENT',
+    });
+
+    if (conversation.aiMode === 'AI_ACTIVE') {
+      const atualizada = await this.prisma.db.conversation.update({
+        where: { id: conversation.id },
+        data: { aiMode: 'HUMAN_ACTIVE' },
+        include: conversationInclude,
+      });
+      this.realtime.emitToTenant(
+        this.prisma.tenantId,
+        'conversation.updated',
+        toSummary(atualizada),
+      );
+      return { conversation: atualizada, message: gravada.message };
+    }
+
+    return gravada;
   }
 }
