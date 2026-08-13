@@ -774,6 +774,17 @@ export class ConversationsService {
     return message;
   }
 
+  /**
+   * Alguém pega a conversa pra si.
+   *
+   * Vira OPEN, não WAITING_AGENT: "aguardando atendente" quer dizer que
+   * falta alguém, e depois de assumir não falta mais. Era esse o motivo de
+   * a lista continuar dizendo "aguard. atendente" mesmo depois de clicar
+   * em Assumir.
+   *
+   * Entra já aceito porque a escolha foi da própria pessoa — o aceite só
+   * existe pra indicação automática.
+   */
   async assign(conversationId: string, userId: string) {
     await this.requireConversation(conversationId);
 
@@ -782,7 +793,8 @@ export class ConversationsService {
       data: {
         assignedUserId: userId,
         aiMode: 'HUMAN_ACTIVE',
-        status: 'WAITING_AGENT',
+        status: 'OPEN',
+        assignmentAccepted: true,
       },
       include: conversationInclude,
     });
@@ -957,7 +969,12 @@ export class ConversationsService {
       // justamente quando mais importa.
       const destino = await this.routing.resolveByPriority(prioridadeFinal);
       if (destino) {
-        if (destino.assignedUserId) data.assignedUser = { connect: { id: destino.assignedUserId } };
+        if (destino.assignedUserId) {
+          data.assignedUser = { connect: { id: destino.assignedUserId } };
+          // Indicação, não decisão: a IA erra, e ninguém deve acordar
+          // dono de um caso que não aceitou.
+          data.assignmentAccepted = false;
+        }
         if (destino.queueId) data.queue = { connect: { id: destino.queueId } };
         data.escalationReason = `${verificacao.motivo ?? 'Trava automática.'} (regra: ${destino.ruleName})`;
       }
@@ -990,6 +1007,107 @@ export class ConversationsService {
         },
       });
     }
+
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(conversation),
+    );
+    return conversation;
+  }
+
+  /**
+   * Passa a conversa pra outra pessoa da equipe.
+   *
+   * Vai como indicação (assignmentAccepted = false): quem recebe confirma
+   * antes de virar responsável. Vale tanto pra correção de rota da IA
+   * quanto pra passar um caso adiante — em nenhum dos dois o sistema deve
+   * decidir sozinho pela agenda de outra pessoa.
+   */
+  async transferTo(conversationId: string, toUserId: string, byUserId: string) {
+    await this.requireConversation(conversationId);
+
+    const destino = await this.prisma.db.user.findFirst({
+      where: { id: toUserId, status: 'ACTIVE' },
+      select: { id: true, name: true },
+    });
+    if (!destino) {
+      throw new NotFoundException('Colaborador não encontrado.');
+    }
+    if (toUserId === byUserId) {
+      return this.assign(conversationId, byUserId);
+    }
+
+    const conversation = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: {
+        assignedUserId: toUserId,
+        assignmentAccepted: false,
+        aiMode: 'HUMAN_ACTIVE',
+        status: 'WAITING_AGENT',
+      },
+      include: conversationInclude,
+    });
+
+    await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId,
+        senderType: 'SYSTEM',
+        content: `Conversa encaminhada para ${destino.name}, aguardando aceite.`,
+        messageType: 'TEXT',
+      },
+    });
+
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(conversation),
+    );
+    return conversation;
+  }
+
+  /** Quem foi indicado confirma que vai atender. */
+  async acceptAssignment(conversationId: string, userId: string) {
+    const atual = await this.requireConversation(conversationId);
+    if (atual.assignedUserId !== userId) {
+      throw new BadRequestException('Esta conversa foi indicada a outra pessoa.');
+    }
+    return this.assign(conversationId, userId);
+  }
+
+  /**
+   * Recusa a indicação. A conversa volta pra fila sem dono em vez de ficar
+   * pendurada em quem não pode atender — indicação recusada que continua
+   * atribuída é pior que nenhuma indicação.
+   */
+  async declineAssignment(conversationId: string, userId: string, motivo?: string) {
+    const atual = await this.requireConversation(conversationId);
+    if (atual.assignedUserId !== userId) {
+      throw new BadRequestException('Esta conversa foi indicada a outra pessoa.');
+    }
+
+    const conversation = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: {
+        assignedUserId: null,
+        assignmentAccepted: true,
+        status: 'WAITING_AGENT',
+      },
+      include: conversationInclude,
+    });
+
+    await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId,
+        senderType: 'SYSTEM',
+        content: motivo?.trim()
+          ? `Indicação recusada: ${motivo.trim()}`
+          : 'Indicação recusada. A conversa voltou pra fila.',
+        messageType: 'TEXT',
+      },
+    });
 
     this.realtime.emitToTenant(
       this.prisma.tenantId,

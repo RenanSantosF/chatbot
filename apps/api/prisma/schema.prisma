@@ -205,6 +205,12 @@ model Conversation {
   // porque o Inbox é de time — quando um atendente lê, a conversa está
   // lida pra empresa, igual a uma caixa de e-mail compartilhada.
   unreadCount       Int                  @default(0)
+
+  /// Falso enquanto o responsável indicado ainda não confirmou. Só o
+  /// direcionamento automático (regra ou trava da IA) cria conversa nesse
+  /// estado: a máquina sugere, a pessoa aceita. Quem assume pelo botão já
+  /// entra aceito, porque a escolha foi dela.
+  assignmentAccepted Boolean             @default(true)
   lastMessageAt     DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt

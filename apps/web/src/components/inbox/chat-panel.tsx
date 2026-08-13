@@ -16,9 +16,11 @@ import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select-field";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
+import { useSession } from "@/components/session-provider";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
+import { AssignmentActions } from "./assignment-actions";
 import { MessageBubble } from "./message-bubble";
 import { AttachmentComposer } from "./attachment-composer";
 import { ForwardDialog } from "./forward-dialog";
@@ -117,7 +119,7 @@ export function ChatPanel({
   loading,
   sending,
   onSend,
-  onAssign,
+  onRefresh,
   onResolve,
   onReopen,
   onReactivateAi,
@@ -135,7 +137,8 @@ export function ChatPanel({
   loading?: boolean;
   sending: boolean;
   onSend: (content: string) => Promise<void>;
-  onAssign: () => Promise<void>;
+  /** Recarrega a conversa depois de assumir/aceitar/recusar/transferir. */
+  onRefresh: () => void;
   onResolve: () => Promise<void>;
   onReopen: () => Promise<void>;
   onReactivateAi: () => Promise<void>;
@@ -148,6 +151,7 @@ export function ChatPanel({
   onCancelReply: () => void;
   onReact: (messageId: string, emoji: string) => Promise<void>;
 }) {
+  const { user } = useSession();
   const [draft, setDraft] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [needle, setNeedle] = useState("");
@@ -281,9 +285,14 @@ export function ChatPanel({
           <PriorityPicker value={conversation.priority} onChange={onChangePriority} />
           {!isResolved && (
             <>
-              <Button size="sm" variant="outline" onClick={onAssign}>
-                Assumir
-              </Button>
+              {/* Assumir / Aceitar-Recusar / Transferir — nunca os três ao
+                  mesmo tempo. Antes "Assumir" continuava visível depois de
+                  assumida, e a pessoa clicava de novo achando que falhou. */}
+              <AssignmentActions
+                conversation={conversation}
+                currentUserId={user.id}
+                onChanged={onRefresh}
+              />
               <Button size="sm" variant="outline" onClick={onResolve}>
                 Resolver
               </Button>
@@ -397,10 +406,14 @@ export function ChatPanel({
                   // selecionar e copiar o texto.
                   if (event.target === event.currentTarget) onReply(message);
                 }}
+                title={message.senderType === "SYSTEM" ? undefined : "Clique duas vezes para responder"}
                 className={cn(
-                  "flex w-full min-w-0",
+                  // cursor-pointer só na faixa vazia: o balão volta pro
+                  // cursor de texto (abaixo, no próprio balão) pra não
+                  // atrapalhar quem quer selecionar e copiar.
+                  "flex w-full min-w-0 cursor-pointer",
                   message.senderType === "CUSTOMER" ? "justify-start" : "justify-end",
-                  message.senderType === "SYSTEM" && "justify-center",
+                  message.senderType === "SYSTEM" && "cursor-default justify-center",
                 )}
               >
               <MessageBubble

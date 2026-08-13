@@ -361,6 +361,20 @@ export default function InboxPage() {
     }
   }
 
+  /**
+   * Recarrega a conversa aberta e a lista. Usado depois de assumir, aceitar,
+   * recusar ou transferir: são ações que mudam quem é o dono e o status, e
+   * esperar só pelo evento de tempo real deixava o botão errado na tela por
+   * alguns instantes.
+   */
+  function refreshCurrent() {
+    if (selectedId) {
+      loadDetail(selectedId).catch(() => {});
+    }
+    loadConversations(filters).catch(() => {});
+    loadCounts();
+  }
+
   async function handleAction(path: string, errorMessage: string) {
     if (!selectedId) return;
     try {
@@ -420,7 +434,7 @@ export default function InboxPage() {
         onReact={handleReact}
         onSend={handleSend}
         onSendFile={handleSendFile}
-        onAssign={() => handleAction("assign", "Não deu pra assumir essa conversa.")}
+        onRefresh={refreshCurrent}
         onResolve={() => handleAction("resolve", "Não deu pra resolver essa conversa.")}
         onReopen={() => handleAction("reopen", "Não deu pra reabrir essa conversa.")}
         onReactivateAi={() => handleAction("reactivate-ai", "Não deu pra reativar a IA.")}

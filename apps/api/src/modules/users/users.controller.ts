@@ -17,6 +17,14 @@ export class UsersController {
     return this.usersService.listTeam();
   }
 
+  // Sem @Roles: qualquer pessoa que atende precisa saber pra quem pode
+  // passar uma conversa. Vem antes de ':id' pela mesma ordem de casamento
+  // de rotas explicada abaixo.
+  @Get('assignable')
+  listAssignable() {
+    return this.usersService.listAssignable();
+  }
+
   /** Só o dono cria colaborador — quem define quem tem acesso à empresa é ele. */
   @Post()
   @Roles('OWNER')

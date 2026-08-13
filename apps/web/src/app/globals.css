@@ -184,6 +184,33 @@ button:disabled,
   --sidebar-ring: oklch(0.68 0 0);
 }
 
+/* Barra de rolagem fininha e discreta. Firefox pelo `scrollbar-*`, resto
+   pelo pseudo-elemento do WebKit — os dois precisam ser declarados, não
+   existe propriedade única que cubra ambos. Fica visível só o suficiente
+   pra você saber onde está na conversa. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--foreground) 28%, transparent);
+}
+
 /* Papel de parede do chat. O fundo chapado deixava a conversa com cara de
    formulário; a trama de pontos dá a textura de mensageiro sem competir
    com os balões. Feita em gradiente, não em imagem: nada de requisição de

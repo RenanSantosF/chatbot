@@ -30,6 +30,7 @@ import {
 import { CopilotWidget } from "@/components/copilot-widget";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
+import { SessionProvider } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { SessionTenant, SessionUser, UserRole } from "@/lib/types";
@@ -280,8 +281,10 @@ export function DashboardShell(props: {
   children: React.ReactNode;
 }) {
   return (
-    <RealtimeProvider>
-      <Shell {...props} />
-    </RealtimeProvider>
+    <SessionProvider user={props.user} tenant={props.tenant}>
+      <RealtimeProvider>
+        <Shell {...props} />
+      </RealtimeProvider>
+    </SessionProvider>
   );
 }

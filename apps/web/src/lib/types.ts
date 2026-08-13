@@ -31,6 +31,14 @@ export interface TeamMember {
   createdAt: string;
 }
 
+/** Colega que pode receber uma conversa transferida. */
+export interface Assignable {
+  id: string;
+  name: string;
+  avatar: string | null;
+  role: UserRole;
+}
+
 export type ConversationStatus = "OPEN" | "WAITING_CUSTOMER" | "WAITING_AGENT" | "RESOLVED" | "CLOSED";
 export type AiMode = "AI_ACTIVE" | "HUMAN_ACTIVE" | "AI_ASSIST" | "PAUSED";
 export type ConversationPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
@@ -105,6 +113,8 @@ export interface ConversationSummary {
   createdAt: string;
   customer: Customer;
   assignedUser: AssignedUser | null;
+  /** Falso enquanto o responsável indicado não confirmou (ver API). */
+  assignmentAccepted: boolean;
   queue: ConversationQueue | null;
   escalationReason: string | null;
   escalationSummary: string | null;

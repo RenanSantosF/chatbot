@@ -165,7 +165,10 @@ export function MessageBubble({
         // papel de parede sem parecer um cartão empilhado. O verde de saída
         // no escuro é dessaturado de propósito — o verde cheio do app
         // brigava com o cinza da interface.
-        "flex min-w-0 flex-col gap-0.5 overflow-hidden rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
+        // cursor-text: a linha em volta é clicável pra responder e usa
+        // cursor-pointer; dentro do balão o cursor volta ao de texto pra não
+        // parecer que o texto não pode ser selecionado.
+        "flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
         fromCustomer
           ? "rounded-bl-sm bg-card text-card-foreground slide-in-from-left-2"
           : "rounded-br-sm bg-bubble-out text-bubble-out-foreground slide-in-from-right-2",

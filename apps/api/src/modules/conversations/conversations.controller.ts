@@ -135,6 +135,29 @@ export class ConversationsController {
     return this.conversationsService.assign(id, user.userId);
   }
 
+  @Post(':id/transfer')
+  transfer(
+    @Param('id') id: string,
+    @Body('toUserId') toUserId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.transferTo(id, toUserId, user.userId);
+  }
+
+  @Post(':id/accept')
+  accept(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.conversationsService.acceptAssignment(id, user.userId);
+  }
+
+  @Post(':id/decline')
+  decline(
+    @Param('id') id: string,
+    @Body('reason') reason: string | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.declineAssignment(id, user.userId, reason);
+  }
+
   @Post(':id/reopen')
   reopen(@Param('id') id: string) {
     return this.conversationsService.reopen(id);

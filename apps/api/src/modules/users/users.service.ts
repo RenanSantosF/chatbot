@@ -48,6 +48,22 @@ export class UsersService {
   }
 
   /**
+   * Colegas que podem receber uma conversa.
+   *
+   * Existe separado de `listTeam` porque transferir atendimento é trabalho
+   * de atendente, e a lista completa da equipe é de administração — traz
+   * e-mail, papel e quem ainda está com senha temporária. Aqui vai só o
+   * necessário pra escolher um nome numa lista.
+   */
+  async listAssignable() {
+    return this.prisma.db.user.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true, name: true, avatar: true, role: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /**
    * Sem infraestrutura de e-mail ainda — o dono cria a conta direto com uma
    * senha temporária gerada aqui, mostrada uma única vez na resposta (nunca
    * fica recuperável depois), e repassa pro colaborador por fora (WhatsApp,
