@@ -1639,6 +1639,115 @@ export class ConversationsService {
    * 2. A mensagem entra como SENT, não PENDING. Ela já saiu — quem entregou
    *    foi o WhatsApp do celular, e não temos entrega nossa pra confirmar.
    */
+  /**
+   * Importa uma conversa inteira do histórico anterior ao onboarding.
+   *
+   * Diferente de tudo o mais aqui: nada dispara. A IA não responde, o
+   * WhatsApp não recebe eco, ninguém é notificado, nenhum contador de não
+   * lida sobe. É arqueologia — estas mensagens já aconteceram no celular há
+   * semanas, e tratá-las como novidade encheria o painel de conversas
+   * "urgentes" de meses atrás e faria a IA responder conversa encerrada.
+   *
+   * Por isso escreve direto na tabela em vez de passar por persistMessage:
+   * aquele caminho existe pra mensagem viva, e é ele que dispara tudo isso.
+   *
+   * @returns quantas mensagens entraram de fato (ignora as repetidas)
+   */
+  async importarHistorico(entrada: {
+    customerPhone: string;
+    customerName?: string;
+    mensagens: {
+      daEmpresa: boolean;
+      content: string;
+      messageType?: MessageType;
+      metadata?: Prisma.InputJsonValue;
+      externalId?: string;
+      createdAt: Date;
+    }[];
+  }) {
+    if (entrada.mensagens.length === 0) return 0;
+
+    const customer = await this.customers.upsertFromAddressBook({
+      phone: entrada.customerPhone,
+      name: entrada.customerName,
+    });
+
+    // Uma conversa só pro histórico inteiro daquele cliente, já encerrada:
+    // o que veio do celular é assunto do passado. Se ele escrever de novo, o
+    // agrupamento (ver reabrirParaAgrupamento) reabre esta mesma conversa
+    // com o histórico à vista, que é exatamente o desejado.
+    let conversation = await this.prisma.db.conversation.findFirst({
+      where: { customerId: customer.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const maisRecente = entrada.mensagens.reduce(
+      (maior, m) => (m.createdAt > maior ? m.createdAt : maior),
+      entrada.mensagens[0].createdAt,
+    );
+
+    if (!conversation) {
+      conversation = await this.prisma.db.conversation.create({
+        data: {
+          tenantId: this.prisma.tenantId,
+          customerId: customer.id,
+          channel: 'WHATSAPP',
+          status: 'RESOLVED',
+          aiMode: 'HUMAN_ACTIVE',
+          lastMessageAt: maisRecente,
+        },
+      });
+    }
+
+    // Idempotência em lote: a Meta reenvia pedaços do histórico, e sem isto
+    // uma reentrega duplicaria conversas inteiras.
+    const ids = entrada.mensagens
+      .map((m) => m.externalId)
+      .filter((id): id is string => Boolean(id));
+    const jaGravadas = ids.length
+      ? new Set(
+          (
+            await this.prisma.db.message.findMany({
+              where: { externalId: { in: ids } },
+              select: { externalId: true },
+            })
+          ).map((m) => m.externalId),
+        )
+      : new Set<string>();
+
+    const novas = entrada.mensagens.filter(
+      (m) => !m.externalId || !jaGravadas.has(m.externalId),
+    );
+    if (novas.length === 0) return 0;
+
+    await this.prisma.db.message.createMany({
+      data: novas.map((m) => ({
+        tenantId: this.prisma.tenantId,
+        conversationId: conversation.id,
+        senderType: m.daEmpresa ? ('AGENT' as const) : ('CUSTOMER' as const),
+        content: m.content,
+        messageType: m.messageType ?? 'TEXT',
+        metadata: m.metadata,
+        externalId: m.externalId,
+        // Já entregue: quem entregou foi o WhatsApp do celular, semanas atrás.
+        status: 'SENT' as const,
+        createdAt: m.createdAt,
+      })),
+    });
+
+    await this.prisma.db.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        lastMessageAt:
+          conversation.lastMessageAt && conversation.lastMessageAt > maisRecente
+            ? conversation.lastMessageAt
+            : maisRecente,
+      },
+    });
+
+    return novas.length;
+  }
+
   async recordOutboundEcho(input: {
     customerPhone: string;
     content: string;

@@ -46,6 +46,7 @@ export class WhatsappSettingsService {
         hasAccessToken: false,
         hasAppSecret: false,
         webhookUrl: this.webhookUrl(),
+        coexistencia: null,
       };
     }
 
@@ -57,6 +58,19 @@ export class WhatsappSettingsService {
       hasAccessToken: Boolean(settings.accessTokenEncrypted),
       hasAppSecret: Boolean(settings.appSecretEncrypted),
       webhookUrl: this.webhookUrl(),
+      // Coexistência é estado observado, não configurado: só sabemos que
+      // está ligada porque a Meta mandou algum eco, contato ou histórico.
+      // `ativa: false` significa "nunca vimos nada", não "está desligada".
+      coexistencia: {
+        ativa: Boolean(settings.coexistenceSeenAt),
+        vistaEm: settings.coexistenceSeenAt,
+        historicoProgresso: settings.historyProgress,
+        historicoConcluidoEm: settings.historySyncedAt,
+        historicoMensagens: settings.historyMessages,
+        historicoErro: settings.historyError,
+        contatosSincronizadosEm: settings.contactsSyncedAt,
+        contatos: settings.contactsCount,
+      },
     };
   }
 

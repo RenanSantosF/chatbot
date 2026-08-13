@@ -77,6 +77,26 @@ model WhatsAppSettings {
   wabaId               String?
   accessTokenEncrypted String
   appSecretEncrypted   String
+
+  // --- Coexistência (número no aplicativo do celular E na Cloud API).
+  //
+  // Estes campos não são configuração: são o que a Meta nos contou pelo
+  // webhook. Guardamos porque a sincronização do histórico chega picada em
+  // dezenas de entregas ao longo de horas, e sem registrar o andamento não
+  // há como responder "já acabou?" — nem pra tela, nem pro suporte.
+  //
+  // A presença de qualquer eco/contato/histórico é o que prova que a
+  // coexistência está ativa; não existe endpoint pra perguntar isso.
+  coexistenceSeenAt    DateTime?
+  /** 0 a 100. Só do histórico anterior ao onboarding. */
+  historyProgress      Int       @default(0)
+  historySyncedAt      DateTime?
+  historyMessages      Int       @default(0)
+  /** Motivo de o histórico não vir (ex.: a empresa desligou no aplicativo). */
+  historyError         String?
+  contactsSyncedAt     DateTime?
+  contactsCount        Int       @default(0)
+
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

@@ -62,6 +62,33 @@ export interface WhatsAppStateSync {
   metadata?: { timestamp?: string };
 }
 
+/**
+ * Um pedaço do histórico anterior ao onboarding (campo `history`).
+ *
+ * A Meta manda em fases (0: até 1 dia, 1: até 90 dias, 2: até 180) e cada
+ * fase pode vir picada em vários webhooks. `progress` vai de 0 a 100 e é a
+ * única forma de saber que acabou. Conversa em grupo não vem.
+ */
+export interface WhatsAppHistory {
+  metadata?: {
+    phase?: number;
+    chunk_order?: number;
+    progress?: number;
+  };
+  threads?: Array<{
+    /** Telefone do cliente daquela conversa. */
+    id?: string;
+    messages?: Array<
+      WhatsAppInboundMessage & {
+        /** Pra quem foi, quando a mensagem é da empresa. */
+        to?: string;
+        history_context?: { status?: string };
+      }
+    >;
+  }>;
+  errors?: Array<{ code?: number; title?: string; message?: string }>;
+}
+
 export interface WhatsAppWebhookPayload {
   object?: string;
   entry?: Array<{
@@ -76,6 +103,8 @@ export interface WhatsAppWebhookPayload {
         message_echoes?: WhatsAppMessageEcho[];
         /** Campo `smb_app_state_sync` — agenda de contatos do aparelho. */
         state_sync?: WhatsAppStateSync[];
+        /** Campo `history` — conversas anteriores ao onboarding. */
+        history?: WhatsAppHistory[];
         statuses?: Array<{
           id?: string;
           status?: string;

@@ -203,6 +203,68 @@ export class WhatsappWebhookController {
       name: 'WhatsApp',
     };
 
+    // Histórico anterior ao onboarding (coexistência). Chega picado: até
+    // três fases, cada uma em vários webhooks, ao longo de horas. O
+    // `progress` é a única forma de saber que terminou.
+    for (const lote of value?.history ?? []) {
+      const falha = lote.errors?.[0];
+      if (falha) {
+        // O caso comum é a empresa ter recusado compartilhar o histórico no
+        // próprio aplicativo. Não é erro nosso, mas precisa aparecer na tela
+        // — senão fica parecendo que a sincronização travou.
+        await this.prisma.client.whatsAppSettings.update({
+          where: { id: settings.id },
+          data: {
+            historyError: falha.message ?? falha.title ?? `Erro ${falha.code}`,
+            coexistenceSeenAt: new Date(),
+          },
+        });
+        this.logger.warn(`Histórico recusado pela Meta: ${falha.code} ${falha.title ?? ''}`);
+        continue;
+      }
+
+      let importadas = 0;
+      for (const thread of lote.threads ?? []) {
+        if (!thread.id) continue;
+
+        const mensagens = (thread.messages ?? [])
+          .map((m) => {
+            const parsed = parseInboundMessage(m);
+            if (!parsed) return null;
+            return {
+              // `from` é o telefone da empresa quando quem falou foi ela.
+              daEmpresa: m.from !== thread.id,
+              content: parsed.content,
+              messageType: parsed.messageType,
+              metadata: parsed.metadata,
+              externalId: m.id,
+              createdAt: new Date(Number(m.timestamp ?? 0) * 1000),
+            };
+          })
+          .filter((m): m is NonNullable<typeof m> => m !== null);
+
+        importadas += await this.conversationsService.importarHistorico({
+          customerPhone: thread.id,
+          mensagens,
+        });
+      }
+
+      const progresso = lote.metadata?.progress ?? 0;
+      await this.prisma.client.whatsAppSettings.update({
+        where: { id: settings.id },
+        data: {
+          coexistenceSeenAt: new Date(),
+          historyProgress: progresso,
+          historyMessages: { increment: importadas },
+          historyError: null,
+          ...(progresso >= 100 ? { historySyncedAt: new Date() } : {}),
+        },
+      });
+      this.logger.log(
+        `Histórico: fase ${lote.metadata?.phase ?? '?'}, ${importadas} mensagens, ${progresso}% concluído.`,
+      );
+    }
+
     // Agenda de contatos do aparelho (coexistência). É por aqui que os
     // contatos do WhatsApp da empresa entram no sistema — a Cloud API não
     // tem endpoint pra listar contatos, ela EMPURRA cada mudança da agenda
@@ -225,6 +287,14 @@ export class WhatsappWebhookController {
         phone: telefone,
         name: evento.contact?.full_name ?? evento.contact?.first_name,
       });
+      await this.prisma.client.whatsAppSettings.update({
+        where: { id: settings.id },
+        data: {
+          coexistenceSeenAt: new Date(),
+          contactsSyncedAt: new Date(),
+          contactsCount: { increment: 1 },
+        },
+      });
       this.logger.log(
         `Contato sincronizado da agenda pro tenant ${settings.tenantId}: ${telefone}.`,
       );
@@ -235,6 +305,14 @@ export class WhatsappWebhookController {
     // não o cliente. Sem tratar isto o painel mostraria a pergunta e nunca a
     // resposta, e a IA ainda responderia por cima de quem já respondeu.
     const echoes = value?.message_echoes ?? [];
+    if (echoes.length > 0) {
+      // Um eco é a prova de que a coexistência está ligada: ele só existe
+      // quando o mesmo número está no aplicativo e na Cloud API.
+      await this.prisma.client.whatsAppSettings.update({
+        where: { id: settings.id },
+        data: { coexistenceSeenAt: new Date() },
+      });
+    }
     for (const echo of echoes) {
       if (!echo.to) continue;
 

@@ -238,6 +238,21 @@ export interface WhatsAppSettings {
   hasAccessToken: boolean;
   hasAppSecret: boolean;
   webhookUrl: string;
+  /**
+   * Estado da coexistência (mesmo número no aplicativo do celular e na
+   * Cloud API). Nulo quando o WhatsApp ainda nem foi conectado.
+   */
+  coexistencia: {
+    /** Falso = a Meta nunca mandou nada de coexistência ainda. */
+    ativa: boolean;
+    vistaEm: string | null;
+    historicoProgresso: number;
+    historicoConcluidoEm: string | null;
+    historicoMensagens: number;
+    historicoErro: string | null;
+    contatosSincronizadosEm: string | null;
+    contatos: number;
+  } | null;
 }
 
 export interface RoutingRuleTargetUser {
