@@ -72,13 +72,13 @@ function NotificationsButton() {
 
   return (
     <Button
-      size="icon-sm"
+      size="icon"
       variant="ghost"
       onClick={enableNotifications}
       aria-label="Ativar avisos de mensagem nova"
       title="Ativar avisos de mensagem nova"
     >
-      <BellRing className="size-4" />
+      <BellRing className="size-5" />
     </Button>
   );
 }
@@ -130,7 +130,7 @@ function Nav({ role }: { role: UserRole }) {
       {canConfigure ? (
         <SidebarMenuItem>
           <SidebarMenuButton
-            render={<Link href="/dashboard/settings" />}
+            render={<Link href="/dashboard/settings/whatsapp" />}
             isActive={inSettings}
             tooltip="Configurações"
           >
@@ -155,6 +155,9 @@ function Shell({
   const pathname = usePathname();
   const router = useRouter();
   const isInbox = pathname === "/dashboard/inbox";
+  // Área (dois primeiros segmentos), não rota inteira: assim a animação de
+  // entrada roda ao trocar de seção, e não a cada sub-tela de Configurações.
+  const secao = pathname.split("/").slice(0, 3).join("/");
 
   async function handleLogout() {
     await apiFetch("/auth/logout", { method: "POST" });
@@ -212,12 +215,12 @@ function Shell({
             <ThemeToggle />
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               onClick={handleLogout}
               aria-label="Sair da conta"
               title="Sair"
             >
-              <LogOut className="size-4" />
+              <LogOut className="size-5" />
             </Button>
           </div>
         </header>
@@ -237,14 +240,20 @@ function Shell({
             rolagem da página — quem rola são as colunas de dentro. As
             demais telas são de leitura/formulário e ficam melhor com margem
             e medida de linha limitada. */}
-        <main
+        {/* <div>, não <main>: o SidebarInset já renderiza um <main>, e
+            aninhar dois é HTML inválido — além de ter me feito medir o
+            elemento errado ao investigar a rolagem. */}
+        <div
           className={cn(
-            "flex flex-1 flex-col",
-            isInbox ? "min-h-0 overflow-hidden" : "overflow-y-auto p-4 sm:p-6",
+            // min-h-0 também aqui: sem ele o <main> cresce até o tamanho
+            // do conteúdo e o overflow-y-auto nunca entra em ação — a
+            // parte de baixo da tela fica cortada e inalcançável.
+            "flex min-h-0 flex-1 flex-col",
+            isInbox ? "overflow-hidden" : "overflow-y-auto p-4 sm:p-6",
           )}
         >
           <div
-            key={pathname}
+            key={secao}
             className={cn(
               "flex w-full flex-1 flex-col",
               isInbox ? "min-h-0" : "mx-auto max-w-6xl gap-6",
@@ -253,7 +262,7 @@ function Shell({
           >
             {children}
           </div>
-        </main>
+        </div>
         <CopilotWidget />
       </SidebarInset>
     </SidebarProvider>

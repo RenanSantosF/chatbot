@@ -33,13 +33,17 @@ interface Template {
  * nenhuma, template é o único caminho — e a tela diz isso em vez de deixar
  * a pessoa descobrir com um erro.
  */
-export function StartConversationDialog({ onStarted }: { onStarted: (id: string) => void }) {
+export function StartConversationDialog({
+  customer,
+  onStarted,
+}: {
+  customer: { id: string; name: string; phone: string } | null;
+  onStarted: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [erroTemplates, setErroTemplates] = useState<string | null>(null);
   const [chosen, setChosen] = useState("");
-  const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
   const [params, setParams] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
 
@@ -61,7 +65,7 @@ export function StartConversationDialog({ onStarted }: { onStarted: (id: string)
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!template) return;
+    if (!template || !customer) return;
     setSending(true);
     try {
       const { conversationId } = await apiFetch<{ conversationId: string }>(
@@ -69,8 +73,8 @@ export function StartConversationDialog({ onStarted }: { onStarted: (id: string)
         {
           method: "POST",
           body: JSON.stringify({
-            phone,
-            name: name.trim() || undefined,
+            phone: customer.phone,
+            name: customer.name,
             templateName: template.name,
             templateLanguage: template.language,
             bodyParams: params.slice(0, template.placeholders),
@@ -79,8 +83,6 @@ export function StartConversationDialog({ onStarted }: { onStarted: (id: string)
       );
       toast.success("Conversa iniciada.");
       setOpen(false);
-      setPhone("");
-      setName("");
       setParams([]);
       onStarted(conversationId);
     } catch (error) {
@@ -96,13 +98,9 @@ export function StartConversationDialog({ onStarted }: { onStarted: (id: string)
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="Iniciar nova conversa"
-            title="Iniciar nova conversa"
-          >
+          <Button size="sm" variant="outline" disabled={!customer}>
             <MessageSquarePlus className="size-4" />
+            Iniciar conversa
           </Button>
         }
       />
@@ -110,8 +108,9 @@ export function StartConversationDialog({ onStarted }: { onStarted: (id: string)
         <SheetHeader>
           <SheetTitle>Nova conversa</SheetTitle>
           <SheetDescription>
-            Pra falar com quem não escreveu nas últimas 24 horas, a Meta exige um template
-            aprovado. Depois que a pessoa responder, a conversa segue livre.
+            O WhatsApp não deixa mandar mensagem livre pra quem não escreveu nas últimas 24
+            horas — só um modelo aprovado antes pela Meta. Escolha qual usar. Assim que a pessoa
+            responder, a conversa segue normal.
           </SheetDescription>
         </SheetHeader>
 
@@ -126,25 +125,9 @@ export function StartConversationDialog({ onStarted }: { onStarted: (id: string)
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 py-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="novo-telefone">Telefone (com DDI e DDD)</Label>
-              <Input
-                id="novo-telefone"
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                placeholder="5527999998888"
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="novo-nome">Nome (opcional)</Label>
-              <Input
-                id="novo-nome"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </div>
+            <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              Para <strong>{customer?.name}</strong> · {customer?.phone}
+            </p>
 
             <SelectField
               label="Template"

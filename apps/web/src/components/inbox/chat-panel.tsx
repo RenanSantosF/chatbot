@@ -171,7 +171,7 @@ export function ChatPanel({
 
   if (!conversation) {
     return (
-      <div className="chat-wallpaper flex flex-1 items-center justify-center p-6">
+      <div className="chat-wallpaper flex min-h-0 flex-1 items-center justify-center p-6">
         <EmptyState
           icon={MessagesSquare}
           title="Nenhuma conversa aberta"
@@ -210,7 +210,10 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    // min-h-0 é obrigatório: um item flex nunca encolhe abaixo do próprio
+    // conteúdo sem ele, e aí a lista de mensagens estica em vez de rolar,
+    // empurrando cabeçalho e compositor pra fora da tela.
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 bg-card px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Avatar className="size-9 shrink-0">
@@ -308,7 +311,7 @@ export function ChatPanel({
       ) : null}
 
       <div
-        className="chat-wallpaper relative flex flex-1 flex-col gap-1.5 overflow-y-auto p-4"
+        className="chat-wallpaper relative flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-4"
         onDragOver={(event) => {
           event.preventDefault();
           if (!isResolved) setDragging(true);

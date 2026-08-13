@@ -14,7 +14,6 @@ import {
   type InboxFilters,
 } from "@/components/inbox/inbox-filters";
 import { SimulateInboundDialog } from "@/components/inbox/simulate-inbound-dialog";
-import { StartConversationDialog } from "@/components/inbox/start-conversation-dialog";
 import { useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
 import { conversationCache } from "@/lib/conversation-cache";
@@ -384,23 +383,13 @@ export default function InboxPage() {
     // Sem cartão, sem margem, sem título: a tela inteira é o painel, do
     // jeito que o WhatsApp Web faz. O cabeçalho da conversa e a barra de
     // filtros já dizem onde a pessoa está.
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[340px_1fr] xl:grid-cols-[340px_1fr_300px]">
+    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[340px_1fr] xl:grid-cols-[340px_1fr_300px] [&>*]:min-h-0">
       <div className="hidden min-h-0 flex-col border-r md:flex">
         <InboxFilterBar
           value={filters}
           counts={counts}
           onChange={setFilters}
-          action={
-            <>
-              <StartConversationDialog
-                onStarted={(id) => {
-                  setSelectedId(id);
-                  void loadConversations(filters);
-                }}
-              />
-              <SimulateInboundDialog onSimulated={() => loadConversations(filters)} />
-            </>
-          }
+          action={<SimulateInboundDialog onSimulated={() => loadConversations(filters)} />}
         />
         <ConversationList
           conversations={conversations}

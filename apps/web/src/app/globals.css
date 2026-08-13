@@ -4,6 +4,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Base tipográfica em 16px (o padrão do Tailwind é 14 no corpo do texto,
+   via `text-sm` espalhado). Quem passa o dia lendo conversa nesta tela
+   pediu letra maior, e subir a raiz escala tudo junto — texto, altura de
+   botão, ícone dimensionado em rem — sem caçar classe por classe. */
+:root {
+  font-size: 17px;
+}
+
 @theme inline {
   --color-chat-bg: var(--chat-bg);
   --color-bubble-out: var(--bubble-out);
@@ -51,98 +59,92 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Cinzas do WhatsApp Web: fundo levemente mais quente que branco puro,
-   painel branco, e o verde da marca só em ação (botão, badge, balão de
-   saída). O tom de fundo #f7f5f3 é o que dá a sensação de "casa" sem
-   deixar a tela lavada. */
+/* Claro: branco de verdade (oklch 1) no painel E na conversa. A diferença
+   entre as duas superfícies é de meio ponto percentual — existe pra dar
+   profundidade, não pra ser vista. As linhas divisórias ficam em 4% de
+   preto: separam quando você procura, somem quando você lê. */
 :root {
-  --background: oklch(0.972 0.002 85);
-  --foreground: oklch(0.19 0.005 260);
+  --background: oklch(0.995 0 0);
+  --foreground: oklch(0.16 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.005 260);
+  --card-foreground: oklch(0.16 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.005 260);
+  --popover-foreground: oklch(0.16 0 0);
   --primary: oklch(0.55 0.11 165);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.955 0.002 85);
-  --secondary-foreground: oklch(0.25 0.005 260);
-  --muted: oklch(0.958 0.002 85);
-  --muted-foreground: oklch(0.52 0.006 260);
-  --accent: oklch(0.945 0.003 85);
-  --accent-foreground: oklch(0.22 0.005 260);
+  --secondary: oklch(0.975 0 0);
+  --secondary-foreground: oklch(0.22 0 0);
+  --muted: oklch(0.972 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.958 0 0);
+  --accent-foreground: oklch(0.18 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  /* Linha divisória quase imperceptível: ela existe pra separar, não pra
-     desenhar caixas. Um traço forte demais é o que dava a sensação de
-     formulário antigo. */
-  --border: oklch(0.935 0.002 85);
-  --input: oklch(0.915 0.002 85);
-  --ring: oklch(0.6 0.01 260);
-  /* Fundo da área de conversa. Fica um passo abaixo do painel, o
-     suficiente pra separar as camadas sem virar um bloco de cor. */
-  --chat-bg: oklch(0.955 0.004 80);
-  --chat-dot: oklch(0.19 0.005 260 / 3.5%);
-  --bubble-out: oklch(0.94 0.06 150);
-  --bubble-out-foreground: oklch(0.22 0.01 160);
+  --border: oklch(0 0 0 / 6%);
+  --input: oklch(0 0 0 / 10%);
+  --ring: oklch(0.6 0 0);
+  --chat-bg: oklch(0.988 0 0);
+  --chat-dot: oklch(0 0 0 / 2.5%);
+  --bubble-out: oklch(0.945 0.055 150);
+  --bubble-out-foreground: oklch(0.2 0.01 160);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.375rem;
-  --sidebar: oklch(0.955 0.002 85);
-  --sidebar-foreground: oklch(0.19 0.005 260);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.16 0 0);
   --sidebar-primary: oklch(0.55 0.11 165);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.905 0.004 85);
-  --sidebar-accent-foreground: oklch(0.17 0.005 260);
-  --sidebar-border: oklch(0.9 0.003 85);
-  --sidebar-ring: oklch(0.6 0.01 260);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent-foreground: oklch(0.14 0 0);
+  --sidebar-border: oklch(0 0 0 / 6%);
+  --sidebar-ring: oklch(0.6 0 0);
 }
 
-/* Escuro no tom do WhatsApp Web: cinza levemente frio (matiz 230, croma
-   baixíssimo), não cinza puro. Duas coisas aprendidas medindo os pixels
-   em vez de confiar no olho: (1) o L do OKLCH não é a claridade percebida
-   do CIELAB — oklch(0.17) renderiza como #1a1a1a, quase preto, e era daí
-   que vinha o "escuro demais"; (2) as superfícies precisam viver num
-   intervalo estreito, senão cada componente parece recortado de uma tela
-   diferente. Aqui elas vão de 0.255 a 0.36, um pouco acima do aplicativo
-   real, que é escuro demais pra um painel de trabalho de oito horas. */
+/* Escuro: cinza neutro puro, croma ZERO em toda superfície. Nada de matiz
+   fria nem "meio esverdeada" — o verde aparece só onde é ação (botão,
+   badge, balão de saída), nunca no fundo. O texto é branco de verdade.
+   As superfícies vivem entre 0.30 e 0.40 de OKLCH (#2e2e2e a #414141), um
+   degrau acima do WhatsApp real, que é escuro demais pra oito horas de
+   trabalho por dia. Cuidado que já custou uma rodada: o L do OKLCH não é
+   a claridade percebida — oklch(0.17) sai como #1a1a1a, quase preto. */
 .dark {
-  --background: oklch(0.28 0.012 230);
-  --foreground: oklch(0.93 0.003 230);
-  --card: oklch(0.315 0.013 230);
-  --card-foreground: oklch(0.93 0.003 230);
-  --popover: oklch(0.335 0.013 230);
-  --popover-foreground: oklch(0.93 0.003 230);
+  --background: oklch(0.315 0 0);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0.325 0 0);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.355 0 0);
+  --popover-foreground: oklch(1 0 0);
   --primary: oklch(0.72 0.13 163);
   --primary-foreground: oklch(0.16 0 0);
-  --secondary: oklch(0.35 0.012 230);
-  --secondary-foreground: oklch(0.93 0.003 230);
-  --muted: oklch(0.34 0.012 230);
-  --muted-foreground: oklch(0.7 0.008 230);
-  --accent: oklch(0.36 0.012 230);
-  --accent-foreground: oklch(0.96 0 0);
+  --secondary: oklch(0.37 0 0);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.365 0 0);
+  --muted-foreground: oklch(0.78 0 0);
+  --accent: oklch(0.395 0 0);
+  --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.68 0.19 22);
-  --border: oklch(1 0 0 / 6%);
+  --border: oklch(1 0 0 / 5%);
   --input: oklch(1 0 0 / 9%);
-  --ring: oklch(0.62 0.01 230);
-  --chat-bg: oklch(0.255 0.012 230);
-  --chat-dot: oklch(1 0 0 / 3%);
-  --bubble-out: oklch(0.42 0.075 165);
-  --bubble-out-foreground: oklch(0.96 0.005 165);
+  --ring: oklch(0.68 0 0);
+  --chat-bg: oklch(0.3 0 0);
+  --chat-dot: oklch(1 0 0 / 2.5%);
+  --bubble-out: oklch(0.44 0.06 163);
+  --bubble-out-foreground: oklch(1 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.265 0.012 230);
-  --sidebar-foreground: oklch(0.93 0.003 230);
+  --sidebar: oklch(0.305 0 0);
+  --sidebar-foreground: oklch(1 0 0);
   --sidebar-primary: oklch(0.72 0.13 163);
   --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.36 0.012 230);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(0.62 0.01 230);
+  --sidebar-accent: oklch(0.4 0 0);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(1 0 0 / 5%);
+  --sidebar-ring: oklch(0.68 0 0);
 }
 
 /* Papel de parede do chat. O fundo chapado deixava a conversa com cara de

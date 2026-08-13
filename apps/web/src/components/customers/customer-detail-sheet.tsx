@@ -13,6 +13,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StartConversationDialog } from "@/components/customers/start-conversation-dialog";
 import { apiFetch } from "@/lib/api-client";
 import type { ConversationStatus, ConversationSummary, Customer } from "@/lib/types";
 
@@ -50,8 +51,11 @@ export function CustomerDetailSheet({
     if (!open || !customer) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    apiFetch<ConversationSummary[]>(`/conversations?customerId=${customer.id}`)
-      .then(setConversations)
+    // A rota devolve uma página ({ items, nextCursor }), não um array —
+    // desde que a listagem virou paginada por cursor. Ler como array fazia
+    // a tela quebrar inteira com "map is not a function".
+    apiFetch<{ items: ConversationSummary[] }>(`/conversations?customerId=${customer.id}`)
+      .then((page) => setConversations(page.items ?? []))
       .catch(() => setConversations([]))
       .finally(() => setLoading(false));
   }, [open, customer]);
@@ -93,9 +97,21 @@ export function CustomerDetailSheet({
               </div>
 
               <div>
-                <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Conversas
-                </p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Conversas
+                  </p>
+                  {/* Iniciar conversa mora aqui, e não no Inbox: só faz
+                      sentido depois de escolher com quem falar. No Inbox
+                      era um botão sem contexto nenhum. */}
+                  <StartConversationDialog
+                    customer={customer}
+                    onStarted={(id) => {
+                      onOpenChange(false);
+                      router.push(`/dashboard/inbox?c=${id}`);
+                    }}
+                  />
+                </div>
                 {loading ? (
                   <div className="flex flex-col gap-2">
                     <Skeleton className="h-14 w-full" />

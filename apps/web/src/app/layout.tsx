@@ -28,7 +28,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      {/* h-full + overflow-hidden, não min-h-full: quem rola é o <main>
+          de cada tela. Com a página inteira podendo crescer, o Inbox
+          empurrava o compositor pra fora da janela quando a conversa
+          ficava longa. */}
+      <body className="flex h-full flex-col overflow-hidden">
         <ThemeProvider>
           {children}
           <Toaster />
