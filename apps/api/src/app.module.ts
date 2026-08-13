@@ -11,6 +11,7 @@ import { CollectionModule } from './modules/collection/collection.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
+import { RetentionModule } from './modules/retention/retention.module';
 import { InboxSettingsModule } from './modules/inbox-settings/inbox-settings.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
@@ -36,6 +37,7 @@ import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.modul
     CollectionModule,
     InboxSettingsModule,
     CopilotModule,
+    RetentionModule,
     RealtimeModule,
     AiModule,
     KnowledgeModule,

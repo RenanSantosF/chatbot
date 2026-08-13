@@ -2,6 +2,7 @@ import {
   Bot,
   Inbox,
   ClipboardList,
+  HardDrive,
   LibraryBig,
   ListTree,
   MessageCircle,
@@ -25,4 +26,5 @@ export const SETTINGS_SECTIONS = [
   { href: "/dashboard/settings/queues", label: "Filas", icon: ListTree },
   { href: "/dashboard/settings/team", label: "Equipe", icon: Users },
   { href: "/dashboard/settings/permissions", label: "Permissões", icon: ShieldCheck },
+  { href: "/dashboard/settings/storage", label: "Armazenamento", icon: HardDrive },
 ] as const;

@@ -55,6 +55,8 @@ model Tenant {
   routingRules       RoutingRule[]
   rolePermissions    RolePermission[]
   collectionFields   CollectionField[]
+  retention          RetentionSettings?
+  billing            BillingAccount?
   inboxSettings      InboxSettings?
   whatsappSettings   WhatsAppSettings?
 
@@ -83,20 +85,20 @@ model WhatsAppSettings {
 }
 
 model User {
-  id           String     @id @default(uuid())
-  tenantId     String
-  name         String
-  email        String
-  passwordHash String
-  role         UserRole   @default(AGENT)
-  avatar       String?
-  status       UserStatus @default(ACTIVE)
+  id                 String     @id @default(uuid())
+  tenantId           String
+  name               String
+  email              String
+  passwordHash       String
+  role               UserRole   @default(AGENT)
+  avatar             String?
+  status             UserStatus @default(ACTIVE)
   // Conta criada pelo dono com senha temporária: o primeiro login obriga a
   // pessoa a definir a própria senha, então a senha que o dono viu deixa
   // de valer e ninguém além do titular a conhece.
-  mustChangePassword Boolean @default(false)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  mustChangePassword Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
   tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignedConversations Conversation[]
@@ -137,18 +139,18 @@ model Customer {
 // canal: valem pra qualquer canal e são o tipo de coisa que o dono mexe
 // sem precisar tocar em token nenhum.
 model InboxSettings {
-  id       String  @id @default(uuid())
-  tenantId String  @unique
+  id               String   @id @default(uuid())
+  tenantId         String   @unique
   // Confirmação de leitura: quando desligada, abrir a conversa no painel
   // não acende o tique azul no aparelho do cliente. É escolha da empresa —
   // tem negócio que prefere não revelar que leu e ainda não respondeu.
-  sendReadReceipts Boolean @default(true)
+  sendReadReceipts Boolean  @default(true)
   // Aviso automático ao resolver: sem isso o cliente fica sem saber que o
   // atendimento foi encerrado e continua esperando resposta.
-  notifyOnResolve  Boolean @default(true)
-  resolveMessage   String  @default("Atendimento encerrado por aqui. Se precisar de mais alguma coisa, é só mandar mensagem que a gente volta a te atender.")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  notifyOnResolve  Boolean  @default(true)
+  resolveMessage   String   @default("Atendimento encerrado por aqui. Se precisar de mais alguma coisa, é só mandar mensagem que a gente volta a te atender.")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -475,28 +477,28 @@ model AiTool {
 // que a IA lê pra escolher a regra certa — por isso ela é texto livre e
 // não uma lista fixa de categorias.
 model RoutingRule {
-  id          String   @id @default(uuid())
-  tenantId    String
-  key         String
-  name        String
+  id            String               @id @default(uuid())
+  tenantId      String
+  key           String
+  name          String
   // Quando usar esta regra, em linguagem natural. Vai pro prompt da IA.
-  subject     String
+  subject       String
   // Prioridade mínima pra regra valer. NORMAL (padrão) = vale sempre;
   // URGENT = só entra quando a conversa foi classificada como urgente,
   // que é como se monta um plantão sem atrapalhar o fluxo do dia a dia.
-  minPriority ConversationPriority @default(NORMAL)
+  minPriority   ConversationPriority @default(NORMAL)
   // Destino: uma pessoa OU uma fila. Pessoa tem precedência quando os
   // dois estão preenchidos.
   targetUserId  String?
   targetQueueId String?
-  active      Boolean  @default(true)
-  priorityOrder Int    @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  active        Boolean              @default(true)
+  priorityOrder Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
-  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  targetUser  User?   @relation(fields: [targetUserId], references: [id], onDelete: SetNull)
-  targetQueue Queue?  @relation(fields: [targetQueueId], references: [id], onDelete: SetNull)
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetUser  User?  @relation(fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetQueue Queue? @relation(fields: [targetQueueId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, key])
   @@index([tenantId, active])
@@ -589,4 +591,57 @@ model QueueMember {
 
   @@unique([queueId, userId])
   @@map("queue_members")
+}
+
+/// Política de retenção da empresa. Existe separada de InboxSettings
+/// porque apagar mensagem de cliente é decisão de compliance, não de
+/// preferência de tela — e o histórico de quem mudou o quê importa.
+model RetentionSettings {
+  id       String @id @default(uuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Nulo = guarda pra sempre. É o padrão de propósito: apagar histórico
+  /// de atendimento tem que ser escolha explícita de quem responde pela
+  /// empresa, nunca um comportamento que aparece sozinho.
+  keepMessagesDays Int?
+
+  /// Quando a cota estoura, apaga o mais antigo em vez de recusar novas
+  /// mensagens. Desligado, o sistema só avisa e nada é perdido.
+  autoPurgeOnFull Boolean @default(false)
+
+  lastPurgeAt      DateTime?
+  lastPurgeDeleted Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("retention_settings")
+}
+
+/// Cota e vínculo com a Stripe. Guardado por tenant porque cada empresa
+/// assina o próprio plano — a plataforma nunca rateia armazenamento.
+model BillingAccount {
+  id       String @id @default(uuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Bytes contratados. O padrão cobre bem uma operação pequena: mensagem
+  /// é texto, e texto ocupa pouco — 1 GB dá na casa de milhões de linhas.
+  quotaBytes BigInt @default(1073741824)
+
+  /// Medido pelo tamanho real das linhas no Postgres, não estimado.
+  usedBytes  BigInt    @default(0)
+  measuredAt DateTime?
+
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  /// Rótulo do plano vigente, só pra exibição ("Grátis", "5 GB"...).
+  planLabel            String  @default("Grátis")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stripeCustomerId])
+  @@map("billing_accounts")
 }
