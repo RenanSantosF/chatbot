@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -41,8 +42,21 @@ import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
  * empresa. DONE junta RESOLVED e CLOSED porque a diferença entre os dois
  * não muda nada pra quem está escolhendo o que fazer agora.
  */
+/**
+ * "Pendente" é tudo que ainda não foi encerrado — inclusive o que está
+ * aguardando o cliente.
+ *
+ * A versão anterior tirava "aguardando cliente" de Pendentes, e o efeito
+ * era uma conversa viva sumir da tela onde se trabalha: quem só olha
+ * Pendentes deixava de ver um atendimento em aberto porque a última fala
+ * tinha sido da empresa. O único critério pra sair daqui é ter terminado.
+ *
+ * "Aguardando" continua existindo como recorte de quem quer ver só o que
+ * está na mão do cliente — agora um subconjunto de Pendentes, não um
+ * compartimento à parte.
+ */
 export const STATUS_GROUPS = {
-  PENDING: ['OPEN', 'WAITING_AGENT'],
+  PENDING: ['OPEN', 'WAITING_AGENT', 'WAITING_CUSTOMER'],
   WAITING: ['WAITING_CUSTOMER'],
   DONE: ['RESOLVED', 'CLOSED'],
 } as const satisfies Record<string, readonly ConversationStatus[]>;
@@ -71,7 +85,13 @@ const STATUS_RANK: Record<MessageStatus, number> = {
  * próprio. O que não for imagem/áudio/vídeo conhecido vai como documento,
  * que é o balde que aceita qualquer coisa.
  */
-function mediaKindFor(mimeType: string): 'image' | 'document' | 'audio' | 'video' {
+function mediaKindFor(
+  mimeType: string,
+): 'image' | 'document' | 'audio' | 'video' | 'sticker' {
+  // webp é o formato de figurinha do WhatsApp. Mandado como imagem ele
+  // chega no aparelho como uma foto quadrada com fundo branco; como
+  // sticker chega como figurinha de verdade, transparência e tudo.
+  if (mimeType.startsWith('image/webp')) return 'sticker';
   if (mimeType.startsWith('image/')) return 'image';
   if (mimeType.startsWith('audio/')) return 'audio';
   if (mimeType.startsWith('video/')) return 'video';
@@ -79,13 +99,16 @@ function mediaKindFor(mimeType: string): 'image' | 'document' | 'audio' | 'video
 }
 
 const MEDIA_MESSAGE_TYPE: Record<
-  'image' | 'document' | 'audio' | 'video',
+  'image' | 'document' | 'audio' | 'video' | 'sticker',
   MessageType
 > = {
   image: 'IMAGE',
   document: 'DOCUMENT',
   audio: 'AUDIO',
   video: 'VIDEO',
+  // Figurinha é imagem pro histórico: o painel desenha do mesmo jeito, e
+  // criar um tipo novo obrigaria migração de banco por causa de moldura.
+  sticker: 'IMAGE',
 };
 
 const conversationInclude = {
@@ -891,10 +914,12 @@ export class ConversationsService {
 
     const toUpload = await this.prepareAudio(file);
 
+    // `upload` já lança com o motivo da Meta quando ela recusa; um null aqui
+    // é o caso raro de ela responder 200 sem id.
     const mediaId = await this.media.upload(toUpload);
     if (!mediaId) {
       throw new BadRequestException(
-        'A Meta recusou o arquivo. Confira o formato e o tamanho.',
+        'A Meta aceitou o arquivo mas não devolveu o identificador dele. Tente de novo.',
       );
     }
 
@@ -912,9 +937,18 @@ export class ConversationsService {
         conversationId,
         senderType: 'AGENT',
         senderId: agentId,
-        content: caption ?? file.originalname,
+        // Sem legenda o balão fica só com a mídia. Repetir o nome do
+        // arquivo aqui punha "audio-1738...m4a" embaixo de cada áudio e
+        // "image.png" embaixo de cada foto — informação que não é fala de
+        // ninguém e que o próprio anexo já mostra quando é documento.
+        content: caption ?? '',
         messageType: MEDIA_MESSAGE_TYPE[kind],
         externalId,
+        // Sem id da Meta o anexo NÃO saiu. Marcar como falha é o que faz o
+        // triângulo vermelho aparecer no balão: antes ela era gravada como
+        // qualquer outra e ficava indistinguível de uma mensagem entregue,
+        // então o atendente achava que o cliente tinha recebido o áudio.
+        ...(externalId ? {} : { status: 'FAILED' as const }),
         metadata: {
           mediaId,
           mimeType: file.mimetype,
@@ -958,8 +992,33 @@ export class ConversationsService {
    * Entra já aceito porque a escolha foi da própria pessoa — o aceite só
    * existe pra indicação automática.
    */
-  async assign(conversationId: string, userId: string) {
+  async assign(
+    conversationId: string,
+    userId: string,
+    quemPede?: { role: UserRole; force?: boolean },
+  ) {
     const antes = await this.requireConversation(conversationId);
+
+    // Tomar pra si uma conversa que já tem dono não é proibido, mas também
+    // não pode ser acidental: duas pessoas respondendo o mesmo cliente é o
+    // pior defeito possível num atendimento.
+    //
+    // Bloquear de vez seria pior — colega em reunião, de férias ou que foi
+    // embora às 18h deixaria o cliente sem ninguém. Então: atendente
+    // precisa confirmar, dono e admin passam direto (é trabalho deles
+    // redistribuir), e a troca fica registrada no histórico da conversa.
+    const deOutraPessoa =
+      antes.assignedUserId &&
+      antes.assignedUserId !== userId &&
+      antes.assignmentAccepted;
+    const podeRedistribuir =
+      quemPede?.role === 'OWNER' || quemPede?.role === 'ADMIN';
+
+    if (deOutraPessoa && !podeRedistribuir && !quemPede?.force) {
+      throw new ConflictException(
+        `Esta conversa está com ${antes.assignedUser?.name ?? 'outro atendente'}. Confirme para assumir mesmo assim.`,
+      );
+    }
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
@@ -976,9 +1035,12 @@ export class ConversationsService {
     // por aqui, e nesse caso a linha "Fulano assumiu" viria depois de
     // "encaminhada para Fulano" — duas notas dizendo a mesma coisa.
     if (antes.assignedUserId !== userId) {
+      const nome = conversation.assignedUser?.name ?? 'Um atendente';
       await this.registrarNota(
         conversationId,
-        `${conversation.assignedUser?.name ?? 'Um atendente'} assumiu o atendimento.`,
+        deOutraPessoa
+          ? `${nome} assumiu o atendimento, que estava com ${antes.assignedUser?.name}.`
+          : `${nome} assumiu o atendimento.`,
       );
     }
 
@@ -1340,6 +1402,15 @@ export class ConversationsService {
    */
   async declineAssignment(conversationId: string, userId: string, motivo?: string) {
     const atual = await this.requireConversation(conversationId);
+
+    // Já sem dono: a recusa aconteceu (dois cliques, duas abas, ou a tela
+    // pintou do cache antes de reconciliar). Devolver o estado atual em vez
+    // de erro é o certo — recusar de novo o que já está recusado não é uma
+    // falha, e o erro deixava os botões "Aceitar/Recusar" na tela dando a
+    // impressão de que a recusa não tinha funcionado.
+    if (!atual.assignedUserId) {
+      return atual;
+    }
     if (atual.assignedUserId !== userId) {
       throw new BadRequestException('Esta conversa foi indicada a outra pessoa.');
     }
@@ -1601,12 +1672,37 @@ export class ConversationsService {
     });
     if (!anterior) return null;
 
-    // Volta a ser um atendimento de verdade. A IA reassume só se ela é que
-    // estava conduzindo antes: se um humano tinha assumido, ele continua
-    // dono — o cliente que volta é o mesmo caso, não um atendimento novo.
+    // Quem volta depois do atendimento encerrado é atendido pela IA de novo.
+    //
+    // Antes o aiMode ficava como estava no encerramento, e como quase todo
+    // atendimento termina com um humano no comando, a conversa reabria
+    // presa em HUMAN_ACTIVE: o cliente escrevia "Oi" e ninguém respondia —
+    // nem a IA, que estava desligada ali, nem um atendente, que não tinha
+    // motivo pra estar olhando uma conversa que já havia resolvido.
+    //
+    // O que foi encerrado, encerrou. A rodada nova começa como qualquer
+    // outra: a IA na frente, escalando pra gente quando precisar. Se a IA
+    // estiver desligada na empresa, o modo continua humano e a conversa
+    // aparece em Pendentes, que é o comportamento correto nesse caso.
+    const ia = await this.prisma.db.aiSettings.findFirst({
+      select: { active: true, apiKeyEncrypted: true },
+    });
+    const iaAssume = Boolean(ia?.active && ia.apiKeyEncrypted);
+
     const reaberta = await this.prisma.db.conversation.update({
       where: { id: anterior.id },
-      data: { status: 'OPEN' },
+      data: {
+        status: 'OPEN',
+        ...(iaAssume
+          ? {
+              aiMode: 'AI_ACTIVE',
+              // O motivo do escalonamento anterior já foi resolvido; deixá-lo
+              // faria o painel explicar a rodada nova com a história da velha.
+              escalationReason: null,
+              escalationSummary: null,
+            }
+          : {}),
+      },
     });
 
     await this.prisma.db.message.create({

@@ -45,6 +45,10 @@ export function AssignmentActions({
   // só, com prefixo, evita o caso impossível de os dois estarem escolhidos.
   const [destino, setDestino] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  // Aviso vindo do servidor quando a conversa já tem outro dono. Guardar a
+  // frase dele (e não montar uma aqui) é o que faz o nome de quem está
+  // atendendo aparecer na pergunta.
+  const [confirmandoTomada, setConfirmandoTomada] = useState<string | null>(null);
 
   const meu = conversation.assignedUser?.id === currentUserId;
   const indicadaParaMim = meu && !conversation.assignmentAccepted;
@@ -77,7 +81,19 @@ export function AssignmentActions({
       onChanged();
       setAbrindo(false);
     } catch (error) {
+      // 409 em "assumir" quer dizer que a conversa tem outro dono. Não é
+      // erro: é a pergunta que o servidor devolveu pra ser confirmada.
+      if (error instanceof ApiError && error.status === 409 && caminho === "assign") {
+        setOcupado(false);
+        setConfirmandoTomada(error.message);
+        return;
+      }
       toast.error(error instanceof ApiError ? error.message : "Não deu certo.");
+      // Recarrega mesmo tendo falhado: quase toda recusa vem de a tela
+      // estar desatualizada (dois cliques, outra aba, colega mais rápido).
+      // Sem isso os botões continuavam oferecendo a ação que acabou de ser
+      // negada, e parecia que o clique não tinha feito nada.
+      onChanged();
     } finally {
       setOcupado(false);
     }
@@ -108,17 +124,66 @@ export function AssignmentActions({
 
   return (
     <>
+      {/* Transferir só aparece quando a conversa já tem dono: passar adiante
+          o que não é de ninguém é assumir e transferir no mesmo gesto, e o
+          caminho certo pra isso é "Assumir" primeiro. */}
       {conversation.assignedUser ? (
-        <Button size="sm" variant="outline" onClick={() => setAbrindo(true)}>
-          <Users className="size-4" />
-          Transferir
-        </Button>
+        <>
+          {!meu ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={ocupado}
+              title={`Atendida por ${conversation.assignedUser.name}`}
+              onClick={() => void chamar("assign")}
+            >
+              <UserPlus className="size-4" />
+              Assumir
+            </Button>
+          ) : null}
+          <Button size="sm" variant="outline" onClick={() => setAbrindo(true)}>
+            <Users className="size-4" />
+            Transferir
+          </Button>
+        </>
       ) : (
         <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void chamar("assign")}>
           <UserPlus className="size-4" />
           Assumir
         </Button>
       )}
+
+      <Sheet
+        open={confirmandoTomada !== null}
+        onOpenChange={(aberto) => !aberto && setConfirmandoTomada(null)}
+      >
+        <SheetContent className="gap-0">
+          <SheetHeader>
+            <SheetTitle>Assumir conversa de outra pessoa</SheetTitle>
+            <SheetDescription>{confirmandoTomada}</SheetDescription>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-4 px-4 py-2">
+            <p className="text-xs text-muted-foreground text-pretty">
+              Quem estava atendendo deixa de ser o responsável e a troca fica registrada no
+              histórico da conversa. Faça isso quando a pessoa não puder continuar — dois
+              atendentes respondendo o mesmo cliente é o pior resultado possível.
+            </p>
+
+            <SheetFooter className="px-0">
+              <Button
+                disabled={ocupado}
+                onClick={() => {
+                  setConfirmandoTomada(null);
+                  void chamar("assign", { force: true });
+                }}
+              >
+                Assumir mesmo assim
+              </Button>
+            </SheetFooter>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={abrindo} onOpenChange={setAbrindo}>
         <SheetContent className="gap-0">

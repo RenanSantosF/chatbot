@@ -3,6 +3,10 @@ import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 
 const GRAPH_API_VERSION = 'v21.0';
+// Mesma base sobrescrevível do serviço de mídia (ver whatsapp-media.service):
+// aponta num ambiente de teste da Meta ou num servidor de mentira durante
+// teste automatizado. Em produção fica no padrão.
+const GRAPH_BASE = process.env.META_GRAPH_URL ?? 'https://graph.facebook.com';
 
 /**
  * Manda mensagem de saída pra Cloud API da Meta usando as credenciais do
@@ -42,7 +46,7 @@ export class WhatsappSenderService {
     }
 
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
-    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`;
+    const url = `${GRAPH_BASE}/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`;
 
     this.logger.log(
       `Enviando mensagem via WhatsApp: phoneNumberId=${settings.phoneNumberId}, to=${to}`,
@@ -113,7 +117,7 @@ export class WhatsappSenderService {
     }
 
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
-    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`;
+    const url = `${GRAPH_BASE}/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`;
 
     const components = template.bodyParams?.length
       ? [
@@ -172,7 +176,7 @@ export class WhatsappSenderService {
 
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
     const response = await fetch(
-      `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.wabaId}/message_templates?limit=100&status=APPROVED`,
+      `${GRAPH_BASE}/${GRAPH_API_VERSION}/${settings.wabaId}/message_templates?limit=100&status=APPROVED`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
 
@@ -207,7 +211,7 @@ export class WhatsappSenderService {
 
   async sendMedia(
     to: string,
-    kind: 'image' | 'document' | 'audio' | 'video',
+    kind: 'image' | 'document' | 'audio' | 'video' | 'sticker',
     mediaId: string,
     options: { caption?: string; filename?: string } = {},
   ): Promise<string | null> {
@@ -220,13 +224,17 @@ export class WhatsappSenderService {
     }
 
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
+    // Áudio e figurinha não aceitam legenda, e só documento aceita nome de
+    // arquivo. Mandar um campo a mais faz a Meta recusar a mensagem inteira
+    // com erro de parâmetro — não é tolerância, é rejeição.
     const media: Record<string, string> = { id: mediaId };
-    if (options.caption && kind !== 'audio') media.caption = options.caption;
+    const aceitaLegenda = kind !== 'audio' && kind !== 'sticker';
+    if (options.caption && aceitaLegenda) media.caption = options.caption;
     if (options.filename && kind === 'document') media.filename = options.filename;
 
     try {
       const response = await fetch(
-        `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
+        `${GRAPH_BASE}/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
         {
           method: 'POST',
           headers: {
@@ -270,7 +278,7 @@ export class WhatsappSenderService {
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
     try {
       const response = await fetch(
-        `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
+        `${GRAPH_BASE}/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
         {
           method: 'POST',
           headers: {
@@ -304,7 +312,7 @@ export class WhatsappSenderService {
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
     try {
       await fetch(
-        `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
+        `${GRAPH_BASE}/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`,
         {
           method: 'POST',
           headers: {

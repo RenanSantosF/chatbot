@@ -133,9 +133,21 @@ export class ConversationsController {
     );
   }
 
+  /**
+   * `force` é a confirmação de quem já viu o aviso de que a conversa tem
+   * outro dono. Sem ele o serviço responde 409 com o nome de quem está
+   * atendendo, e a tela transforma isso na pergunta.
+   */
   @Post(':id/assign')
-  assign(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.conversationsService.assign(id, user.userId);
+  assign(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body('force') force?: boolean,
+  ) {
+    return this.conversationsService.assign(id, user.userId, {
+      role: user.role,
+      force: Boolean(force),
+    });
   }
 
   @Post(':id/transfer')

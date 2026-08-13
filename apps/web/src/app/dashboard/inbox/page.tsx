@@ -443,7 +443,6 @@ export default function InboxPage() {
         onRefresh={refreshCurrent}
         onResolve={() => handleAction("resolve", "Não deu pra resolver essa conversa.")}
         onReopen={() => handleAction("reopen", "Não deu pra reabrir essa conversa.")}
-        onReactivateAi={() => handleAction("reactivate-ai", "Não deu pra reativar a IA.")}
         onChangePriority={handlePriority}
       />
       <div className="hidden overflow-y-auto border-l xl:block">

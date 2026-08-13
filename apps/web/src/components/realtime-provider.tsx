@@ -77,6 +77,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     // título decente sem precisar buscar na API na hora que chega.
     instance.on("conversation.updated", (conversation: ConversationSummary) => {
       namesRef.current[conversation.id] = conversation.customer.name;
+
+      // Quem abriu a conversa zerou as não lidas NO SERVIDOR — e o servidor
+      // avisa todo mundo. Sem apagar o contador local aqui, a conversa
+      // continuava em negrito com bolinha vermelha na tela dos outros
+      // atendentes mesmo depois de um colega já ter lido e respondido:
+      // duas pessoas correndo pro mesmo atendimento.
+      if (conversation.unreadCount === 0) {
+        setUnreadCounts((prev) => {
+          if (!prev[conversation.id]) return prev;
+          const next = { ...prev };
+          delete next[conversation.id];
+          return next;
+        });
+      }
     });
 
     instance.on(

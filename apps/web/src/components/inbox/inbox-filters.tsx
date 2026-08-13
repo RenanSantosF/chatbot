@@ -77,13 +77,13 @@ const GRUPOS: {
     value: "PENDING",
     label: "Pendentes",
     icon: Inbox,
-    ajuda: "É a sua vez de responder",
+    ajuda: "Tudo que ainda não foi encerrado",
   },
   {
     value: "WAITING",
     label: "Aguardando",
     icon: Clock3,
-    ajuda: "A bola está com o cliente",
+    ajuda: "Dentro de Pendentes: a bola está com o cliente",
   },
   {
     value: "DONE",

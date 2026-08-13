@@ -217,7 +217,11 @@ export function MessageBubble({
       ) : null}
 
       {message.messageType !== "TEXT" ? <MessageAttachment message={message} /> : null}
-      {message.content ? (
+      {/* Localização não repete o texto: o cartão acima já mostra o lugar e
+          as coordenadas. Antes vinham os dois — o cartão e, embaixo,
+          "Localização: -20.3620781, -40.4308282" — e o balão ficava com
+          cara de log em vez de mensagem. */}
+      {message.content && message.messageType !== "LOCATION" ? (
         <span className="whitespace-pre-wrap break-words">
           <Highlighted text={message.content} term={highlight} />
         </span>

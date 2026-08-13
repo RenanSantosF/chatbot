@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -186,7 +191,12 @@ export class WhatsappMediaService {
     const body = await response.text();
     if (!response.ok) {
       this.logger.error(`Falha ao subir mídia (${response.status}): ${body}`);
-      return null;
+      // O motivo da Meta sobe junto. "A Meta recusou o arquivo" sozinho não
+      // diz se o problema é o formato, o tamanho ou o token vencido — e sem
+      // isso a única saída de quem atende é tentar de novo até desistir.
+      throw new BadRequestException(
+        `A Meta recusou o arquivo: ${this.motivoDaMeta(body, response.status)}`,
+      );
     }
 
     try {
@@ -194,5 +204,23 @@ export class WhatsappMediaService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Puxa a explicação de dentro do erro da Meta. Ela nem sempre responde
+   * JSON — proxy e gateway dela devolvem HTML em dia ruim —, então o
+   * fallback é o código HTTP, que ao menos separa "recusou" de "está fora".
+   */
+  private motivoDaMeta(body: string, status: number): string {
+    try {
+      const payload = JSON.parse(body) as {
+        error?: { message?: string; error_user_msg?: string };
+      };
+      const motivo = payload.error?.error_user_msg ?? payload.error?.message;
+      if (motivo) return motivo;
+    } catch {
+      /* resposta não-JSON: cai no código HTTP abaixo */
+    }
+    return `erro HTTP ${status}`;
   }
 }

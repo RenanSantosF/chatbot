@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileText, MapPin, Play } from "lucide-react";
+import { Download, ExternalLink, FileText, MapPin, Mic, Play } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ImageLightbox } from "./image-lightbox";
@@ -29,16 +29,31 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
   const meta = message.metadata;
 
   if (message.messageType === "LOCATION" && meta?.latitude !== undefined) {
-    const label = [meta.name, meta.address].filter(Boolean).join(" — ");
+    // Nome e endereço quando o cliente compartilha um lugar salvo; as
+    // coordenadas quando ele solta o pino no mapa. O que sempre existe são
+    // as coordenadas, então elas ficam na linha de baixo, discretas — a de
+    // cima é pro humano ler, a de baixo é pra conferir.
+    const titulo = meta.name || meta.address || "Localização compartilhada";
+    const detalhe =
+      meta.name && meta.address
+        ? meta.address
+        : `${Number(meta.latitude).toFixed(5)}, ${Number(meta.longitude).toFixed(5)}`;
+
     return (
       <a
         href={`https://www.google.com/maps/search/?api=1&query=${meta.latitude},${meta.longitude}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2 rounded-md bg-black/5 px-2.5 py-2 text-xs underline-offset-4 hover:underline dark:bg-white/10"
+        className="group/mapa flex items-center gap-2.5 rounded-lg bg-black/5 p-2.5 transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
       >
-        <MapPin className="size-4 shrink-0" />
-        <span className="min-w-0 truncate">{label || "Ver localização no mapa"}</span>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+          <MapPin className="size-4.5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium">{titulo}</span>
+          <span className="block truncate text-[11px] tabular-nums opacity-70">{detalhe}</span>
+        </span>
+        <ExternalLink className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/mapa:opacity-60" />
       </a>
     );
   }
@@ -86,7 +101,19 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
   }
 
   if (message.messageType === "AUDIO") {
-    return <audio controls src={url} className="h-9 w-56 max-w-full" />;
+    // Largura fixa e um rótulo em cima: o player nu do navegador nasce com
+    // largura de conteúdo, então cada áudio saía de um tamanho e a coluna
+    // de balões ficava serrilhada. O rótulo distingue o recado de voz do
+    // arquivo de áudio anexado, que é o que o remetente quis dizer.
+    return (
+      <span className="flex w-60 max-w-full flex-col gap-1">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium opacity-70">
+          <Mic className="size-3" />
+          {meta.voice ? "Mensagem de voz" : "Áudio"}
+        </span>
+        <audio controls src={url} className="h-9 w-full" />
+      </span>
+    );
   }
 
   if (message.messageType === "VIDEO" && !failed) {

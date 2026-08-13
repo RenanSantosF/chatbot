@@ -1,33 +1,23 @@
 "use client";
 
-import {
-  ChevronDown,
-  ChevronUp,
-  MessagesSquare,
-  Paperclip,
-  Search,
-  SendHorizonal,
-  X,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, MessagesSquare, Paperclip, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select-field";
-import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useSession } from "@/components/session-provider";
-import { apiFetch } from "@/lib/api-client";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import { AssignmentActions } from "./assignment-actions";
 import { MessageBubble } from "./message-bubble";
 import { AttachmentComposer } from "./attachment-composer";
+import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
 import { VoiceRecorder } from "./voice-recorder";
 import type {
-  AiSettings,
   ConversationDetail,
   ConversationMessage,
   ConversationPriority,
@@ -128,7 +118,6 @@ export function ChatPanel({
   onRefresh,
   onResolve,
   onReopen,
-  onReactivateAi,
   onChangePriority,
   onSendFile,
   replyTo,
@@ -147,7 +136,6 @@ export function ChatPanel({
   onRefresh: () => void;
   onResolve: () => Promise<void>;
   onReopen: () => Promise<void>;
-  onReactivateAi: () => Promise<void>;
   onChangePriority: (priority: ConversationPriority) => Promise<void>;
   onSendFile: (file: File, caption?: string) => Promise<void>;
   replyTo: ConversationMessage | null;
@@ -158,10 +146,6 @@ export function ChatPanel({
   onReact: (messageId: string, emoji: string) => Promise<void>;
 }) {
   const { user } = useSession();
-  // A IA só pode ser religada numa conversa se estiver ligada e com chave no
-  // nível da empresa — a API recusa o contrário, então mostrar o botão seria
-  // oferecer uma ação que não existe.
-  const [iaDisponivel, setIaDisponivel] = useState(false);
   const [draft, setDraft] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [needle, setNeedle] = useState("");
@@ -205,12 +189,6 @@ export function ChatPanel({
   // graça o histórico carregado pelo "ver anteriores": aquelas mensagens
   // são antigas, então entram sem animação nenhuma, que é o certo.
   const [abertoEm] = useState(() => Date.now());
-
-  useEffect(() => {
-    apiFetch<AiSettings>("/ai/settings")
-      .then((ia) => setIaDisponivel(ia.active && ia.hasApiKey))
-      .catch(() => setIaDisponivel(false));
-  }, []);
 
   useEffect(() => {
     if (!currentMatchId) return;
@@ -282,8 +260,8 @@ export function ChatPanel({
     setPendingFile(file);
   }
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function handleSubmit(event?: React.SyntheticEvent) {
+    event?.preventDefault();
     const content = draft.trim();
     if (!content) return;
     setDraft("");
@@ -338,15 +316,12 @@ export function ChatPanel({
               Reabrir
             </Button>
           )}
-          {/* Só aparece se a IA estiver realmente disponível. Antes o botão
-              ficava lá com a IA desligada nas configurações: reativar
-              "funcionava", a conversa voltava pra IA e o cliente escrevia
-              pra ninguém — a IA calada e nenhum humano marcado. */}
-          {!isResolved && conversation.aiMode !== "AI_ACTIVE" && iaDisponivel && (
-            <Button size="sm" variant="ghost" onClick={onReactivateAi}>
-              Reativar IA
-            </Button>
-          )}
+          {/* "Reativar IA" saiu do cabeçalho da conversa de propósito: quem
+              decide se a IA atende é a configuração da empresa, não um
+              botão ao lado de "Resolver". Ligar e desligar a IA no meio do
+              atendimento, conversa a conversa, produzia estados que ninguém
+              conseguia explicar depois — e a conversa reaberta pelo cliente
+              já volta pra IA sozinha (ver reabrirParaAgrupamento na API). */}
         </div>
       </div>
 
@@ -506,7 +481,11 @@ export function ChatPanel({
         />
       ) : (
       /* Sem borda entre a conversa e o compositor: a troca de cor da
-         superfície já marca a separação, que era o pedido. */
+         superfície já marca a separação, que era o pedido.
+
+         Sem botão de enviar: quem escreve o dia inteiro manda no Enter e
+         nunca no clique, e o botão só ocupava o canto onde o microfone
+         precisa estar. Enter envia, Shift+Enter quebra linha. */
       <form onSubmit={handleSubmit} className="flex items-center gap-2 bg-card p-3">
         <input
           ref={fileInputRef}
@@ -531,24 +510,32 @@ export function ChatPanel({
         >
           <Paperclip className="size-4" />
         </Button>
-        <VoiceRecorder disabled={isResolved || sending} onRecorded={onSendFile} />
+        <EmojiPicker
+          disabled={isResolved || sending}
+          onPick={(emoji) => setDraft((atual) => atual + emoji)}
+        />
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onPaste={handlePaste}
+          onKeyDown={(event) => {
+            // Um <input> já submeteria no Enter sozinho, mas só enquanto o
+            // formulário tiver um botão de envio — que acabou de sair. Com
+            // o tratamento explícito o comportamento para de depender
+            // dessa regra do navegador.
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void handleSubmit(event);
+            }
+          }}
           placeholder={isResolved ? "Conversa resolvida" : "Escreva uma mensagem..."}
           disabled={isResolved || sending}
           className="rounded-md"
         />
-        <Button
-          type="submit"
-          size="icon-lg"
-          className="shrink-0"
-          aria-label="Enviar mensagem"
-          disabled={isResolved || sending || !draft.trim()}
-        >
-          {sending ? <Spinner /> : <SendHorizonal className="size-4" />}
-        </Button>
+        {/* No canto onde estava o botão de enviar. O gravador se expande
+            sobre o compositor enquanto grava, então precisa ser o último
+            item da linha pra não empurrar o campo de texto. */}
+        <VoiceRecorder disabled={isResolved || sending} onRecorded={onSendFile} />
       </form>
       )}
     </div>
