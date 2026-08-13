@@ -1,13 +1,14 @@
 "use client";
 
 import { Search, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CustomerDetailSheet } from "@/components/customers/customer-detail-sheet";
 import { EmptyState } from "@/components/empty-state";
+import { ImportContactsDialog } from "@/components/customers/import-contacts-dialog";
 import { PageHeader } from "@/components/page-header";
 import { apiFetch } from "@/lib/api-client";
 import type { Customer } from "@/lib/types";
@@ -27,12 +28,16 @@ export default function CustomersPage() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     apiFetch<Customer[]>("/customers")
       .then(setCustomers)
       .catch(() => toast.error("Não deu pra carregar os clientes."))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -47,7 +52,11 @@ export default function CustomersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Clientes" description="Cadastro e histórico dos clientes finais." />
+      <PageHeader
+        title="Clientes"
+        description="Cadastro e histórico dos clientes finais."
+        action={<ImportContactsDialog onImported={load} />}
+      />
 
       <div className="relative max-w-sm">
         <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />

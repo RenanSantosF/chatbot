@@ -14,6 +14,7 @@ import {
   type InboxFilters,
 } from "@/components/inbox/inbox-filters";
 import { SimulateInboundDialog } from "@/components/inbox/simulate-inbound-dialog";
+import { StartConversationDialog } from "@/components/inbox/start-conversation-dialog";
 import { useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
 import { conversationCache } from "@/lib/conversation-cache";
@@ -389,7 +390,17 @@ export default function InboxPage() {
           value={filters}
           counts={counts}
           onChange={setFilters}
-          action={<SimulateInboundDialog onSimulated={() => loadConversations(filters)} />}
+          action={
+            <>
+              <StartConversationDialog
+                onStarted={(id) => {
+                  setSelectedId(id);
+                  void loadConversations(filters);
+                }}
+              />
+              <SimulateInboundDialog onSimulated={() => loadConversations(filters)} />
+            </>
+          }
         />
         <ConversationList
           conversations={conversations}

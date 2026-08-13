@@ -94,6 +94,117 @@ export class WhatsappSenderService {
    * `kind` decide o campo do payload — a Cloud API não aceita um "anexo"
    * genérico, cada tipo tem o seu, e só `document` aceita filename.
    */
+  /**
+   * Envia um template aprovado. É o único jeito de falar com alguém fora
+   * da janela de 24 horas — depois desse prazo a Meta recusa texto livre,
+   * então "iniciar conversa" sempre passa por aqui.
+   *
+   * Diferente dos outros envios, este PROPAGA o erro: quem inicia uma
+   * conversa precisa saber na hora que o template foi recusado, senão
+   * ficaria olhando pra uma conversa vazia sem entender o motivo.
+   */
+  async sendTemplate(
+    to: string,
+    template: { name: string; language: string; bodyParams?: string[] },
+  ): Promise<string> {
+    const settings = await this.prisma.db.whatsAppSettings.findFirst();
+    if (!settings) {
+      throw new Error('WhatsApp não está conectado nesta empresa.');
+    }
+
+    const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`;
+
+    const components = template.bodyParams?.length
+      ? [
+          {
+            type: 'body',
+            parameters: template.bodyParams.map((text) => ({
+              type: 'text',
+              text,
+            })),
+          },
+        ]
+      : undefined;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'template',
+        template: {
+          name: template.name,
+          language: { code: template.language },
+          ...(components ? { components } : {}),
+        },
+      }),
+    });
+
+    const payload = (await response.json()) as {
+      messages?: { id?: string }[];
+      error?: { message?: string };
+    };
+
+    if (!response.ok) {
+      const detail = payload.error?.message ?? 'motivo não informado';
+      this.logger.error(`Falha ao enviar template ${template.name}: ${detail}`);
+      throw new Error(`A Meta recusou o template: ${detail}`);
+    }
+
+    return payload.messages?.[0]?.id ?? '';
+  }
+
+  /** Templates aprovados da conta, pra montar a tela de iniciar conversa. */
+  async listTemplates(): Promise<
+    { name: string; language: string; body: string; placeholders: number }[]
+  > {
+    const settings = await this.prisma.db.whatsAppSettings.findFirst();
+    if (!settings?.wabaId) {
+      throw new Error(
+        'Informe o ID da conta comercial (WABA) em Configurações > WhatsApp pra listar os templates.',
+      );
+    }
+
+    const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
+    const response = await fetch(
+      `https://graph.facebook.com/${GRAPH_API_VERSION}/${settings.wabaId}/message_templates?limit=100&status=APPROVED`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    const payload = (await response.json()) as {
+      data?: {
+        name: string;
+        language: string;
+        status: string;
+        components?: { type: string; text?: string }[];
+      }[];
+      error?: { message?: string };
+    };
+
+    if (!response.ok) {
+      throw new Error(payload.error?.message ?? 'Não deu pra listar os templates.');
+    }
+
+    return (payload.data ?? []).map((template) => {
+      const body =
+        template.components?.find((part) => part.type === 'BODY')?.text ?? '';
+      // {{1}}, {{2}}... são os buracos que a empresa preenche na hora do
+      // envio; contar aqui evita a tela ter que reimplementar o parser.
+      const placeholders = new Set(body.match(/\{\{\d+\}\}/g) ?? []).size;
+      return {
+        name: template.name,
+        language: template.language,
+        body,
+        placeholders,
+      };
+    });
+  }
+
   async sendMedia(
     to: string,
     kind: 'image' | 'document' | 'audio' | 'video',

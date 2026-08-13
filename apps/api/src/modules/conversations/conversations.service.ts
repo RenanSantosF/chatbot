@@ -809,6 +809,112 @@ export class ConversationsService {
    * cliente não precisa saber que a ficha dele mudou de estado aqui
    * dentro.
    */
+  /**
+   * Inicia uma conversa com quem nunca escreveu (ou escreveu há mais de 24
+   * horas). Só existe via template: fora da janela de atendimento a Meta
+   * recusa texto livre, então esse é o único caminho legítimo.
+   *
+   * Ao contrário dos outros envios, aqui o erro sobe: se a Meta recusou o
+   * template, a empresa precisa saber na hora — senão ficaria olhando pra
+   * uma conversa vazia sem entender o que houve. Por isso a mensagem só é
+   * gravada depois que a Meta confirma.
+   */
+  /** Templates aprovados, pra tela de iniciar conversa escolher qual usar. */
+  async listTemplates() {
+    try {
+      return await this.whatsapp.listTemplates();
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Não deu pra listar os templates.',
+      );
+    }
+  }
+
+  async startConversation(
+    input: {
+      phone: string;
+      name?: string;
+      templateName: string;
+      templateLanguage: string;
+      bodyParams?: string[];
+    },
+    agentId: string,
+  ) {
+    const phone = input.phone.replace(/\D/g, '');
+    if (phone.length < 12) {
+      throw new BadRequestException(
+        'Informe o telefone com DDI e DDD, por exemplo 5527999998888.',
+      );
+    }
+
+    const customer = await this.customers.findOrCreateByPhone({
+      phone,
+      name: input.name?.trim() || phone,
+    });
+
+    let externalId: string;
+    try {
+      externalId = await this.whatsapp.sendTemplate(phone, {
+        name: input.templateName,
+        language: input.templateLanguage,
+        bodyParams: input.bodyParams,
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Não deu pra enviar o template.',
+      );
+    }
+
+    // Reaproveita a conversa aberta desse cliente quando existe: abrir uma
+    // segunda partiria o histórico em duas no painel.
+    const existing = await this.prisma.db.conversation.findFirst({
+      where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
+      orderBy: { lastMessageAt: 'desc' },
+    });
+
+    const conversation =
+      existing ??
+      (await this.prisma.db.conversation.create({
+        data: {
+          tenantId: this.prisma.tenantId,
+          customerId: customer.id,
+          channel: 'WHATSAPP',
+          status: 'WAITING_CUSTOMER',
+          assignedUserId: agentId,
+        },
+      }));
+
+    const message = await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId: conversation.id,
+        senderType: 'AGENT',
+        senderId: agentId,
+        content: `[${input.templateName}] ${(input.bodyParams ?? []).join(' · ')}`.trim(),
+        messageType: 'TEXT',
+        externalId,
+      },
+    });
+
+    const updated = await this.prisma.db.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: message.createdAt, status: 'WAITING_CUSTOMER' },
+      include: conversationInclude,
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+      conversationId: conversation.id,
+      message,
+    });
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(updated),
+    );
+
+    return { conversationId: conversation.id };
+  }
+
   async reopen(conversationId: string) {
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },

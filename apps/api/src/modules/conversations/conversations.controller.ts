@@ -18,6 +18,7 @@ import type {
 } from '../../../generated/prisma/client';
 import type { RequestUser } from '../auth/auth.types';
 import { ConversationsService } from './conversations.service';
+import { StartConversationDto } from './dto/start-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetPriorityDto } from './dto/set-priority.dto';
 import { SimulateInboundDto } from './dto/simulate-inbound.dto';
@@ -57,6 +58,22 @@ export class ConversationsController {
   @Get('counts')
   counts(@CurrentUser() user: RequestUser) {
     return this.conversationsService.counts(user.userId);
+  }
+
+  // Estas rotas ficam ANTES de ':id' de propósito: o Nest casa na ordem
+  // de declaração, e ':id' engoliria 'templates', devolvendo
+  // "conversa não encontrada" pra uma rota que existe.
+  @Get('templates')
+  templates() {
+    return this.conversationsService.listTemplates();
+  }
+
+  @Post('start')
+  start(
+    @Body() dto: StartConversationDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.startConversation(dto, user.userId);
   }
 
   @Get(':id')
