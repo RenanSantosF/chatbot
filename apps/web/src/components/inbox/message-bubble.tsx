@@ -105,27 +105,11 @@ export function MessageBubble({
     <div
       data-message-id={message.id}
       className={cn(
-        "group/msg relative flex max-w-[75%] flex-col",
+        "group/msg relative flex max-w-[75%] min-w-0 flex-col",
         fromCustomer ? "self-start" : "self-end",
         isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
       )}
     >
-      {/* Faixa de duplo clique AO LADO do balão, nunca sobre ele: dentro,
-          o gesto competia com selecionar e copiar o texto da mensagem. */}
-      {onReply ? (
-        <span
-          onDoubleClick={() => onReply(message)}
-          title="Clique duas vezes para responder"
-          aria-hidden
-          // Cobre TODA a faixa vazia ao lado da mensagem, até a borda do
-          // chat — não só uns pixels colados no balão. `w-screen` com
-          // overflow escondido no pai resolve sem precisar medir largura.
-          className={cn(
-            "absolute inset-y-0 w-screen cursor-cell select-none",
-            fromCustomer ? "left-full" : "right-full",
-          )}
-        />
-      ) : null}
       {onReply || onReact || onForward ? (
         <div
           className={cn(
@@ -181,7 +165,7 @@ export function MessageBubble({
         // papel de parede sem parecer um cartão empilhado. O verde de saída
         // no escuro é dessaturado de propósito — o verde cheio do app
         // brigava com o cinza da interface.
-        "flex flex-col gap-0.5 rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
+        "flex min-w-0 flex-col gap-0.5 overflow-hidden rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)] duration-200 ease-out animate-in fade-in",
         fromCustomer
           ? "rounded-bl-sm bg-card text-card-foreground slide-in-from-left-2"
           : "rounded-br-sm bg-bubble-out text-bubble-out-foreground slide-in-from-right-2",

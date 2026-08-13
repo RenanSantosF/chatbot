@@ -157,6 +157,7 @@ export function ChatPanel({
   const [dragging, setDragging] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const firstPaintRef = useRef(true);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Ids das mensagens que casam com a busca, na ordem da conversa. Roda
@@ -182,14 +183,25 @@ export function ChatPanel({
   useEffect(() => {
     // Não puxa pro fim enquanto a pessoa está navegando pelos resultados.
     if (currentMatchId) return;
-    // Sempre instantâneo: a conversa abre já no fim, sem a tela descer
-    // rolando na frente da pessoa. Só mensagem nova numa conversa que já
-    // estava aberta é que desliza.
-    bottomRef.current?.scrollIntoView({
-      block: "end",
-      behavior: firstPaintRef.current ? "instant" : "smooth",
-    });
+    // Mexe no scrollTop do container em vez de scrollIntoView: este último
+    // respeita `scroll-behavior` herdado e continuava animando na abertura,
+    // que era exatamente o que incomodava. Aqui a primeira pintura salta
+    // seco pro fim e só mensagem nova desliza.
+    const area = scrollAreaRef.current;
+    if (!area) return;
+    const primeira = firstPaintRef.current;
     firstPaintRef.current = false;
+
+    const irAoFim = () => {
+      if (primeira) area.scrollTop = area.scrollHeight;
+      else area.scrollTo({ top: area.scrollHeight, behavior: "smooth" });
+    };
+
+    irAoFim();
+    // De novo no quadro seguinte: imagem e anexo só ganham altura depois
+    // de pintar, e sem isso a conversa abria parando pouco antes do fim.
+    const quadro = requestAnimationFrame(irAoFim);
+    return () => cancelAnimationFrame(quadro);
   }, [conversation?.id, conversation?.messages.length, currentMatchId]);
 
   if (!conversation) {
@@ -341,7 +353,11 @@ export function ChatPanel({
       ) : null}
 
       <div
-        className="chat-wallpaper relative flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-4"
+        ref={scrollAreaRef}
+        // overflow-x-hidden: uma imagem ou tabela larga abria barra
+        // horizontal na conversa inteira, e aí a régua vinha por cima do
+        // compositor. A mídia se ajusta; o painel não escorrega.
+        className="chat-wallpaper relative flex min-h-0 flex-1 flex-col gap-1.5 overflow-x-hidden overflow-y-auto p-4"
         onDragOver={(event) => {
           event.preventDefault();
           if (!isResolved) setDragging(true);
@@ -371,6 +387,22 @@ export function ChatPanel({
           return (
             <div key={message.id} className="contents">
               {startsNewDay ? <DaySeparator label={dayLabel(message.createdAt)} /> : null}
+              {/* A LINHA inteira recebe o duplo clique — assim responder
+                  funciona em qualquer ponto vazio ao lado da mensagem, e
+                  não só colado nela. Faixa posicionada por fora do balão
+                  estourava a largura e abria barra horizontal. */}
+              <div
+                onDoubleClick={(event) => {
+                  // Só o vazio: dentro do balão o gesto atrapalharia
+                  // selecionar e copiar o texto.
+                  if (event.target === event.currentTarget) onReply(message);
+                }}
+                className={cn(
+                  "flex w-full min-w-0",
+                  message.senderType === "CUSTOMER" ? "justify-start" : "justify-end",
+                  message.senderType === "SYSTEM" && "justify-center",
+                )}
+              >
               <MessageBubble
                 message={message}
                 highlight={needle.trim()}
@@ -379,6 +411,7 @@ export function ChatPanel({
                 onReact={onReact}
                 onForward={setForwarding}
               />
+              </div>
             </div>
           );
         })}
@@ -410,7 +443,7 @@ export function ChatPanel({
       {pendingFile ? (
         <AttachmentComposer
           file={pendingFile}
-          sending={sending}
+          sending={false}
           onCancel={() => setPendingFile(null)}
           onSend={(caption) => {
             const file = pendingFile;

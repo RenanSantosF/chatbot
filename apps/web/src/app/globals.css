@@ -190,8 +190,25 @@ button:disabled,
    rede e a cor acompanha o tema sozinha. */
 .chat-wallpaper {
   background-color: var(--chat-bg);
-  background-image: radial-gradient(var(--chat-dot) 1px, transparent 1px);
-  background-size: 22px 22px;
+  /* Três camadas em vez de uma fileira de bolinhas: pontos miúdos, pontos
+     maiores deslocados e um risco diagonal quase invisível. Dá a textura
+     de papel do mensageiro sem virar papel de parede quadriculado. */
+  background-image:
+    radial-gradient(var(--chat-dot) 1px, transparent 1px),
+    radial-gradient(var(--chat-dot) 1.5px, transparent 1.5px),
+    repeating-linear-gradient(
+      45deg,
+      var(--chat-dot) 0 1px,
+      transparent 1px 14px
+    );
+  background-size:
+    24px 24px,
+    64px 64px,
+    100% 100%;
+  background-position:
+    0 0,
+    12px 20px,
+    0 0;
 }
 
 /* Paleta dos gráficos. Fica separada dos tokens do produto de propósito: as

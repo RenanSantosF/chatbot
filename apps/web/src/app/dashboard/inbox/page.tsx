@@ -336,7 +336,9 @@ export default function InboxPage() {
 
   async function handleSendFile(file: File, caption?: string) {
     if (!selectedId) return;
-    setSending(true);
+    // Sem travar o compositor: o upload pode levar segundos e prender o
+    // botão de enviar fazia a tela parecer congelada. O andamento aparece
+    // na conversa, e a pessoa já pode escrever a próxima mensagem.
     try {
       const body = new FormData();
       body.append("file", file);
@@ -344,8 +346,6 @@ export default function InboxPage() {
       await apiFetch(`/conversations/${selectedId}/attachments`, { method: "POST", body });
     } catch {
       toast.error("Não deu pra enviar o arquivo.");
-    } finally {
-      setSending(false);
     }
   }
 

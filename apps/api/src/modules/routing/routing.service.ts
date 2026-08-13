@@ -141,6 +141,47 @@ export class RoutingService {
    * plantonista" funciona sem mandar o dia inteiro pra ele. Quando a regra
    * aponta pra uma fila, quem escolhe a pessoa é o rodízio dela.
    */
+  /**
+   * Acha um destino olhando SÓ a prioridade, sem a IA nomear regra.
+   *
+   * É o caminho usado pelas travas automáticas: quando o sistema escala
+   * por conta própria (a IA prometeu e não cumpriu, ou o cliente relatou
+   * urgência), não existe `ruleKey` — mas a empresa configurou "urgente vai
+   * pra fulano" e essa configuração tem que valer do mesmo jeito. Sem
+   * isso, a conversa caía na fila geral e a regra parecia ignorada.
+   *
+   * Entre várias regras que servem, ganha a de maior exigência de
+   * prioridade: uma regra específica pra URGENTE é mais intencional que
+   * uma que aceita qualquer coisa.
+   */
+  async resolveByPriority(
+    priority: ConversationPriority,
+  ): Promise<RoutingTarget | null> {
+    const candidatas = await this.prisma.db.routingRule.findMany({
+      where: { active: true },
+    });
+
+    const servem = candidatas
+      .filter((rule) => PRIORITY_RANK[priority] >= PRIORITY_RANK[rule.minPriority])
+      .sort((a, b) => PRIORITY_RANK[b.minPriority] - PRIORITY_RANK[a.minPriority]);
+
+    for (const rule of servem) {
+      if (rule.targetUserId) {
+        return {
+          ruleName: rule.name,
+          queueId: rule.targetQueueId,
+          assignedUserId: rule.targetUserId,
+        };
+      }
+      if (rule.targetQueueId) {
+        const assignedUserId = await this.queues.pickNextMember(rule.targetQueueId);
+        return { ruleName: rule.name, queueId: rule.targetQueueId, assignedUserId };
+      }
+    }
+
+    return null;
+  }
+
   async resolveTarget(
     ruleKey: string | null,
     priority: ConversationPriority,

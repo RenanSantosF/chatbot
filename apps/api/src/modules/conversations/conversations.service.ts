@@ -19,6 +19,7 @@ import type { VerificacaoDaResposta } from '../ai/ai-guardrails';
 import { CustomersService } from '../customers/customers.service';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { RoutingService } from '../routing/routing.service';
 import {
   isAcceptedAudio,
   remuxToOggOpus,
@@ -113,6 +114,7 @@ export class ConversationsService {
     private readonly whatsapp: WhatsappSenderService,
     private readonly media: WhatsappMediaService,
     private readonly inboxSettings: InboxSettingsService,
+    private readonly routing: RoutingService,
   ) {}
 
   /**
@@ -936,19 +938,35 @@ export class ConversationsService {
 
     const data: Prisma.ConversationUpdateInput = {};
 
+    let prioridadeFinal = prioridadeAtual;
+    if (verificacao.prioridadeMinima) {
+      const ordem = { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 } as const;
+      if (ordem[verificacao.prioridadeMinima] > ordem[prioridadeAtual]) {
+        prioridadeFinal = verificacao.prioridadeMinima;
+      }
+    }
+
     if (verificacao.precisaHandoff) {
       data.status = 'WAITING_AGENT';
       data.aiMode = 'HUMAN_ACTIVE';
       data.escalationReason = verificacao.motivo ?? 'Trava automática.';
+
+      // As regras de "quem atende o quê" valem também quando quem escala é
+      // a trava, não a IA. Antes só eram consultadas se a IA nomeasse a
+      // regra — então "urgente vai pra fulano" não pegava aqui, que é
+      // justamente quando mais importa.
+      const destino = await this.routing.resolveByPriority(prioridadeFinal);
+      if (destino) {
+        if (destino.assignedUserId) data.assignedUser = { connect: { id: destino.assignedUserId } };
+        if (destino.queueId) data.queue = { connect: { id: destino.queueId } };
+        data.escalationReason = `${verificacao.motivo ?? 'Trava automática.'} (regra: ${destino.ruleName})`;
+      }
     }
 
-    if (verificacao.prioridadeMinima) {
-      // Só sobe, nunca desce: se um atendente já marcou como urgente, uma
-      // trava automática não pode rebaixar.
-      const ordem = { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 } as const;
-      if (ordem[verificacao.prioridadeMinima] > ordem[prioridadeAtual]) {
-        data.priority = verificacao.prioridadeMinima;
-      }
+    // Só sobe, nunca desce: se um atendente já marcou como urgente, uma
+    // trava automática não pode rebaixar.
+    if (prioridadeFinal !== prioridadeAtual) {
+      data.priority = prioridadeFinal;
     }
 
     if (Object.keys(data).length === 0) return null;

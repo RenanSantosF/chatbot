@@ -56,7 +56,7 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
           // A imagem vem pelo nosso proxy, que ainda busca na Meta — pode
           // demorar. Sem o esqueleto embaixo, o balão nascia com altura
           // zero e a conversa dava um salto quando a foto chegava.
-          className="relative block min-h-24 min-w-40 cursor-zoom-in overflow-hidden rounded-md"
+          className="relative block min-h-24 w-full max-w-sm cursor-zoom-in overflow-hidden rounded-md"
         >
           {loaded ? null : (
             <span className="shimmer absolute inset-0 rounded-md bg-foreground/10" aria-hidden />
@@ -68,7 +68,7 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
             onError={() => setFailed(true)}
             onLoad={() => setLoaded(true)}
             className={cn(
-              "max-h-64 w-auto max-w-full object-cover transition-all duration-300 hover:scale-[1.02]",
+              "max-h-64 w-full max-w-full object-cover transition-all duration-300 hover:scale-[1.02]",
               loaded ? "opacity-100" : "opacity-0",
             )}
           />
