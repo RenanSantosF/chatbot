@@ -64,6 +64,20 @@ model Tenant {
   @@map("tenants")
 }
 
+/// Como o número entrou no sistema.
+///
+/// MANUAL: o cliente criou o próprio app no Meta Developers e colou os
+/// dados. É o caminho de quem já estava aqui antes, e o de quem prefere
+/// manter o app próprio.
+///
+/// EMBEDDED_SIGNUP: o cliente clicou um botão, autorizou pelo Facebook e
+/// pronto — nunca abriu o Meta Developers. Exige que a PLATAFORMA seja
+/// Tech Provider aprovada pela Meta; o cliente não precisa de nada.
+enum WhatsAppOnboarding {
+  MANUAL
+  EMBEDDED_SIGNUP
+}
+
 model WhatsAppSettings {
   id                   String   @id @default(uuid())
   tenantId             String   @unique
@@ -76,7 +90,16 @@ model WhatsAppSettings {
   displayPhoneNumber   String?
   wabaId               String?
   accessTokenEncrypted String
-  appSecretEncrypted   String
+  // Opcional desde a entrada por Embedded Signup: nesse caminho quem assina
+  // os webhooks é o app da plataforma, com um segredo só, guardado no
+  // ambiente. Preenchido apenas por quem conectou o número na mão, com app
+  // próprio no Meta Developers.
+  appSecretEncrypted   String?
+  onboarding           WhatsAppOnboarding @default(MANUAL)
+  /** Business portfolio do cliente, devolvido pelo Embedded Signup. */
+  businessId           String?
+  /** PIN da verificação em duas etapas, definido por nós ao registrar. */
+  registrationPinEncrypted String?
 
   // --- Coexistência (número no aplicativo do celular E na Cloud API).
   //

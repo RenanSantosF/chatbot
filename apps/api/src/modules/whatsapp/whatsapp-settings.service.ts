@@ -46,6 +46,7 @@ export class WhatsappSettingsService {
         hasAccessToken: false,
         hasAppSecret: false,
         webhookUrl: this.webhookUrl(),
+        onboarding: null,
         coexistencia: null,
       };
     }
@@ -58,6 +59,9 @@ export class WhatsappSettingsService {
       hasAccessToken: Boolean(settings.accessTokenEncrypted),
       hasAppSecret: Boolean(settings.appSecretEncrypted),
       webhookUrl: this.webhookUrl(),
+      // MANUAL = app próprio no Meta Developers. EMBEDDED_SIGNUP = conectado
+      // pelo botão, sob o app da plataforma. A tela mostra coisas diferentes.
+      onboarding: settings.onboarding,
       // Coexistência é estado observado, não configurado: só sabemos que
       // está ligada porque a Meta mandou algum eco, contato ou histórico.
       // `ativa: false` significa "nunca vimos nada", não "está desligada".
@@ -98,7 +102,10 @@ export class WhatsappSettingsService {
                 ? { accessTokenEncrypted: this.encryption.encrypt(accessToken) }
                 : {}),
               ...(appSecret
-                ? { appSecretEncrypted: this.encryption.encrypt(appSecret) }
+                ? {
+                    appSecretEncrypted: this.encryption.encrypt(appSecret),
+                    onboarding: 'MANUAL' as const,
+                  }
                 : {}),
             },
           })

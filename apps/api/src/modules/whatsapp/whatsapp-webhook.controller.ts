@@ -187,7 +187,7 @@ export class WhatsappWebhookController {
       return { ok: true };
     }
 
-    if (!this.hasValidSignature(req, settings.appSecretEncrypted)) {
+    if (!this.hasValidSignature(req, this.segredoDaAssinatura(settings))) {
       this.logger.warn(`Assinatura inválida pro tenant ${settings.tenantId}.`);
       throw new ForbiddenException('Assinatura inválida.');
     }
@@ -403,17 +403,34 @@ export class WhatsappWebhookController {
     return { ok: true };
   }
 
+  /**
+   * Descobre com qual segredo esta entrega foi assinada.
+   *
+   * Quem conectou pelo botão (Embedded Signup) não tem app próprio: quem
+   * assina é o app da plataforma, com um segredo só, no ambiente. Quem
+   * conectou na mão continua com o segredo do próprio app. Os dois modelos
+   * convivem, e é o registro do cliente que diz qual é o caso.
+   */
+  private segredoDaAssinatura(settings: {
+    appSecretEncrypted: string | null;
+  }): string | null {
+    if (settings.appSecretEncrypted) {
+      return this.encryption.decrypt(settings.appSecretEncrypted);
+    }
+    return process.env.META_APP_SECRET ?? null;
+  }
+
   private hasValidSignature(
     req: RawBodyRequest<Request>,
-    appSecretEncrypted: string,
+    appSecret: string | null,
   ): boolean {
+    if (!appSecret) return false;
     const header = req.headers['x-hub-signature-256'];
     if (!header || typeof header !== 'string' || !req.rawBody) {
       return false;
     }
 
     const receivedSignature = header.replace('sha256=', '');
-    const appSecret = this.encryption.decrypt(appSecretEncrypted);
     const expectedSignature = createHmac('sha256', appSecret)
       .update(req.rawBody)
       .digest('hex');

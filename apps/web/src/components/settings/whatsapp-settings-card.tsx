@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConectarWhatsApp } from "@/components/settings/conectar-whatsapp";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import type { WhatsAppSettings } from "@/lib/types";
@@ -109,13 +110,22 @@ export function WhatsAppSettingsCard({
           </Badge>
         </div>
         <CardDescription>
-          Cada empresa usa seu próprio app no Meta Developers e seu próprio número — as credenciais nunca
-          são compartilhadas entre clientes da plataforma.
+          Conecte em um clique, autorizando pelo Facebook. As credenciais nunca são compartilhadas
+          entre clientes da plataforma.
         </CardDescription>
       </Header>
       <Body className="flex flex-col gap-4">
+        {/* O caminho de um clique vem primeiro; o manual vira alternativa.
+            O componente some sozinho quando a plataforma ainda não está
+            credenciada como Tech Provider — aí só resta o manual mesmo. */}
+        {!settings.connected ? (
+          <ConectarWhatsApp onConectado={onUpdated} />
+        ) : null}
+
         <div className="rounded-lg border bg-muted/40 p-3 text-sm">
-          <p className="font-medium">Antes de começar, no Meta Developers:</p>
+          <p className="font-medium">
+            Prefere usar um app próprio? Antes de começar, no Meta Developers:
+          </p>
           <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
             <li>Crie um app do tipo Business e adicione o produto WhatsApp.</li>
             <li>

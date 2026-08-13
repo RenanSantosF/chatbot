@@ -239,6 +239,12 @@ export interface WhatsAppSettings {
   hasAppSecret: boolean;
   webhookUrl: string;
   /**
+   * MANUAL = o cliente criou app próprio no Meta Developers e colou os
+   * dados. EMBEDDED_SIGNUP = conectou pelo botão, sob o app da plataforma.
+   * Nulo quando o WhatsApp ainda não foi conectado.
+   */
+  onboarding: "MANUAL" | "EMBEDDED_SIGNUP" | null;
+  /**
    * Estado da coexistência (mesmo número no aplicativo do celular e na
    * Cloud API). Nulo quando o WhatsApp ainda nem foi conectado.
    */
