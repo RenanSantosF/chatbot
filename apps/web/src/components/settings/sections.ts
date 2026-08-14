@@ -58,8 +58,16 @@ export const SETTINGS_SECTIONS = [
     permission: "routing.manage",
   },
   {
+    // "Setores", e não "Filas".
+    //
+    // O sistema usava a mesma palavra pra duas coisas sem relação: aqui, o
+    // DEPARTAMENTO pra onde a conversa é encaminhada (Jurídico, Financeiro),
+    // e no Inbox, a FILA DE ESPERA — a ordem de quem aguarda resposta há
+    // mais tempo. Quem lia "Filas" no menu não tinha como saber qual das
+    // duas ia encontrar. A rota e o modelo continuam `queue`: o nome
+    // interno não confunde ninguém, e trocá-lo custaria migração à toa.
     href: "/dashboard/settings/queues",
-    label: "Filas",
+    label: "Setores",
     icon: ListTree,
     permission: "queues.manage",
   },

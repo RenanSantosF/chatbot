@@ -245,8 +245,25 @@ export function ConversationList({
                   </Badge>
                 ) : null}
                 {conversation.assignedUser ? (
-                  <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                  // Tracejado enquanto o aceite não vem: a lista dizia
+                  // "Lucas" do mesmo jeito nos dois casos, e quem batia o
+                  // olho concluía que a conversa já tinha dono — quando
+                  // ainda estava parada esperando um clique dele.
+                  <Badge
+                    variant="outline"
+                    title={
+                      conversation.assignmentAccepted
+                        ? `Responsável: ${conversation.assignedUser.name}`
+                        : `Indicado para ${conversation.assignedUser.name} — aguardando aceite`
+                    }
+                    className={cn(
+                      "shrink-0 text-[10px] font-normal",
+                      !conversation.assignmentAccepted &&
+                        "border-dashed text-amber-600 dark:text-amber-400",
+                    )}
+                  >
                     {conversation.assignedUser.name.split(" ")[0]}
+                    {conversation.assignmentAccepted ? "" : "?"}
                   </Badge>
                 ) : null}
                 {/* Só a primeira etiqueta, e só quando existe. É a linha

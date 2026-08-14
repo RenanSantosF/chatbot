@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/empty-state";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META } from "@/lib/priority";
+import { descreverResponsavel } from "@/lib/atribuicao";
 import { cn } from "@/lib/utils";
 import type { AiMode, ConversationDetail, ConversationStatus } from "@/lib/types";
 import { CustomerNotes } from "./customer-notes";
@@ -149,8 +150,33 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
       <Section title="Atendimento" icon={Bot}>
         <div className="flex flex-col gap-1.5">
           <InfoRow label="IA" value={AI_MODE_LABEL[conversation.aiMode]} />
-          <InfoRow label="Responsável" value={conversation.assignedUser?.name ?? "Ninguém"} />
-          {conversation.queue ? <InfoRow label="Fila" value={conversation.queue.name} /> : null}
+          {(() => {
+            // Duas linhas quando falta o aceite: quem lê precisa saber que
+            // a conversa ainda não tem dono de fato (ver descreverResponsavel).
+            const responsavel = descreverResponsavel(conversation);
+            return (
+              <>
+                <InfoRow
+                  label={responsavel.rotulo}
+                  value={
+                    responsavel.aguardandoAceite ? (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        {responsavel.nome}
+                      </span>
+                    ) : (
+                      responsavel.nome
+                    )
+                  }
+                />
+                {responsavel.aguardandoAceite ? (
+                  <p className="text-right text-xs text-muted-foreground text-pretty">
+                    Ainda não aceitou — a conversa segue sem responsável até lá.
+                  </p>
+                ) : null}
+              </>
+            );
+          })()}
+          {conversation.queue ? <InfoRow label="Setor" value={conversation.queue.name} /> : null}
           <InfoRow
             label="Última mensagem"
             value={firstAndLast(conversation.lastMessageAt)}

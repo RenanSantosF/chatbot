@@ -28,7 +28,11 @@ interface Estado {
    * o efeito da mensagem. A tomada automática do atendimento tem teste
    * próprio (ver conversations.atribuicao.spec.ts).
    */
-  antesDeAssumir?: { assignedUserId: string | null; aiMode: string };
+  antesDeAssumir?: {
+    assignedUserId: string | null;
+    assignmentAccepted?: boolean;
+    aiMode: string;
+  };
 }
 
 function montar(estado: Estado = {}) {
@@ -73,6 +77,10 @@ function montar(estado: Estado = {}) {
               return (
                 estado.antesDeAssumir ?? {
                   assignedUserId: 'user-1',
+                  // Aceito: uma linha de verdade sempre traz o booleano, e
+                  // sem ele o dono padrão seria lido como indicação
+                  // pendente — que agora é motivo pra tomar a conversa.
+                  assignmentAccepted: true,
                   aiMode: 'HUMAN_ACTIVE',
                 }
               );

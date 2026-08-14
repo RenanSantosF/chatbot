@@ -51,11 +51,18 @@ export interface InboxFilters {
 }
 
 /**
- * Abre em "Pendentes", não em "Tudo".
+ * Abre em "Pendentes", ordenado pela fila de espera.
  *
  * A tela existe pra responder "o que eu preciso fazer agora". Abrir com
  * tudo misturado — inclusive o que já foi resolvido — obriga a pessoa a
  * filtrar antes de começar a trabalhar, todo dia.
+ *
+ * A ordem por espera é a resposta certa pra essa mesma pergunta. Por
+ * recência, quem cobra sobe e quem escreveu uma vez e ficou quieto afunda:
+ * o cliente educado é o último a ser atendido, e ninguém percebe porque a
+ * lista parece cheia de movimento. Quem quiser a leitura de mensageiro
+ * troca em um clique — o contrário (descobrir que existe uma fila) exigia
+ * que a pessoa procurasse.
  */
 export const DEFAULT_FILTERS: InboxFilters = {
   grupo: "PENDING",
@@ -66,7 +73,7 @@ export const DEFAULT_FILTERS: InboxFilters = {
   unassigned: false,
   comIa: false,
   waiting: false,
-  ordem: "RECENTE",
+  ordem: "ESPERA",
   tagId: "",
   search: "",
 };
@@ -171,6 +178,17 @@ export function InboxFilterBar({
     ALL: counts.total,
   };
 
+  /**
+   * Há algo ESCONDENDO conversa da lista?
+   *
+   * É essa a pergunta que o "limpar" responde, e por isso a ordem ficou de
+   * fora: trocar pra fila de espera não tira nada da tela, só muda a
+   * sequência. Enquanto ela contava, escolher "Fila de espera" fazia
+   * aparecer um "limpar" que sugeria haver um filtro ligado — e clicar nele
+   * desfazia a ordenação junto, que ninguém tinha pedido pra desfazer.
+   *
+   * A etiqueta conta: ela recorta de verdade.
+   */
   const refinando =
     value.status !== "ALL" ||
     value.priority !== "ALL" ||
@@ -179,7 +197,7 @@ export function InboxFilterBar({
     value.unassigned ||
     value.comIa ||
     value.waiting ||
-    value.ordem !== "RECENTE";
+    Boolean(value.tagId);
 
   const naFila = value.ordem === "ESPERA";
 
@@ -319,7 +337,17 @@ export function InboxFilterBar({
         {refinando ? (
           <button
             type="button"
-            onClick={() => onChange({ ...DEFAULT_FILTERS, grupo: value.grupo, search: value.search })}
+            // A ordem sobrevive ao "limpar" pelo mesmo motivo que não o
+            // liga: ela não é um filtro, é como a pessoa prefere ler a
+            // lista.
+            onClick={() =>
+              onChange({
+                ...DEFAULT_FILTERS,
+                grupo: value.grupo,
+                ordem: value.ordem,
+                search: value.search,
+              })
+            }
             className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
           >
             limpar

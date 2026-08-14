@@ -36,13 +36,15 @@ export function ThemeToggle() {
             aria-pressed={active}
             onClick={() => setTheme(option.value)}
             className={cn(
-              "flex size-8 items-center justify-center rounded-md transition-colors",
+              // size-7 e ícone de 16px: o grupo inteiro precisa caber na
+              // faixa de 44px do cabeçalho sem encostar nas bordas.
+              "flex size-7 items-center justify-center rounded-md transition-colors",
               active
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
-            <option.icon className="size-5" />
+            <option.icon className="size-4" />
           </button>
         );
       })}

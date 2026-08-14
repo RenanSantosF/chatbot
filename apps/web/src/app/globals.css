@@ -157,12 +157,30 @@ button:disabled,
  * chapado. Em oklch(0.20) o cinza neutro fica limpo sozinho, sem precisar
  * de matiz nenhum — o croma aqui é 0.0016, ou seja, cinza de verdade.
  *
- * O #161717 é o ponto: preto puro (#000) achata tudo, porque as sombras e
- * as bordas em branco translúcido perdem a referência de profundidade.
+ * Preto puro (#000) achata tudo, porque as sombras e as bordas em branco
+ * translúcido perdem a referência de profundidade.
  *
- * Contraste conferido antes de aplicar: texto sobre fundo 15.3:1, texto
- * sobre a superfície de busca 11.4:1, texto fraco sobre fundo 5.9:1, texto
- * sobre o balão enviado 8.3:1.
+ * A quarta versão subiu tudo um degrau e reaproximou as superfícies. O que
+ * estava errado não era o tom, era a DISTÂNCIA entre eles: o fundo da
+ * conversa usava o mesmo valor do fundo da página (0.2035) enquanto os
+ * painéis em volta usavam `card` (0.2372), e o buraco no meio da tela era
+ * visível — parecia defeito, não profundidade.
+ *
+ * Agora a escada é curta e regular, e cada degrau tem um trabalho:
+ *
+ *   0.2200  fundo/cabeçalho  — o mais fundo, onde nada é conteúdo
+ *   0.2430  fundo da conversa — quase o painel, só um fio abaixo
+ *   0.2560  card/sidebar     — as superfícies de trabalho
+ *   0.2980  balão recebido   — precisa se destacar do papel de parede
+ *   0.3180  popover/muted    — o que flutua por cima de tudo
+ *
+ * A borda subiu de 5% pra 8% de branco no mesmo movimento: com as
+ * superfícies mais próximas, é ela que separa o cabeçalho da lista de
+ * conversas — em 5% os dois viravam um bloco só.
+ *
+ * Contraste conferido depois de subir: texto sobre fundo 13.9:1, texto
+ * sobre card 12.3:1, texto fraco sobre fundo 5.4:1, texto sobre o balão
+ * recebido 10.6:1. Todos acima do mínimo legível.
  *
  * O verde de destaque #14774E é usado como PREENCHIMENTO (pílula ativa do
  * menu, com texto claro em cima: 4.7:1). Como cor de TEXTO sobre o fundo
@@ -170,28 +188,28 @@ button:disabled,
  * que aparece como texto nas pastilhas de filtro, é um degrau acima
  * (#1DA968, 5.9:1) na mesma família. Medido, não estimado. */
 .dark {
-  --background: oklch(0.2035 0.0016 197); /* #161717 */
+  --background: oklch(0.2200 0.0016 197);
   --foreground: oklch(0.9436 0.0051 228.8); /* #E9EDEF */
-  --card: oklch(0.2372 0.0030 197); /* #1D1F1F */
+  --card: oklch(0.2560 0.0030 197);
   --card-foreground: oklch(0.9436 0.0051 228.8);
-  --popover: oklch(0.3042 0.0014 197); /* #2E2F2F */
+  --popover: oklch(0.3180 0.0014 197);
   --popover-foreground: oklch(0.9436 0.0051 228.8);
   --primary: oklch(0.6350 0.1360 158.5); /* #1DA968 */
-  --primary-foreground: oklch(0.2035 0.0016 197);
-  --secondary: oklch(0.3042 0.0014 197); /* #2E2F2F */
+  --primary-foreground: oklch(0.2200 0.0016 197);
+  --secondary: oklch(0.3180 0.0014 197);
   --secondary-foreground: oklch(0.9436 0.0051 228.8);
-  --muted: oklch(0.3042 0.0014 197); /* #2E2F2F */
+  --muted: oklch(0.3180 0.0014 197);
   --muted-foreground: oklch(0.70 0.024 235.2);
-  --accent: oklch(0.3042 0.0014 197); /* #2E2F2F */
+  --accent: oklch(0.3180 0.0014 197);
   --accent-foreground: oklch(0.9436 0.0051 228.8);
   --destructive: oklch(0.68 0.19 22);
   /* 5%, não os 3% de antes: a divisória é medida contra o fundo, e o fundo
      ficou bem mais escuro. Em 3% sobre #0B141A ela sumia de vez e as
      colunas perdiam o contorno. Continua imperceptível na leitura. */
-  --border: oklch(1 0 0 / 5%);
+  --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 9%);
   --ring: oklch(0.6350 0.1360 158.5);
-  --chat-bg: oklch(0.2035 0.0016 197); /* #161717 */
+  --chat-bg: oklch(0.2430 0.0030 197);
   --chat-dot: oklch(1 0 0 / 3%);
   --bubble-out: oklch(0.3770 0.0699 163.4); /* #144D37 */
   --bubble-out-foreground: oklch(0.9436 0.0051 228.8);
@@ -199,20 +217,20 @@ button:disabled,
      papel de parede (#0B141A), enquanto a superfície de painel fica um
      degrau abaixo (#111B21). Usando `card` nos dois, o balão do cliente
      praticamente sumia no fundo do chat. */
-  --bubble-in: oklch(0.2666 0.0029 197); /* #242626 */
+  --bubble-in: oklch(0.2980 0.0029 197);
   --bubble-in-foreground: oklch(0.9436 0.0051 228.8);
   --chart-1: oklch(0.6350 0.1360 158.5);
   --chart-2: oklch(0.6637 0.0236 235.2);
   --chart-3: oklch(0.52 0.002 197);
   --chart-4: oklch(0.40 0.002 197);
-  --chart-5: oklch(0.3042 0.0014 197);
-  --sidebar: oklch(0.2372 0.0030 197); /* #1D1F1F */
+  --chart-5: oklch(0.3180 0.0014 197);
+  --sidebar: oklch(0.2560 0.0030 197);
   --sidebar-foreground: oklch(0.9436 0.0051 228.8);
   --sidebar-primary: oklch(0.6350 0.1360 158.5);
-  --sidebar-primary-foreground: oklch(0.2035 0.0016 197);
+  --sidebar-primary-foreground: oklch(0.2200 0.0016 197);
   --sidebar-accent: oklch(0.5050 0.1085 159.5); /* #14774E, o verde de destaque */
   --sidebar-accent-foreground: oklch(0.9436 0.0051 228.8);
-  --sidebar-border: oklch(1 0 0 / 5%);
+  --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.6350 0.1360 158.5);
 }
 

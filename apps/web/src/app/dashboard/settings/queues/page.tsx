@@ -23,7 +23,7 @@ export default function QueuesPage() {
         setQueues(queuesResult);
         setTeamMembers(teamResult);
       } catch {
-        toast.error("Não deu pra carregar as filas.");
+        toast.error("Não deu pra carregar os setores.");
       } finally {
         setLoading(false);
       }

@@ -73,13 +73,13 @@ function NotificationsButton() {
 
   return (
     <Button
-      size="icon"
+      size="icon-sm"
       variant="ghost"
       onClick={enableNotifications}
       aria-label="Ativar avisos de mensagem nova"
       title="Ativar avisos de mensagem nova"
     >
-      <BellRing className="size-5" />
+      <BellRing className="size-4" />
     </Button>
   );
 }
@@ -210,25 +210,31 @@ function Shell({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header // h-16 e fundo sólido: com os ícones em 23px a barra de 14 ficava
-          // apertada e os ícones desalinhados. O fundo translúcido também
-          // deixava a cor "suja" onde havia conteúdo por baixo.
-          className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-2 border-b bg-background px-4">
-          <div />
-          <div className="flex items-center gap-2">
-            <ConnectionBadge />
-            <NotificationsButton />
-            <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              aria-label="Sair da conta"
-              title="Sair"
-            >
-              <LogOut className="size-5" />
-            </Button>
-          </div>
+        {/* Faixa de 44px, e não os 64px de antes.
+            
+            Ela não tem conteúdo próprio — só os controles de tema, aviso e
+            saída, encostados à direita. Vinte pixels de altura à toa em
+            cima do Inbox são vinte pixels a menos de conversa, na tela onde
+            a pessoa passa o dia. Os botões encolheram junto pra a faixa não
+            ficar apertada.
+
+            Fundo sólido e mais fundo que o `card` dos painéis: no tema
+            escuro os dois quase se encostavam e a barra parecia parte da
+            lista de conversas. A borda em 8% de branco (ver globals.css)
+            fecha a separação. */}
+        <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-end gap-1 border-b bg-background px-3">
+          <ConnectionBadge />
+          <NotificationsButton />
+          <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleLogout}
+            aria-label="Sair da conta"
+            title="Sair"
+          >
+            <LogOut className="size-4" />
+          </Button>
         </header>
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">

@@ -28,7 +28,7 @@ export function CreateQueueCard({ onCreated }: { onCreated: (queue: Queue) => vo
       setName("");
       setDescription("");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Não deu pra criar a fila.");
+      toast.error(err instanceof ApiError ? err.message : "Não deu pra criar o setor.");
     } finally {
       setCreating(false);
     }
@@ -37,7 +37,7 @@ export function CreateQueueCard({ onCreated }: { onCreated: (queue: Queue) => vo
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nova fila</CardTitle>
+        <CardTitle>Novo setor</CardTitle>
         <CardDescription>Um departamento ou área pra onde a IA pode transferir atendimentos.</CardDescription>
       </CardHeader>
       <CardContent>

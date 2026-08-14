@@ -18,14 +18,18 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const permissoes = usePermissions();
 
   return (
-    <div className="flex flex-col gap-4">
+    // gap-3 e não gap-4, com a navegação alinhada ao topo do conteúdo: a
+    // lista de seções descia demais e ficava boiando longe do título, como
+    // se fosse outra coisa na página. Perto do cabeçalho ela se lê como o
+    // índice daquilo que o título anuncia.
+    <div className="flex flex-col gap-3">
       <PageHeader
         title="Configurações"
         description="Canal, inteligência, direcionamento e acessos da sua empresa."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-        <nav aria-label="Seções de configuração" className="lg:sticky lg:top-4 lg:self-start">
+      <div className="grid gap-x-6 gap-y-3 lg:grid-cols-[220px_1fr]">
+        <nav aria-label="Seções de configuração" className="lg:sticky lg:top-2 lg:self-start">
           <ul className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {SETTINGS_SECTIONS.map((section) => {
               const active = pathname === section.href;

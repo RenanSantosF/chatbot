@@ -54,13 +54,13 @@ export function QueueList({
       await apiFetch(`/queues/${queueId}`, { method: "DELETE" });
       onChange(queues.filter((queue) => queue.id !== queueId));
     } catch {
-      toast.error("Não deu pra excluir a fila.");
+      toast.error("Não deu pra excluir o setor.");
       setBusy(null);
     }
   }
 
   if (queues.length === 0) {
-    return <p className="text-sm text-muted-foreground">Nenhuma fila criada ainda.</p>;
+    return <p className="text-sm text-muted-foreground">Nenhum setor criado ainda.</p>;
   }
 
   return (
@@ -93,7 +93,7 @@ export function QueueList({
                   Membros
                 </h4>
                 {queue.members.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Ninguém nesta fila ainda.</p>
+                  <p className="text-sm text-muted-foreground">Ninguém neste setor ainda.</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {queue.members.map((member) => (
@@ -104,7 +104,7 @@ export function QueueList({
                           disabled={busy === `${queue.id}:${member.userId}`}
                           onClick={() => handleRemoveMember(queue.id, member.userId)}
                           className="rounded px-1 text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
-                          aria-label={`Remover ${member.user.name} da fila`}
+                          aria-label={`Remover ${member.user.name} do setor`}
                         >
                           ×
                         </button>

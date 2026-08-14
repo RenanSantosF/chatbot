@@ -1037,15 +1037,35 @@ export class ConversationsService {
    *
    * Conversa que JÁ tem dono não muda de mão aqui: pra isso existe o
    * "Assumir" com confirmação, que registra a troca no histórico.
+   *
+   * "Ter dono" exige o aceite. Uma INDICAÇÃO pendente
+   * (`assignmentAccepted: false`) é o sistema tendo sugerido alguém — pode
+   * ter sido a regra de direcionamento, pode ter sido a IA — e essa pessoa
+   * ainda não disse que pegou. Enquanto isso, a conversa não é de ninguém.
+   *
+   * Tratar indicação como posse produzia o pior resultado dos dois lados:
+   * quem respondeu de verdade continuava "sem conversa", e o painel exibia
+   * como responsável alguém que talvez nem tenha aberto a tela. Foi o caso
+   * relatado — a conversa mostrando "Responsável: Lucas" logo depois de ser
+   * encaminhada, sem que o Lucas tivesse feito nada. Quem responde
+   * primeiro resolve a dúvida na prática, e a indicação some.
    */
   private async assumirAoResponder(conversationId: string, agentId: string) {
     const conversa = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
-      select: { assignedUserId: true, aiMode: true },
+      select: {
+        assignedUserId: true,
+        assignmentAccepted: true,
+        aiMode: true,
+      },
     });
     if (!conversa) return;
 
-    const semDono = !conversa.assignedUserId;
+    const indicadoAOutra =
+      Boolean(conversa.assignedUserId) &&
+      !conversa.assignmentAccepted &&
+      conversa.assignedUserId !== agentId;
+    const semDono = !conversa.assignedUserId || indicadoAOutra;
     const iaAtiva = conversa.aiMode === 'AI_ACTIVE';
     if (!semDono && !iaAtiva) return;
 
@@ -1059,9 +1079,12 @@ export class ConversationsService {
     });
 
     if (semDono) {
+      const nome = atualizada.assignedUser?.name ?? 'Um atendente';
       await this.registrarNota(
         conversationId,
-        `${atualizada.assignedUser?.name ?? 'Um atendente'} respondeu e assumiu o atendimento.`,
+        indicadoAOutra
+          ? `${nome} respondeu e assumiu o atendimento, que estava indicado e sem aceite.`
+          : `${nome} respondeu e assumiu o atendimento.`,
       );
     }
 
