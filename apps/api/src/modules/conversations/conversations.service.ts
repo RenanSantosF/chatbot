@@ -2036,6 +2036,35 @@ export class ConversationsService {
     externalId?: string;
     replyToExternalId?: string;
   }) {
+    /**
+     * A mesma entrega, de novo.
+     *
+     * A Meta reenvia o webhook quando não recebe 2xx a tempo — e "a tempo"
+     * inclui o tempo que a IA leva pra responder, porque a resposta dela
+     * acontece dentro desta chamada. Sem esta conferência, uma reentrega
+     * gravava a mensagem do cliente duas vezes e fazia a IA responder duas
+     * vezes à mesma pergunta, do mesmo número.
+     *
+     * O eco do celular e a importação de histórico já se protegiam assim;
+     * o caminho principal, que é o mais movimentado, não.
+     */
+    if (input.externalId) {
+      const jaRecebida = await this.prisma.db.message.findFirst({
+        where: { externalId: input.externalId },
+        select: { id: true, conversationId: true },
+      });
+      if (jaRecebida) {
+        this.logger.log(
+          `Entrega repetida ignorada: ${input.externalId} já estava gravada.`,
+        );
+        const conversa = await this.prisma.db.conversation.findFirst({
+          where: { id: jaRecebida.conversationId },
+          include: conversationInclude,
+        });
+        return { conversation: conversa, message: null };
+      }
+    }
+
     const customer = await this.customers.findOrCreateByPhone({
       phone: input.customerPhone,
       name: input.customerName,

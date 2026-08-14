@@ -499,3 +499,71 @@ describe('relógio da espera (fila de atendimento)', () => {
     expect(atualizacoes[0].waitingSince).toBeNull();
   });
 });
+
+describe('entrega repetida do webhook', () => {
+  /**
+   * A Meta reenvia quando não recebe 2xx a tempo — e "a tempo" inclui o
+   * tempo que a IA leva pra responder, porque a resposta acontece dentro
+   * desta mesma chamada. Sem conferir, a reentrega gravava a pergunta do
+   * cliente duas vezes e fazia a IA responder duas vezes à mesma coisa.
+   */
+  it('a mesma mensagem não entra duas vezes', async () => {
+    const { service, criadas } = montar({
+      mensagemJaGravada: { id: 'msg-antiga', conversationId: 'conversa-1' },
+    });
+
+    const resultado = await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'Oi',
+      externalId: 'wamid.REPETIDO',
+    });
+
+    expect(criadas).toHaveLength(0);
+    expect(resultado.message).toBeNull();
+  });
+
+  it('a IA não responde de novo à entrega repetida', async () => {
+    const respondeu = jest.fn();
+    const { service } = montar({
+      mensagemJaGravada: { id: 'msg-antiga', conversationId: 'conversa-1' },
+    });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      aiEngine: { generateReply: respondeu },
+    });
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'Oi',
+      externalId: 'wamid.REPETIDO',
+    });
+
+    expect(respondeu).not.toHaveBeenCalled();
+  });
+
+  it('mensagem sem id externo (simulador) segue o caminho normal', async () => {
+    // O simulador de cliente não tem wamid; barrar por ausência de id
+    // quebraria o teste que o dono usa pra experimentar a IA.
+    const { service, criadas } = montar({
+      mensagemJaGravada: null,
+      conversa: { channel: 'INTERNAL' },
+    });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+      },
+      aiEngine: {
+        generateReply: jest.fn().mockResolvedValue({ tipo: 'semPergunta' }),
+      },
+    });
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'Oi',
+    });
+
+    expect(criadas).toHaveLength(1);
+  });
+});

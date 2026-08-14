@@ -58,6 +58,41 @@ const MAXIMO_DE_SAIDA = 700;
  */
 const TEMPERATURA = 0.4;
 
+/**
+ * Até quando esperar o Google responder.
+ *
+ * Não é conforto: a resposta da IA acontece DENTRO do processamento do
+ * webhook, então uma chamada pendurada segura a entrega da Meta até ela
+ * desistir e reenviar. Vinte e cinco segundos é folgado pra um modelo
+ * rápido e curto o bastante pra caber na paciência dela.
+ *
+ * Sem isto, "a IA travou" não tinha fim: a requisição ficava viva
+ * segurando uma conexão, e quem descobria era o cliente, pelo silêncio.
+ */
+const TEMPO_LIMITE_MS = 25_000;
+const TEMPO_LIMITE_EMBEDDING_MS = 15_000;
+
+/**
+ * Traduz o cancelamento por tempo numa frase que diz o que aconteceu.
+ *
+ * O erro cru de um `AbortSignal` é "This operation was aborted", que no
+ * simulador aparece pro dono da empresa como se o sistema tivesse
+ * quebrado. Ele não quebrou — o provedor não respondeu.
+ */
+function comoErroDeTempo(error: unknown, oQue: string): Error {
+  const abortou =
+    error instanceof Error &&
+    (error.name === 'AbortError' || error.name === 'TimeoutError');
+
+  return abortou
+    ? new Error(
+        `O provedor de IA não respondeu em ${TEMPO_LIMITE_MS / 1000} segundos (${oQue}). Tente de novo; se persistir, confira a chave e o modelo em Configurações > IA.`,
+      )
+    : error instanceof Error
+      ? error
+      : new Error(String(error));
+}
+
 function toGeminiRole(role: AiMessage['role']): 'user' | 'model' {
   return role === 'assistant' ? 'model' : 'user';
 }
@@ -111,6 +146,7 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
             temperature: TEMPERATURA,
             maxOutputTokens: MAXIMO_DE_SAIDA,
             thinkingConfig: { thinkingBudget: ORCAMENTO_DE_RACIOCINIO },
+            abortSignal: AbortSignal.timeout(TEMPO_LIMITE_MS),
           },
         });
 
@@ -173,7 +209,7 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
         `Falha ao chamar o Gemini (${resolvedModel})`,
         error instanceof Error ? error.stack : error,
       );
-      throw error;
+      throw comoErroDeTempo(error, 'gerar a resposta');
     }
   }
 
@@ -184,7 +220,11 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
       const response = await client.models.embedContent({
         model: EMBEDDING_MODEL,
         contents: texts,
-        config: { taskType, outputDimensionality: EMBEDDING_DIMENSIONS },
+        config: {
+          taskType,
+          outputDimensionality: EMBEDDING_DIMENSIONS,
+          abortSignal: AbortSignal.timeout(TEMPO_LIMITE_EMBEDDING_MS),
+        },
       });
 
       const embeddings = response.embeddings ?? [];
@@ -200,7 +240,7 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
         `Falha ao gerar embeddings (${EMBEDDING_MODEL})`,
         error instanceof Error ? error.stack : error,
       );
-      throw error;
+      throw comoErroDeTempo(error, 'consultar a base de conhecimento');
     }
   }
 }
