@@ -29,6 +29,7 @@ export const PERMISSION_CATALOG = [
       { key: 'ai.manage', label: 'Configurar a IA' },
       { key: 'knowledge.manage', label: 'Gerenciar a base de conhecimento' },
       { key: 'queues.manage', label: 'Gerenciar filas' },
+      { key: 'quickReplies.manage', label: 'Gerenciar respostas rápidas' },
       { key: 'routing.manage', label: 'Gerenciar regras de direcionamento' },
       { key: 'whatsapp.manage', label: 'Configurar o WhatsApp' },
       { key: 'team.manage', label: 'Gerenciar a equipe' },
@@ -67,6 +68,10 @@ export const PERMISSION_DEFAULTS: Record<
     'ai.manage': false,
     'knowledge.manage': false,
     'queues.manage': false,
+    // Usar é de todo mundo; editar, não. Resposta rápida guarda o que a
+    // empresa fala pro cliente — dados bancários entre eles —, e um texto
+    // trocado sai assinado pela empresa em toda conversa até alguém notar.
+    'quickReplies.manage': false,
     'routing.manage': false,
     'whatsapp.manage': false,
     'team.manage': false,

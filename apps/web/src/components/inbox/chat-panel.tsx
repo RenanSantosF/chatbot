@@ -28,9 +28,11 @@ import { EmptyState } from "@/components/empty-state";
 import { useSession } from "@/components/session-provider";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
+import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { AssignmentActions } from "./assignment-actions";
 import { MessageBubble } from "./message-bubble";
+import { QuickReplyPicker, termoDoAtalho } from "./quick-reply-picker";
 import { AttachmentComposer } from "./attachment-composer";
 import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
@@ -196,6 +198,14 @@ export function ChatPanel({
 }) {
   const { user } = useSession();
   const [draft, setDraft] = useState("");
+  /**
+   * Esc dispensou o seletor de respostas rápidas nesta digitação.
+   *
+   * O seletor é derivado do rascunho ("/pix" abre), então sem esta trava o
+   * Esc não teria como fechá-lo: o texto continua na tela e ele reabriria
+   * no mesmo quadro. Volta a valer assim que a pessoa digita de novo.
+   */
+  const [atalhoDispensado, setAtalhoDispensado] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [needle, setNeedle] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
@@ -320,6 +330,9 @@ export function ChatPanel({
     const aoTeclar = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
 
+      if (termoDoAtalho(draft) !== null && !atalhoDispensado) {
+        return setAtalhoDispensado(true);
+      }
       if (apagando) return setApagando(null);
       if (forwarding) return setForwarding(null);
       if (pendingFile) return setPendingFile(null);
@@ -339,7 +352,17 @@ export function ChatPanel({
 
     document.addEventListener("keydown", aoTeclar);
     return () => document.removeEventListener("keydown", aoTeclar);
-  }, [apagando, forwarding, pendingFile, searchOpen, replyTo, onCancelReply, draft, onClose]);
+  }, [
+    apagando,
+    forwarding,
+    pendingFile,
+    searchOpen,
+    replyTo,
+    onCancelReply,
+    draft,
+    onClose,
+    atalhoDispensado,
+  ]);
 
   async function carregarAnteriores() {
     const area = scrollAreaRef.current;
@@ -930,6 +953,21 @@ export function ChatPanel({
          Sem botão de enviar: quem escreve o dia inteiro manda no Enter e
          nunca no clique, e o botão só ocupava o canto onde o microfone
          precisa estar. Enter envia, Shift+Enter quebra linha. */
+      <>
+      <QuickReplyPicker
+        termo={atalhoDispensado ? null : termoDoAtalho(draft)}
+        onEscolher={(resposta) => {
+          setDraft(resposta.content);
+          setAtalhoDispensado(true);
+          composerRef.current?.focus();
+          // O contador ordena a lista pelo que a equipe de fato usa. Falhar
+          // aqui não pode atrapalhar quem está atendendo: o texto já está no
+          // campo, e um número que não subiu não merece um aviso de erro.
+          void apiFetch(`/quick-replies/${resposta.id}/uso`, { method: "POST" }).catch(
+            () => {},
+          );
+        }}
+      />
       <form onSubmit={handleSubmit} className="flex items-center gap-2 bg-card p-3">
         <input
           ref={fileInputRef}
@@ -960,7 +998,12 @@ export function ChatPanel({
         />
         <Input
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            // Digitar de novo devolve o seletor: o Esc dispensa aquela
+            // digitação, não o recurso.
+            setAtalhoDispensado(false);
+          }}
           onPaste={handlePaste}
           // O navegador guarda o que foi digitado em campo dentro de
           // formulário e oferece de volta na próxima vez. Num campo de
@@ -1012,6 +1055,7 @@ export function ChatPanel({
             item da linha pra não empurrar o campo de texto. */}
         <VoiceRecorder disabled={composicaoTravada || sending} onRecorded={onSendFile} />
       </form>
+      </>
       )}
     </div>
   );

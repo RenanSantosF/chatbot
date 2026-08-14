@@ -51,6 +51,7 @@ model Tenant {
   aiTools            AiTool[]
   tasks              Task[]
   queues             Queue[]
+  quickReplies       QuickReply[]
   queueMembers       QueueMember[]
   routingRules       RoutingRule[]
   rolePermissions    RolePermission[]
@@ -751,6 +752,36 @@ model Queue {
 
   @@unique([tenantId, key])
   @@map("queues")
+}
+
+/// Um texto pronto que o atendente insere no compositor por um atalho.
+///
+/// Quem atende escreve as mesmas cinco frases o dia inteiro — "Bom dia! Em
+/// que posso ajudar?", os dados bancários, o endereço. Digitar tudo de novo
+/// a cada conversa é o trabalho manual mais óbvio que sobra depois que a IA
+/// pega o resto.
+///
+/// O `shortcut` é o que se digita depois da barra ("/bomdia"), e por isso é
+/// único por empresa: dois atalhos iguais deixariam a escolha no ar.
+model QuickReply {
+  id        String   @id @default(uuid())
+  tenantId  String
+  shortcut  String
+  /// Rótulo curto pra lista. Vazio, a própria primeira linha do texto serve.
+  title     String?
+  content   String
+  /// Quantas vezes já foi usada. Ordena a lista pelo que a equipe de fato
+  /// usa, em vez de por ordem de cadastro — depois de uma semana, o atalho
+  /// certo é o primeiro sem ninguém ter organizado nada.
+  usageCount Int     @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shortcut])
+  @@index([tenantId, usageCount])
+  @@map("quick_replies")
 }
 
 model QueueMember {

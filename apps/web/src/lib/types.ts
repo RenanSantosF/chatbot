@@ -360,3 +360,18 @@ export interface CustomerNote {
   createdAt: string;
   author: { id: string; name: string } | null;
 }
+
+/**
+ * Texto pronto que o atendente insere no compositor digitando `/atalho`.
+ *
+ * O `shortcut` chega já normalizado pela API (minúsculo, sem acento, sem
+ * espaço) — é a forma que se digita, não a que se cadastrou.
+ */
+export interface QuickReply {
+  id: string;
+  shortcut: string;
+  /** Rótulo curto da lista. Vazio, a primeira linha do texto serve. */
+  title: string | null;
+  content: string;
+  usageCount: number;
+}

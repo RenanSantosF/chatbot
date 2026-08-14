@@ -18,6 +18,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { QueuesModule } from './modules/queues/queues.module';
+import { QuickRepliesModule } from './modules/quick-replies/quick-replies.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RoutingModule } from './modules/routing/routing.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -66,6 +67,7 @@ import { StorageModule } from './modules/storage/storage.module';
     PermissionsModule,
     TasksModule,
     QueuesModule,
+    QuickRepliesModule,
     RoutingModule,
     WhatsappModule,
     WhatsappWebhookModule,
