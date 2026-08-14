@@ -13,6 +13,7 @@ import {
   descreverMensagem,
   encurtar,
   juntarTurnosSeguidos,
+  marcarSaltoDeTempo,
   mereceBuscaNaBase,
 } from './ai-context';
 import type { AiMessage } from './providers/ai-provider.interface';
@@ -246,6 +247,11 @@ export class AiContextBuilder {
         content: true,
         messageType: true,
         senderType: true,
+        // A hora entra pra marcar o salto de tempo entre uma mensagem e a
+        // seguinte (ver `marcarSaltoDeTempo`). Não vai pro prompt como
+        // carimbo em toda linha: seria caro e não muda nada quando a
+        // conversa é contínua.
+        createdAt: true,
         replyTo: { select: { content: true, senderType: true } },
       },
     });
@@ -277,8 +283,9 @@ export class AiContextBuilder {
     // Anotado, e não convertido: um `as` aqui é apagado pela regra de
     // asserção desnecessária do lint, e sem ele o TypeScript alarga `role`
     // pra `string` — que deixa de casar com o contrato do provedor.
-    const turnos: AiMessage[] = ordered.map((message) => ({
+    const turnos = ordered.map((message) => ({
       role: message.senderType === 'CUSTOMER' ? 'user' : 'assistant',
+      createdAt: message.createdAt,
       content: encurtar(
         // A citação entra junto porque a mensagem original pode estar
         // fora das vinte carregadas: sem ela, "sim, esse mesmo" chega
@@ -293,9 +300,13 @@ export class AiContextBuilder {
     // Descartar ANTES de juntar, não depois: uma mensagem vazia entre duas
     // falas do mesmo lado sobreviveria grudada na anterior, e o turno
     // chegaria no modelo com uma linha em branco no meio.
+    //
+    // A marca de tempo vem antes de juntar pelo mesmo motivo: ela pertence
+    // à mensagem que chegou depois da pausa, e depois de juntar já não dá
+    // pra saber qual era.
     const history = juntarTurnosSeguidos(
-      turnos.filter((turno) => turno.content.length > 0),
-    );
+      marcarSaltoDeTempo(turnos.filter((turno) => turno.content.length > 0)),
+    ) as AiMessage[];
 
     return { systemPrompt, history };
   }

@@ -94,6 +94,9 @@ const msg = (extra: Record<string, unknown> = {}) => ({
   content: 'Oi',
   messageType: 'TEXT',
   senderType: 'CUSTOMER',
+  // Todas no mesmo instante por padrão: só os testes que falam de intervalo
+  // de tempo é que precisam de horas diferentes.
+  createdAt: new Date('2026-08-14T12:00:00Z'),
   replyTo: null,
   ...extra,
 });

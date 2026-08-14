@@ -166,6 +166,7 @@ export function ChatPanel({
   onReact,
   onRead,
   onDelete,
+  onClose,
   podeEnviarEncerrada,
 }: {
   conversation: ConversationDetail | null;
@@ -188,6 +189,8 @@ export function ChatPanel({
   /** Chamada quando o fim da conversa aparece na tela. */
   onRead: () => void;
   onDelete: (messageId: string) => Promise<void>;
+  /** Fecha a conversa e volta pro estado vazio (Esc). */
+  onClose?: () => void;
   /** A empresa deixa responder em conversa encerrada (reabrindo)? */
   podeEnviarEncerrada: boolean;
 }) {
@@ -270,12 +273,18 @@ export function ChatPanel({
         setNeedle("");
         return;
       }
-      if (replyTo) onCancelReply();
+      if (replyTo) return onCancelReply();
+
+      // Nada aberto por cima: fecha a conversa e volta pro "nenhuma
+      // conversa aberta", igual ao WhatsApp Web. Só quando não há rascunho
+      // — perder o que já foi escrito por uma tecla seria caro, e quem
+      // digitou alguma coisa quase nunca quis sair.
+      if (!draft.trim()) onClose?.();
     };
 
     document.addEventListener("keydown", aoTeclar);
     return () => document.removeEventListener("keydown", aoTeclar);
-  }, [apagando, forwarding, pendingFile, searchOpen, replyTo, onCancelReply]);
+  }, [apagando, forwarding, pendingFile, searchOpen, replyTo, onCancelReply, draft, onClose]);
 
   async function carregarAnteriores() {
     const area = scrollAreaRef.current;
@@ -389,7 +398,18 @@ export function ChatPanel({
     const area = scrollAreaRef.current;
     if (!area) return;
 
-    const primeira = firstPaintRef.current;
+    // "Abrindo" é uma JANELA, não um quadro.
+    //
+    // A conversa é pintada primeiro do cache e reconciliada logo depois com
+    // a resposta do servidor. Quando as duas versões têm contagens
+    // diferentes (chegou mensagem nova enquanto a conversa estava fechada),
+    // o efeito rodava uma segunda vez já fora do "primeiro quadro" e
+    // deslizava — era a rolagem animada que aparecia em ALGUMAS conversas,
+    // justamente as que estavam em cache.
+    //
+    // Abrir uma conversa nunca é animado: a pessoa quer chegar no fim, não
+    // assistir a viagem até lá.
+    const primeira = firstPaintRef.current || Date.now() - abertoEm < 1200;
 
     // Mensagem do CLIENTE só arrasta a tela se quem está lendo já estava no
     // fim — ler o histórico com a conversa ativa era impossível quando toda

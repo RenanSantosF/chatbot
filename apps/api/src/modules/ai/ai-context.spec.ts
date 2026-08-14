@@ -5,6 +5,7 @@ import {
   descreverMensagem,
   encurtar,
   juntarTurnosSeguidos,
+  marcarSaltoDeTempo,
   mereceBuscaNaBase,
 } from './ai-context';
 
@@ -277,5 +278,101 @@ describe('data e hora no fuso da empresa', () => {
     expect(agoraNoFuso('Continente/Cidade_Que_Nao_Existe', momento)).toContain(
       'agosto',
     );
+  });
+});
+
+describe('salto de tempo entre mensagens', () => {
+  const em = (iso: string) => new Date(iso);
+
+  it('conversa contínua não ganha marca nenhuma', () => {
+    // Carimbar hora em toda linha custaria tokens e não muda nada quando as
+    // mensagens vêm em sequência.
+    const turnos = marcarSaltoDeTempo([
+      { role: 'user', content: 'oi', createdAt: em('2026-08-14T10:00:00Z') },
+      {
+        role: 'assistant',
+        content: 'olá!',
+        createdAt: em('2026-08-14T10:00:20Z'),
+      },
+      {
+        role: 'user',
+        content: 'quanto custa?',
+        createdAt: em('2026-08-14T10:02:00Z'),
+      },
+    ]);
+
+    for (const turno of turnos) {
+      expect(turno.content).not.toContain('sem conversa');
+    }
+  });
+
+  it('marca a mensagem que chegou depois da pausa longa', () => {
+    // O caso real: o agrupamento reaproveita a conversa encerrada quando o
+    // cliente volta dias depois. Sem a marca, a IA lê "te aviso" seguido de
+    // "e aí?" como se fossem dois minutos e emenda num assunto encerrado.
+    const turnos = marcarSaltoDeTempo([
+      {
+        role: 'assistant',
+        content: 'Qualquer coisa é só chamar!',
+        createdAt: em('2026-08-11T15:00:00Z'),
+      },
+      { role: 'user', content: 'e aí?', createdAt: em('2026-08-14T09:00:00Z') },
+    ]);
+
+    expect(turnos[0].content).toBe('Qualquer coisa é só chamar!');
+    expect(turnos[1].content).toContain('3 dias');
+    expect(turnos[1].content).toContain('e aí?');
+  });
+
+  it('almoço não é pausa: continua o mesmo assunto', () => {
+    const turnos = marcarSaltoDeTempo([
+      {
+        role: 'assistant',
+        content: 'já te mando',
+        createdAt: em('2026-08-14T11:00:00Z'),
+      },
+      {
+        role: 'user',
+        content: 'ok',
+        createdAt: em('2026-08-14T14:00:00Z'),
+      },
+    ]);
+
+    expect(turnos[1].content).toBe('ok');
+  });
+
+  it('conta em horas quando ainda é o mesmo dia útil seguinte', () => {
+    const turnos = marcarSaltoDeTempo([
+      {
+        role: 'user',
+        content: 'boa noite',
+        createdAt: em('2026-08-13T22:00:00Z'),
+      },
+      {
+        role: 'user',
+        content: 'bom dia',
+        createdAt: em('2026-08-14T09:00:00Z'),
+      },
+    ]);
+
+    expect(turnos[1].content).toContain('11 horas');
+  });
+
+  it('preserva papel e ordem', () => {
+    const turnos = marcarSaltoDeTempo([
+      { role: 'user', content: 'a', createdAt: em('2026-08-01T10:00:00Z') },
+      {
+        role: 'assistant',
+        content: 'b',
+        createdAt: em('2026-08-10T10:00:00Z'),
+      },
+    ]);
+
+    expect(turnos.map((t) => t.role)).toEqual(['user', 'assistant']);
+    expect(turnos[1].content).toContain('b');
+  });
+
+  it('lista vazia continua vazia', () => {
+    expect(marcarSaltoDeTempo([])).toEqual([]);
   });
 });

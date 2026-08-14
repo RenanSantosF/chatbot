@@ -32,6 +32,15 @@ interface Page<T> {
   nextCursor: string | null;
 }
 
+/**
+ * Prefixo do id do balão que ainda não existe no servidor.
+ *
+ * É por ele que o evento de tempo real reconhece "esta é a versão real
+ * daquela que acabei de pintar" e troca no lugar, em vez de somar uma
+ * linha e deixar a outra sumir depois.
+ */
+const ID_OTIMISTA = "pending-";
+
 const EMPTY_COUNTS: FilterCounts = {
   total: 0,
   unread: 0,
@@ -329,7 +338,26 @@ export default function InboxPage() {
         // O socket entrega a mesma mensagem que já pode ter entrado pela
         // resposta do POST; a checagem de id evita duplicar.
         if (prev.messages.some((m) => m.id === message.id)) return prev;
-        const messages = [...prev.messages, message];
+
+        // Se esta é a versão real de uma mensagem que acabamos de mandar,
+        // ela SUBSTITUI o balão otimista em vez de entrar depois dele.
+        //
+        // Anexar criava uma linha a mais por um instante — a otimista
+        // continuava lá até a resposta do POST chegar e removê-la. Era a
+        // piscada de "aparece uma segunda e some": o balão certo já estava
+        // na tela, só que acompanhado.
+        const otimista = prev.messages.findIndex(
+          (m) =>
+            m.id.startsWith(ID_OTIMISTA) &&
+            m.senderType === message.senderType &&
+            m.content === message.content,
+        );
+
+        const messages =
+          otimista >= 0
+            ? prev.messages.map((m, i) => (i === otimista ? message : m))
+            : [...prev.messages, message];
+
         conversationCache.patchMessages(conversationId, messages);
         return { ...prev, messages };
       });
@@ -391,7 +419,7 @@ export default function InboxPage() {
     // Envio otimista: a mensagem aparece na hora com um tique vazio, do
     // jeito que o WhatsApp faz. Se o servidor confirmar, o evento de tempo
     // real substitui pela versão real; se falhar, ela some e avisamos.
-    const optimisticId = `pending-${Date.now()}`;
+    const optimisticId = `${ID_OTIMISTA}${Date.now()}`;
 
     // A empresa mostra o nome de quem respondeu no balão? Em vez de buscar
     // a configuração (que atendente não tem permissão de ler), a resposta
@@ -605,6 +633,7 @@ export default function InboxPage() {
         onRead={() => selectedId && marcarLida(selectedId)}
         onDelete={handleDelete}
         podeEnviarEncerrada={podeEnviarEncerrada}
+        onClose={() => setSelectedId(null)}
         onSend={handleSend}
         onSendFile={handleSendFile}
         onRefresh={refreshCurrent}

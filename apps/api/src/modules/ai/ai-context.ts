@@ -185,6 +185,56 @@ export function descreverMensagem(mensagem: {
 }
 
 /**
+ * A partir de quanto tempo parado a conversa deixa de ser a mesma conversa.
+ *
+ * Seis horas cobre o caso comum sem ser sensível demais: alguém que
+ * responde depois do almoço continua no mesmo assunto, alguém que responde
+ * no dia seguinte quase nunca.
+ */
+const SALTO_RELEVANTE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Avisa o modelo quando o relógio andou entre uma mensagem e a seguinte.
+ *
+ * O histórico chega como uma sequência lisa, sem hora nenhuma. Numa
+ * conversa reaberta pelo agrupamento — o cliente volta a escrever três dias
+ * depois e o sistema reaproveita a conversa antiga, de propósito, pra o
+ * atendente ver o histórico — a IA lia "vou verificar e te aviso" seguido
+ * de "e aí?" como se fossem dois minutos, e respondia emendando num assunto
+ * encerrado. Do lado do cliente isso soa como alguém que não percebeu que a
+ * semana passou.
+ *
+ * A marca vai como fala do próprio cliente porque é ali que a percepção de
+ * tempo importa: é a mensagem DELE que chegou depois da pausa.
+ */
+export function marcarSaltoDeTempo(
+  mensagens: { role: string; content: string; createdAt: Date }[],
+): { role: string; content: string }[] {
+  return mensagens.map((mensagem, indice) => {
+    const anterior = mensagens[indice - 1];
+    if (!anterior) return { role: mensagem.role, content: mensagem.content };
+
+    const parada = mensagem.createdAt.getTime() - anterior.createdAt.getTime();
+    if (parada < SALTO_RELEVANTE_MS) {
+      return { role: mensagem.role, content: mensagem.content };
+    }
+
+    const horas = Math.round(parada / (60 * 60 * 1000));
+    const quanto =
+      horas >= 48
+        ? `${Math.round(horas / 24)} dias`
+        : horas >= 24
+          ? 'mais de um dia'
+          : `${horas} horas`;
+
+    return {
+      role: mensagem.role,
+      content: `[depois de ${quanto} sem conversa]\n${mensagem.content}`,
+    };
+  });
+}
+
+/**
  * Junta falas seguidas do mesmo lado num turno só.
  *
  * No WhatsApp ninguém escreve um parágrafo: escreve "oi", "tudo bem?",
