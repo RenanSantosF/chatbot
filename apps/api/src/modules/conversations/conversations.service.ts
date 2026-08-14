@@ -282,8 +282,23 @@ export class ConversationsService {
     } satisfies Prisma.ConversationWhereInput;
   }
 
-  /** Contadores de cada filtro, calculados no banco pra não depender da página carregada. */
-  async counts(userId: string) {
+  /**
+   * Contadores de cada filtro, calculados no banco pra não depender da
+   * página carregada.
+   *
+   * Passa pelo MESMO recorte de visibilidade da lista (ver
+   * `recorteDeVisibilidade`). Sem isso, quem trabalha no modo restrito via
+   * "12 pendentes" no cabeçalho e cinco conversas na lista — e não tinha
+   * como saber se as sete restantes eram de outro setor ou se a tela tinha
+   * parado de carregar.
+   */
+  async counts(viewer: { userId: string; role: UserRole }) {
+    const userId = viewer.userId;
+    const recorte = await this.recorteDeVisibilidade(viewer);
+    const visiveis = (extra: Prisma.ConversationWhereInput = {}) => ({
+      where: { ...recorte, ...extra },
+    });
+
     const [
       total,
       unread,
@@ -295,31 +310,33 @@ export class ConversationsService {
       byStatus,
       byPriority,
     ] = await Promise.all([
-        this.prisma.db.conversation.count(),
-        this.prisma.db.conversation.count({ where: { unreadCount: { gt: 0 } } }),
-        this.prisma.db.conversation.count({ where: { assignedUserId: userId } }),
-        this.prisma.db.conversation.count({ where: { assignedUserId: null } }),
-        // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
-        // quem atende faz de manhã — o que é minha vez, o que está com o
-        // cliente, o que já acabou.
-        this.prisma.db.conversation.count({
-          where: { status: { in: [...STATUS_GROUPS.PENDING] } },
-        }),
-        this.prisma.db.conversation.count({
-          where: { status: { in: [...STATUS_GROUPS.WAITING] } },
-        }),
-        this.prisma.db.conversation.count({
-          where: { status: { in: [...STATUS_GROUPS.DONE] } },
-        }),
-        this.prisma.db.conversation.groupBy({
-          by: ['status'],
-          _count: { _all: true },
-        }),
-        this.prisma.db.conversation.groupBy({
-          by: ['priority'],
-          _count: { _all: true },
-        }),
-      ]);
+      this.prisma.db.conversation.count(visiveis()),
+      this.prisma.db.conversation.count(visiveis({ unreadCount: { gt: 0 } })),
+      this.prisma.db.conversation.count(visiveis({ assignedUserId: userId })),
+      this.prisma.db.conversation.count(visiveis({ assignedUserId: null })),
+      // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
+      // quem atende faz de manhã — o que é minha vez, o que está com o
+      // cliente, o que já acabou.
+      this.prisma.db.conversation.count(
+        visiveis({ status: { in: [...STATUS_GROUPS.PENDING] } }),
+      ),
+      this.prisma.db.conversation.count(
+        visiveis({ status: { in: [...STATUS_GROUPS.WAITING] } }),
+      ),
+      this.prisma.db.conversation.count(
+        visiveis({ status: { in: [...STATUS_GROUPS.DONE] } }),
+      ),
+      this.prisma.db.conversation.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        ...visiveis(),
+      }),
+      this.prisma.db.conversation.groupBy({
+        by: ['priority'],
+        _count: { _all: true },
+        ...visiveis(),
+      }),
+    ]);
 
     return {
       total,
@@ -433,6 +450,25 @@ export class ConversationsService {
       ...m,
       senderName: m.senderId ? (porId.get(m.senderId) ?? null) : null,
     }));
+  }
+
+  /**
+   * Anuncia uma mensagem nova pro painel, sempre com `senderName`.
+   *
+   * Existe pra os caminhos que não passam por `persistMessage` (anexo,
+   * encaminhamento, início por template) não emitirem um balão anônimo: a
+   * mensagem chegava sem assinatura e só ganhava o nome de quem respondeu
+   * quando alguém recarregava a conversa.
+   */
+  private async emitirMensagemCriada(
+    conversationId: string,
+    mensagem: { senderType: string; senderId: string | null },
+  ) {
+    const [comNome] = await this.comNomeDeQuemEnviou([mensagem]);
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+      conversationId,
+      message: comNome,
+    });
   }
 
   private async requireConversationExists(id: string) {
@@ -582,15 +618,31 @@ export class ConversationsService {
       replyToId?: string;
       /** Só pra mensagem que já saiu por fora (eco do celular). */
       status?: MessageStatus;
+      /**
+       * A mensagem JÁ chegou no cliente por outro caminho — não reenviar.
+       *
+       * Existe por causa do eco da coexistência: o que a empresa digita no
+       * celular volta pra cá pelo webhook como mensagem de atendente. Sem
+       * esta trava, gravar o eco disparava um envio novo pro mesmo cliente:
+       * ele recebia tudo duas vezes, e o externalId da Meta era
+       * sobrescrito pelo do reenvio — o que estragava a idempotência e
+       * fazia cada reentrega do webhook duplicar de novo.
+       */
+      jaEntregue?: boolean;
     },
   ) {
+    const { jaEntregue = false, ...dadosDaMensagem } = data;
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
       select: { status: true, aiMode: true },
     });
 
     const message = await this.prisma.db.message.create({
-      data: { tenantId: this.prisma.tenantId, conversationId, ...data },
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId,
+        ...dadosDaMensagem,
+      },
       include: messageInclude,
     });
 
@@ -650,6 +702,7 @@ export class ConversationsService {
     // transferência de fila) são notas internas pro time, não pro cliente.
     if (
       conversation.channel === 'WHATSAPP' &&
+      !jaEntregue &&
       (data.senderType === 'AI' || data.senderType === 'AGENT')
     ) {
       const quoted = data.replyToId
@@ -1024,6 +1077,14 @@ export class ConversationsService {
     if (!source) {
       throw new NotFoundException('Mensagem não encontrada.');
     }
+    // Apagar e continuar podendo encaminhar não é apagar: o conteúdo já
+    // não aparece no painel, mas sairia inteiro pro cliente de outra
+    // conversa.
+    if (source.deletedAt) {
+      throw new BadRequestException(
+        'Esta mensagem foi apagada e não pode ser encaminhada.',
+      );
+    }
 
     const target = await this.requireConversation(toConversationId);
 
@@ -1074,10 +1135,7 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId: toConversationId,
-      message,
-    });
+    await this.emitirMensagemCriada(toConversationId, message);
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
@@ -1176,10 +1234,7 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId,
-      message,
-    });
+    await this.emitirMensagemCriada(conversationId, message);
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
@@ -1370,10 +1425,7 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId: conversation.id,
-      message,
-    });
+    await this.emitirMensagemCriada(conversation.id, message);
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
@@ -2145,6 +2197,9 @@ export class ConversationsService {
       metadata: input.metadata,
       externalId: input.externalId,
       status: 'SENT',
+      // Quem entregou foi o WhatsApp do celular. Reenviar daqui faria o
+      // cliente receber a mesma resposta duas vezes.
+      jaEntregue: true,
     });
 
     if (conversation.aiMode === 'AI_ACTIVE') {

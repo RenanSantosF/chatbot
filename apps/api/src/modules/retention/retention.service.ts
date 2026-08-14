@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 
@@ -49,7 +49,9 @@ export class RetentionService {
       patch.keepMessagesDays !== null &&
       patch.keepMessagesDays < MIN_KEEP_DAYS
     ) {
-      throw new Error(`O mínimo é ${MIN_KEEP_DAYS} dias.`);
+      // BadRequest, não Error cru: um Error solto sai como 500 e a tela
+      // mostra "erro interno" pra quem só digitou um número baixo demais.
+      throw new BadRequestException(`O mínimo é ${MIN_KEEP_DAYS} dias.`);
     }
     const current = await this.getSettings();
     return this.prisma.db.retentionSettings.update({

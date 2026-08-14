@@ -64,7 +64,10 @@ export class ConversationsController {
 
   @Get('counts')
   counts(@CurrentUser() user: RequestUser) {
-    return this.conversationsService.counts(user.userId);
+    return this.conversationsService.counts({
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   // Estas rotas ficam ANTES de ':id' de propósito: o Nest casa na ordem
@@ -76,6 +79,7 @@ export class ConversationsController {
   }
 
   @Post('start')
+  @RequiresPermission('conversations.send')
   start(
     @Body() dto: StartConversationDto,
     @CurrentUser() user: RequestUser,
@@ -128,6 +132,7 @@ export class ConversationsController {
   }
 
   @Post(':id/messages/:messageId/forward')
+  @RequiresPermission('conversations.send')
   forward(
     @Param('messageId') messageId: string,
     @Body('toConversationId') toConversationId: string,
@@ -141,6 +146,7 @@ export class ConversationsController {
   }
 
   @Post(':id/messages')
+  @RequiresPermission('conversations.send')
   sendMessage(
     @Param('id') id: string,
     @Body() dto: SendMessageDto,
@@ -160,6 +166,7 @@ export class ConversationsController {
    * atendendo, e a tela transforma isso na pergunta.
    */
   @Post(':id/assign')
+  @RequiresPermission('conversations.assign')
   assign(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
@@ -172,6 +179,7 @@ export class ConversationsController {
   }
 
   @Post(':id/transfer')
+  @RequiresPermission('conversations.assign')
   transfer(
     @Param('id') id: string,
     @Body('toUserId') toUserId: string,
@@ -182,6 +190,7 @@ export class ConversationsController {
 
   /** Encaminha pro setor, sem nomear pessoa — quem estiver livre pega. */
   @Post(':id/transfer-queue')
+  @RequiresPermission('conversations.assign')
   transferQueue(
     @Param('id') id: string,
     @Body('queueId') queueId: string,
@@ -216,11 +225,13 @@ export class ConversationsController {
   }
 
   @Post(':id/reopen')
+  @RequiresPermission('conversations.resolve')
   reopen(@Param('id') id: string) {
     return this.conversationsService.reopen(id);
   }
 
   @Post(':id/resolve')
+  @RequiresPermission('conversations.resolve')
   resolve(@Param('id') id: string) {
     return this.conversationsService.resolve(id);
   }
@@ -234,6 +245,7 @@ export class ConversationsController {
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 16 * 1024 * 1024 } }),
   )
+  @RequiresPermission('conversations.attachments')
   sendAttachment(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
@@ -252,6 +264,7 @@ export class ConversationsController {
   }
 
   @Post(':id/priority')
+  @RequiresPermission('conversations.priority')
   setPriority(@Param('id') id: string, @Body() dto: SetPriorityDto) {
     return this.conversationsService.setPriority(id, dto.priority);
   }

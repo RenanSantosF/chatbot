@@ -90,7 +90,19 @@ export class MetricsService {
 
     // Semeia todos os dias do período, inclusive os vazios — sem isso o
     // gráfico "pula" os dias sem movimento e distorce a leitura da linha.
-    for (let t = range.from.getTime(); t <= range.to.getTime(); t += DAY_MS) {
+    //
+    // A contagem começa na MEIA-NOITE UTC do primeiro dia, não no instante
+    // exato de `from`. Somar 24h a partir de um horário quebrado fazia o
+    // laço parar antes do último dia sempre que o fim do período caía mais
+    // cedo no relógio que o começo: o dia existia, tinha movimento, e
+    // sumia do gráfico — as mensagens dele caíam num balde inexistente e
+    // eram descartadas em silêncio.
+    const primeiroDia = Date.UTC(
+      range.from.getUTCFullYear(),
+      range.from.getUTCMonth(),
+      range.from.getUTCDate(),
+    );
+    for (let t = primeiroDia; t <= range.to.getTime(); t += DAY_MS) {
       const key = dayKey(new Date(t));
       days.set(key, { day: key, conversations: 0, messages: 0 });
     }

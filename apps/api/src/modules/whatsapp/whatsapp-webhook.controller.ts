@@ -350,29 +350,41 @@ export class WhatsappWebhookController {
       );
     }
 
-    if (messages.length === 0) {
-      // Evento de status (enviado/entregue/lido/falhou) de uma mensagem que a
-      // gente mandou — vira o tique de entrega no painel.
-      for (const status of value?.statuses ?? []) {
-        const errorDetail = status.errors?.[0]
-          ? ` erro=${status.errors[0].code} ${status.errors[0].title ?? ''} ${status.errors[0].message ?? ''}`.trim()
-          : '';
-        this.logger.log(
-          `Status de mensagem: id=${status.id}, status=${status.status}, para=${status.recipient_id}.${errorDetail}`,
-        );
+    // Evento de status (enviado/entregue/lido/falhou) de uma mensagem que a
+    // gente mandou — vira o tique de entrega no painel.
+    //
+    // Processado SEMPRE, não só quando o lote vem sem mensagens. A Meta
+    // pode juntar as duas coisas na mesma entrega, e o `return` antecipado
+    // que existia aqui descartava os status desse lote em silêncio: a
+    // mensagem ficava com um tique só pra sempre, ou uma falha de entrega
+    // nunca virava o triângulo vermelho.
+    for (const status of value?.statuses ?? []) {
+      const errorDetail = status.errors?.[0]
+        ? ` erro=${status.errors[0].code} ${status.errors[0].title ?? ''} ${status.errors[0].message ?? ''}`.trim()
+        : '';
+      this.logger.log(
+        `Status de mensagem: id=${status.id}, status=${status.status}, para=${status.recipient_id}.${errorDetail}`,
+      );
 
-        const mapped = STATUS_MAP[status.status ?? ''];
-        if (mapped && status.id) {
-          await this.conversationsService.applyDeliveryStatus(
-            status.id,
-            mapped,
-          );
-        }
+      const mapped = STATUS_MAP[status.status ?? ''];
+      if (mapped && status.id) {
+        await this.conversationsService.applyDeliveryStatus(status.id, mapped);
       }
+    }
+
+    if (messages.length === 0) {
       return { ok: true };
     }
 
-    const contact = value?.contacts?.[0];
+    // O nome do perfil vem numa lista à parte, casada por `wa_id`. Usar
+    // sempre o primeiro contato dava o nome de quem escreveu primeiro a
+    // TODO mundo do lote — dois clientes diferentes na mesma entrega e um
+    // deles entrava no sistema com o nome do outro.
+    const nomePorTelefone = new Map(
+      (value?.contacts ?? [])
+        .filter((contato) => contato.wa_id)
+        .map((contato) => [contato.wa_id, contato.profile?.name]),
+    );
 
     for (const message of messages) {
       if (!message.from) continue;
@@ -396,7 +408,7 @@ export class WhatsappWebhookController {
 
       await this.conversationsService.receiveInbound({
         customerPhone: message.from,
-        customerName: contact?.profile?.name ?? message.from,
+        customerName: nomePorTelefone.get(message.from) ?? message.from,
         content: parsed.content,
         messageType: parsed.messageType,
         metadata: parsed.metadata,

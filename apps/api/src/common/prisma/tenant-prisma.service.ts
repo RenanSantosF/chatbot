@@ -27,7 +27,18 @@ export class TenantPrismaService {
     return tenantId;
   }
 
+  /**
+   * Client isolado, montado uma vez por requisição.
+   *
+   * O cache não é enfeite: `$extends` constrói um client novo a cada
+   * chamada, e este getter é usado dezenas de vezes por requisição (a
+   * listagem do Inbox sozinha toca nove queries). Sem memorizar, cada
+   * acesso pagava a construção do proxy de todos os models de novo.
+   */
+  private escopado?: ReturnType<typeof applyTenantScope>;
+
   get db() {
-    return applyTenantScope(this.prisma.client, this.tenantId);
+    this.escopado ??= applyTenantScope(this.prisma.client, this.tenantId);
+    return this.escopado;
   }
 }

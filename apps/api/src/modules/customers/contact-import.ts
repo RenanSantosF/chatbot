@@ -97,8 +97,18 @@ export function parseContactsCsv(content: string): ImportReport {
   const mapped = header.map((cell) => HEADER_ALIASES[cell]);
   const hasHeader = mapped.some((field) => field !== undefined);
 
-  const nameAt = hasHeader ? mapped.indexOf('name') : 0;
-  const phoneAt = hasHeader ? mapped.indexOf('phone') : 1;
+  // O telefone é a única coluna sem a qual não dá pra importar nada. Se o
+  // cabeçalho foi reconhecido mas nenhum apelido de telefone apareceu
+  // ("Nome;Celular do responsável"), cai na posição padrão em vez de
+  // rejeitar a planilha inteira linha por linha com "Sem telefone" — o
+  // relatório dizia que todo mundo estava errado quando o errado era o
+  // reconhecimento do cabeçalho.
+  const phoneMapeado = hasHeader ? mapped.indexOf('phone') : 1;
+  const phoneAt = phoneMapeado >= 0 ? phoneMapeado : 1;
+
+  const nameMapeado = hasHeader ? mapped.indexOf('name') : 0;
+  const nameAt = nameMapeado >= 0 ? nameMapeado : phoneAt === 0 ? 1 : 0;
+
   const emailAt = hasHeader ? mapped.indexOf('email') : -1;
 
   const contacts: ParsedContact[] = [];

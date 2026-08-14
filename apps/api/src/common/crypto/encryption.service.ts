@@ -39,7 +39,11 @@ export class EncryptionService {
 
   decrypt(payload: string): string {
     const [ivB64, tagB64, dataB64] = payload.split('.');
-    if (!ivB64 || !tagB64 || !dataB64) {
+    // O terceiro pedaço é conferido por PRESENÇA, não por conteúdo: cifrar
+    // texto vazio produz um pedaço vazio, e um `!dataB64` transformava o
+    // par cifrar/decifrar numa via de mão única — decifrar recusava o que a
+    // própria classe tinha acabado de gerar.
+    if (!ivB64 || !tagB64 || dataB64 === undefined) {
       throw new Error('Payload criptografado em formato inválido.');
     }
     const iv = Buffer.from(ivB64, 'base64');
