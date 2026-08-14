@@ -263,7 +263,11 @@ export function MessageBubble({
     <div
       data-message-id={message.id}
       className={cn(
-        "group/msg relative flex max-w-[75%] min-w-0 flex-col",
+        // `select-text` devolve a seleção AQUI dentro: a faixa ao redor tem
+        // `select-none` pra o duplo clique no vazio não selecionar o texto
+        // do balão vizinho (e o navegador não abrir o menu dele por cima).
+        // Dentro da mensagem, copiar continua sendo o gesto normal.
+        "group/msg relative flex max-w-[75%] min-w-0 flex-col select-text",
         fromCustomer ? "self-start" : "self-end",
         isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
       )}

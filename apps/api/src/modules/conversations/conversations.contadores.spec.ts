@@ -61,7 +61,8 @@ const TOTAL = 0;
 const NAO_LIDAS = 1;
 const MINHAS = 2;
 const SEM_DONO = 3;
-const PENDENTES = 4;
+const ESPERANDO = 4;
+const PENDENTES = 5;
 
 describe('cada contador considera os outros filtros ligados', () => {
   it('"Minhas" conta dentro do grupo escolhido, não na empresa inteira', async () => {
@@ -230,5 +231,42 @@ describe('o recorte por setor continua valendo', () => {
     for (const consulta of consultas) {
       expect(consulta.where).toHaveProperty('OR');
     }
+  });
+});
+
+describe('fila de atendimento', () => {
+  it('conta quantas estão esperando resposta da empresa', async () => {
+    const { service, consultas } = montar();
+
+    await service.counts({ viewer: atendente });
+
+    expect(consultas[ESPERANDO].where).toMatchObject({
+      waitingSince: { not: null },
+    });
+  });
+
+  it('o contador de espera sai do próprio filtro antes de contar', async () => {
+    const { service, consultas } = montar();
+
+    await service.counts({ waitingOnly: true, viewer: atendente });
+
+    // Sem tirar a si mesmo, ele contaria o que já está filtrado — e o
+    // número viraria o tamanho da lista em vez de uma informação nova.
+    expect(consultas[ESPERANDO].where).toEqual(
+      expect.objectContaining({ waitingSince: { not: null } }),
+    );
+    // Mas os OUTROS contadores continuam respeitando o filtro de espera.
+    expect(consultas[MINHAS].where).toMatchObject({
+      waitingSince: { not: null },
+      assignedUserId: 'user-ana',
+    });
+  });
+
+  it('filtrar por espera restringe a lista', async () => {
+    const { service, consultas } = montar();
+
+    await service.list({ waitingOnly: true, viewer: atendente });
+
+    expect(consultas[0].where).toMatchObject({ waitingSince: { not: null } });
   });
 });

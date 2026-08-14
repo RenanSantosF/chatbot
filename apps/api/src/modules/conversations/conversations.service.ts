@@ -76,6 +76,19 @@ export type StatusGroup = keyof typeof STATUS_GROUPS;
  * outro setor ou se a página parou de carregar, e a dúvida contamina a
  * confiança na tela inteira.
  */
+/**
+ * Como a lista é ordenada.
+ *
+ * RECENTE é o padrão e a leitura de mensageiro: quem falou por último em
+ * cima, que é o que a memória muscular espera.
+ *
+ * ESPERA é a fila de atendimento: quem está esperando resposta há mais
+ * tempo primeiro. Existe porque as duas ordens discordam justamente onde
+ * dói — o cliente que escreveu de manhã e não insistiu mais afunda na
+ * ordem por recência, e é ele que está sem atendimento há mais tempo.
+ */
+export type OrdemDoInbox = 'RECENTE' | 'ESPERA';
+
 export interface FiltroDoInbox {
   status?: ConversationStatus;
   /** Grupo de trabalho (ver STATUS_GROUPS). Ignorado se `status` vier. */
@@ -87,6 +100,9 @@ export interface FiltroDoInbox {
   unreadOnly?: boolean;
   unassignedOnly?: boolean;
   search?: string;
+  ordem?: OrdemDoInbox;
+  /** Só as que estão esperando resposta da empresa. */
+  waitingOnly?: boolean;
   /** Quem está olhando — define o que ela pode enxergar. */
   viewer?: { userId: string; role: UserRole };
 }
@@ -100,7 +116,13 @@ export interface FiltroDoInbox {
  * filtrado por "Minhas", e o número seria o tamanho da lista, não uma
  * informação nova.
  */
-type Faceta = 'situacao' | 'priority' | 'mine' | 'unread' | 'unassigned';
+type Faceta =
+  | 'situacao'
+  | 'priority'
+  | 'mine'
+  | 'unread'
+  | 'unassigned'
+  | 'waiting';
 
 const OPEN_STATUSES: ConversationStatus[] = [
   'OPEN',
@@ -238,7 +260,13 @@ export class ConversationsService {
     const items = await this.prisma.db.conversation.findMany({
       where: this.montarWhere(filter, recorte),
       include: conversationInclude,
-      orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
+      // Na fila, quem espera há MAIS tempo primeiro; `nulls: 'last'` joga
+      // pro fim quem não está esperando ninguém — sem isso o Postgres põe
+      // os nulos na frente e a fila abre com quem já foi respondido.
+      orderBy:
+        filter.ordem === 'ESPERA'
+          ? [{ waitingSince: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }]
+          : [{ lastMessageAt: 'desc' }, { id: 'desc' }],
       take: take + 1,
       ...(filter.cursor ? { cursor: { id: filter.cursor }, skip: 1 } : {}),
     });
@@ -299,6 +327,9 @@ export class ConversationsService {
         : {}),
       ...(filtro.unassignedOnly && !fora.has('unassigned')
         ? { assignedUserId: null }
+        : {}),
+      ...(filtro.waitingOnly && !fora.has('waiting')
+        ? { waitingSince: { not: null } }
         : {}),
       ...(search
         ? {
@@ -387,6 +418,7 @@ export class ConversationsService {
       unread,
       mine,
       unassigned,
+      esperando,
       pendentes,
       aguardando,
       resolvidas,
@@ -400,6 +432,9 @@ export class ConversationsService {
       ),
       this.prisma.db.conversation.count(
         onde(['unassigned'], { assignedUserId: null }),
+      ),
+      this.prisma.db.conversation.count(
+        onde(['waiting'], { waitingSince: { not: null } }),
       ),
       // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
       // quem atende faz de manhã — o que é minha vez, o que está com o
@@ -430,6 +465,7 @@ export class ConversationsService {
       unread,
       mine,
       unassigned,
+      esperando,
       pendentes,
       aguardando,
       resolvidas,
@@ -721,7 +757,7 @@ export class ConversationsService {
     const { jaEntregue = false, ...dadosDaMensagem } = data;
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
-      select: { status: true, aiMode: true },
+      select: { status: true, aiMode: true, waitingSince: true },
     });
 
     const message = await this.prisma.db.message.create({
@@ -766,6 +802,26 @@ export class ConversationsService {
           : isSystemNote
             ? {}
             : { unreadCount: 0 }),
+        /**
+         * O relógio da espera.
+         *
+         * Começa a contar na PRIMEIRA mensagem sem resposta e não é
+         * reiniciado pelas seguintes: quem escreveu às 9h e cobrou às 11h
+         * espera desde as 9h, não desde as 11h. Reiniciar seria premiar
+         * quem insiste — exatamente o que a ordem por recência já fazia.
+         *
+         * Zera quando a empresa responde, por gente ou pela IA. Nota do
+         * sistema não conta: transferir de setor não é responder ao
+         * cliente, e deixar que zerasse esconderia a espera bem no
+         * momento em que ela mais importa.
+         */
+        ...(fromCustomer
+          ? before?.waitingSince
+            ? {}
+            : { waitingSince: message.createdAt }
+          : isSystemNote
+            ? {}
+            : { waitingSince: null }),
       },
       include: conversationInclude,
     });
@@ -1222,6 +1278,12 @@ export class ConversationsService {
         lastMessageAt: message.createdAt,
         status: 'WAITING_CUSTOMER',
         unreadCount: 0,
+        // Anexo e encaminhamento são resposta como qualquer outra: param o
+        // relógio da espera. Estes dois caminhos não passam por
+        // `persistMessage` (sobem arquivo antes), então precisam dizer
+        // isso explicitamente — esquecer aqui deixaria a conversa
+        // eternamente no topo da fila depois de uma foto respondida.
+        waitingSince: null,
       },
       include: conversationInclude,
     });
@@ -1322,6 +1384,12 @@ export class ConversationsService {
         lastMessageAt: message.createdAt,
         status: 'WAITING_CUSTOMER',
         unreadCount: 0,
+        // Anexo e encaminhamento são resposta como qualquer outra: param o
+        // relógio da espera. Estes dois caminhos não passam por
+        // `persistMessage` (sobem arquivo antes), então precisam dizer
+        // isso explicitamente — esquecer aqui deixaria a conversa
+        // eternamente no topo da fila depois de uma foto respondida.
+        waitingSince: null,
       },
       include: conversationInclude,
     });
@@ -1513,7 +1581,11 @@ export class ConversationsService {
 
     const updated = await this.prisma.db.conversation.update({
       where: { id: conversation.id },
-      data: { lastMessageAt: message.createdAt, status: 'WAITING_CUSTOMER' },
+      data: {
+        lastMessageAt: message.createdAt,
+        status: 'WAITING_CUSTOMER',
+        waitingSince: null,
+      },
       include: conversationInclude,
     });
 

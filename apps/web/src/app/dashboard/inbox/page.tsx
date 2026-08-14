@@ -46,6 +46,7 @@ const EMPTY_COUNTS: FilterCounts = {
   unread: 0,
   mine: 0,
   unassigned: 0,
+  esperando: 0,
   pendentes: 0,
   aguardando: 0,
   resolvidas: 0,
@@ -74,6 +75,8 @@ function buildQuery(
   if (filters.mine) params.set("mine", "true");
   if (filters.unread) params.set("unread", "true");
   if (filters.unassigned) params.set("unassigned", "true");
+  if (filters.waiting) params.set("waiting", "true");
+  if (filters.ordem !== "RECENTE") params.set("ordem", filters.ordem);
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (cursor) params.set("cursor", cursor);
   const query = params.toString();
@@ -308,6 +311,17 @@ export default function InboxPage() {
       const reorder = () =>
         setConversations((prev) => {
           const rest = prev.filter((item) => item.id !== updated.id);
+          // Na fila quem manda é o tempo de espera, e ele NÃO sobe com
+          // mensagem nova — pelo contrário: quem acabou de cobrar continua
+          // esperando desde a primeira vez. Reordenar por recência aqui
+          // desfaria a fila a cada evento.
+          if (filtersRef.current.ordem === "ESPERA") {
+            return [updated, ...rest].sort((a, b) => {
+              const esperaA = a.waitingSince ? new Date(a.waitingSince).getTime() : Infinity;
+              const esperaB = b.waitingSince ? new Date(b.waitingSince).getTime() : Infinity;
+              return esperaA - esperaB;
+            });
+          }
           return [updated, ...rest].sort(
             (a, b) =>
               new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),

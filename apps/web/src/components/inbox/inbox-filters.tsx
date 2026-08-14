@@ -1,6 +1,14 @@
 "use client";
 
-import { CheckCheck, Clock3, Inbox, Search, SlidersHorizontal, X } from "lucide-react";
+import {
+  ArrowDownWideNarrow,
+  CheckCheck,
+  Clock3,
+  Inbox,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
@@ -10,6 +18,18 @@ import type { ConversationPriority, ConversationStatus } from "@/lib/types";
 /** Os três grupos de trabalho vindos da API (ver STATUS_GROUPS no backend). */
 export type StatusGroup = "PENDING" | "WAITING" | "DONE";
 
+/**
+ * Duas leituras da mesma caixa.
+ *
+ * RECENTE é a de mensageiro — quem falou por último em cima — e continua
+ * sendo o padrão, porque é o que a memória muscular espera.
+ *
+ * ESPERA é a fila de atendimento. As duas discordam justamente onde dói: o
+ * cliente que escreveu de manhã e não insistiu mais afunda na ordem por
+ * recência, e é ele quem está sem resposta há mais tempo.
+ */
+export type OrdemDoInbox = "RECENTE" | "ESPERA";
+
 export interface InboxFilters {
   /** Grupo de trabalho. "ALL" = não filtra. */
   grupo: StatusGroup | "ALL";
@@ -18,6 +38,9 @@ export interface InboxFilters {
   mine: boolean;
   unread: boolean;
   unassigned: boolean;
+  /** Só quem está esperando resposta da empresa. */
+  waiting: boolean;
+  ordem: OrdemDoInbox;
   search: string;
 }
 
@@ -35,6 +58,8 @@ export const DEFAULT_FILTERS: InboxFilters = {
   mine: false,
   unread: false,
   unassigned: false,
+  waiting: false,
+  ordem: "RECENTE",
   search: "",
 };
 
@@ -44,6 +69,7 @@ export interface FilterCounts {
   unread: number;
   mine: number;
   unassigned: number;
+  esperando: number;
   pendentes: number;
   aguardando: number;
   resolvidas: number;
@@ -137,7 +163,15 @@ export function InboxFilterBar({
   };
 
   const refinando =
-    value.status !== "ALL" || value.priority !== "ALL" || value.mine || value.unread || value.unassigned;
+    value.status !== "ALL" ||
+    value.priority !== "ALL" ||
+    value.mine ||
+    value.unread ||
+    value.unassigned ||
+    value.waiting ||
+    value.ordem !== "RECENTE";
+
+  const naFila = value.ordem === "ESPERA";
 
   return (
     <div className="flex flex-col gap-2.5 p-3">
@@ -151,6 +185,28 @@ export function InboxFilterBar({
             className="h-10 rounded-lg border-transparent bg-muted pl-8 text-[13px] shadow-none"
           />
         </div>
+        {/* A troca de ordem fica ao lado da busca, e não escondida em
+            "Mais": é uma decisão de COMO trabalhar, não um refinamento do
+            que aparece. Um clique liga a fila, outro volta pro normal. */}
+        <button
+          type="button"
+          aria-pressed={naFila}
+          onClick={() => set("ordem", naFila ? "RECENTE" : "ESPERA")}
+          title={
+            naFila
+              ? "Ordenado por tempo de espera. Clique pra voltar à ordem por mensagem mais recente."
+              : "Ordenar pela fila: quem espera resposta há mais tempo primeiro."
+          }
+          className={cn(
+            "flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
+            naFila
+              ? "bg-primary/15 text-primary"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          <ArrowDownWideNarrow className="size-4" />
+          {naFila ? "Fila" : "Recentes"}
+        </button>
         {action}
       </div>
 
@@ -210,6 +266,12 @@ export function InboxFilterBar({
           onToggle={() => set("unassigned", !value.unassigned)}
           rotulo="Sem dono"
           quantos={counts.unassigned}
+        />
+        <Interruptor
+          ligado={value.waiting}
+          onToggle={() => set("waiting", !value.waiting)}
+          rotulo="Esperando"
+          quantos={counts.esperando}
         />
         <button
           type="button"

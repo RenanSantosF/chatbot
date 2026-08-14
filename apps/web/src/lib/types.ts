@@ -118,6 +118,11 @@ export interface ConversationSummary {
   priority: ConversationPriority;
   unreadCount: number;
   lastMessageAt: string | null;
+  /**
+   * Desde quando o cliente espera resposta. Nulo = a bola não está com a
+   * gente. É o que ordena a fila de atendimento.
+   */
+  waitingSince?: string | null;
   createdAt: string;
   customer: Customer;
   assignedUser: AssignedUser | null;

@@ -327,6 +327,18 @@ model Conversation {
   /// entra aceito, porque a escolha foi dela.
   assignmentAccepted Boolean             @default(true)
   lastMessageAt     DateTime?
+
+  /// Desde quando o CLIENTE está esperando resposta.
+  ///
+  /// Não é o mesmo que `lastMessageAt`, e a diferença é o ponto: a lista
+  /// ordenada por mensagem mais recente empurra pra baixo justamente quem
+  /// escreveu, não foi respondido e desistiu de insistir. Quem cobra sobe;
+  /// quem espera quieto afunda — e é o segundo que fica sem atendimento.
+  ///
+  /// Marca a primeira mensagem do cliente que ainda não teve resposta da
+  /// empresa, e volta a ser nulo quando alguém (ou a IA) responde. Nulo
+  /// significa "a bola não está com a gente".
+  waitingSince      DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
@@ -341,6 +353,10 @@ model Conversation {
   // Ordenação padrão da lista do Inbox (mais recente primeiro) —
   // sem isso o Postgres ordena a tabela toda a cada página.
   @@index([tenantId, lastMessageAt(sort: Desc)])
+  // Ordenação da fila de atendimento (quem espera há mais tempo primeiro).
+  // Só as que estão esperando têm valor aqui, então o índice é pequeno
+  // mesmo numa base grande.
+  @@index([tenantId, waitingSince])
   @@index([customerId])
   @@index([assignedUserId])
   @@index([queueId])

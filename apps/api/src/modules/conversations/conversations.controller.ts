@@ -21,7 +21,11 @@ import type {
   ConversationStatus,
 } from '../../../generated/prisma/client';
 import type { RequestUser } from '../auth/auth.types';
-import { ConversationsService, type StatusGroup } from './conversations.service';
+import {
+  ConversationsService,
+  type OrdemDoInbox,
+  type StatusGroup,
+} from './conversations.service';
 import { StartConversationDto } from './dto/start-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetPriorityDto } from './dto/set-priority.dto';
@@ -42,6 +46,8 @@ export class ConversationsController {
     @Query('unread') unread: string | undefined,
     @Query('unassigned') unassigned: string | undefined,
     @Query('search') search: string | undefined,
+    @Query('ordem') ordem: OrdemDoInbox | undefined,
+    @Query('waiting') waiting: string | undefined,
     @Query('cursor') cursor: string | undefined,
     @Query('limit') limit: string | undefined,
     @CurrentUser() user: RequestUser,
@@ -55,7 +61,9 @@ export class ConversationsController {
       customerId,
       priority,
       unreadOnly: unread === 'true',
+      waitingOnly: waiting === 'true',
       search,
+      ordem: ordem === 'ESPERA' ? 'ESPERA' : 'RECENTE',
       cursor,
       limit: limit ? Number(limit) : undefined,
       viewer: { userId: user.userId, role: user.role },
@@ -80,6 +88,7 @@ export class ConversationsController {
     @Query('priority') priority: ConversationPriority | undefined,
     @Query('unread') unread: string | undefined,
     @Query('unassigned') unassigned: string | undefined,
+    @Query('waiting') waiting: string | undefined,
     @Query('search') search: string | undefined,
     @CurrentUser() user: RequestUser,
   ) {
@@ -91,6 +100,7 @@ export class ConversationsController {
       priority,
       unreadOnly: unread === 'true',
       unassignedOnly: unassigned === 'true',
+      waitingOnly: waiting === 'true',
       search,
       viewer: { userId: user.userId, role: user.role },
     });

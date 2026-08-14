@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquareDashed } from "lucide-react";
+import { MessageSquareDashed, Timer } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,34 @@ function timeLabel(iso: string | null) {
   if (diffDays === 1) return "Ontem";
   if (diffDays < 7) return date.toLocaleDateString("pt-BR", { weekday: "short" });
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+/**
+ * Há quanto tempo este cliente espera resposta.
+ *
+ * Só aparece quando passa de uma hora: abaixo disso a informação é ruído —
+ * atendimento normal responde em minutos, e uma etiqueta em toda linha
+ * deixaria de significar "olha aqui" pra virar parte do desenho.
+ *
+ * O tom sobe com a espera porque é assim que a pessoa varre a lista: nada
+ * até uma hora, âmbar quando começa a incomodar, vermelho quando já é
+ * problema.
+ */
+function esperaVisivel(waitingSince: string | null | undefined) {
+  if (!waitingSince) return null;
+
+  const minutos = Math.floor((Date.now() - new Date(waitingSince).getTime()) / 60000);
+  if (minutos < 60) return null;
+
+  const horas = Math.floor(minutos / 60);
+  const rotulo = horas < 24 ? `${horas}h` : `${Math.floor(horas / 24)}d`;
+
+  return {
+    rotulo,
+    // Quatro horas é o corte: dentro de um expediente ainda é recuperável,
+    // acima disso o cliente já passou a manhã inteira esperando.
+    grave: horas >= 4,
+  };
 }
 
 export function ConversationList({
@@ -170,6 +198,24 @@ export function ConversationList({
                       {unread > 99 ? "99+" : unread}
                     </span>
                   ) : null}
+                  {(() => {
+                    const espera = esperaVisivel(conversation.waitingSince);
+                    if (!espera) return null;
+                    return (
+                      <span
+                        title={`Sem resposta há ${espera.rotulo}`}
+                        className={cn(
+                          "flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                          espera.grave
+                            ? "bg-destructive/15 text-destructive"
+                            : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                        )}
+                      >
+                        <Timer className="size-3" />
+                        {espera.rotulo}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
               {/* Uma linha só embaixo do nome: a prévia manda, e as

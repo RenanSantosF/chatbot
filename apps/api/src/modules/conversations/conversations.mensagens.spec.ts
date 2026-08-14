@@ -11,7 +11,11 @@ import { ConversationsService } from './conversations.service';
  */
 
 interface Estado {
-  conversaAntes?: { status: string; aiMode: string } | null;
+  conversaAntes?: {
+    status: string;
+    aiMode: string;
+    waitingSince?: Date | null;
+  } | null;
   conversa?: Record<string, unknown>;
   clienteJaExiste?: Record<string, unknown> | null;
   conversaAberta?: Record<string, unknown> | null;
@@ -373,5 +377,125 @@ describe('assinatura do atendente', () => {
       'Posso ajudar em mais alguma coisa?',
       undefined,
     );
+  });
+});
+
+describe('relógio da espera (fila de atendimento)', () => {
+  it('mensagem do cliente começa a contar a espera', async () => {
+    const { service, atualizacoes } = montar({
+      conversaAntes: {
+        status: 'OPEN',
+        aiMode: 'AI_ACTIVE',
+        waitingSince: null,
+      },
+    });
+
+    await service['persistMessage']('conversa-1', {
+      senderType: 'CUSTOMER',
+      content: 'Oi, preciso de ajuda',
+    });
+
+    expect(atualizacoes[0].waitingSince).toBeInstanceOf(Date);
+  });
+
+  it('cobrar não reinicia o relógio — a espera é desde a PRIMEIRA', async () => {
+    // Quem escreveu às 9h e cobrou às 11h espera desde as 9h. Reiniciar
+    // premiaria quem insiste, que é exatamente o defeito da ordem por
+    // recência que a fila existe pra corrigir.
+    const desdeCedo = new Date('2026-08-14T09:00:00Z');
+    const { service, atualizacoes } = montar({
+      conversaAntes: {
+        status: 'OPEN',
+        aiMode: 'AI_ACTIVE',
+        waitingSince: desdeCedo,
+      },
+    });
+
+    await service['persistMessage']('conversa-1', {
+      senderType: 'CUSTOMER',
+      content: 'alguém aí?',
+    });
+
+    expect(atualizacoes[0]).not.toHaveProperty('waitingSince');
+  });
+
+  it('resposta do atendente para o relógio', async () => {
+    const { service, atualizacoes } = montar({
+      conversaAntes: {
+        status: 'OPEN',
+        aiMode: 'HUMAN_ACTIVE',
+        waitingSince: new Date('2026-08-14T09:00:00Z'),
+      },
+    });
+
+    await service.sendAgentMessage('conversa-1', 'user-1', 'Já verifico!');
+
+    expect(atualizacoes[0].waitingSince).toBeNull();
+  });
+
+  it('resposta da IA também para o relógio', async () => {
+    // Atendida pela IA é atendida: deixar o relógio correndo encheria a
+    // fila de conversas que já foram respondidas.
+    const { service, atualizacoes } = montar({
+      conversaAntes: {
+        status: 'OPEN',
+        aiMode: 'AI_ACTIVE',
+        waitingSince: new Date('2026-08-14T09:00:00Z'),
+      },
+    });
+
+    await service['persistMessage']('conversa-1', {
+      senderType: 'AI',
+      content: 'Nosso horário é das 9h às 18h.',
+    });
+
+    expect(atualizacoes[0].waitingSince).toBeNull();
+  });
+
+  it('nota do sistema NÃO para o relógio', async () => {
+    // Transferir de setor não é responder ao cliente. Se zerasse aqui, a
+    // conversa sairia da fila no momento em que mais precisa estar nela.
+    const { service, atualizacoes } = montar({
+      conversaAntes: {
+        status: 'WAITING_AGENT',
+        aiMode: 'HUMAN_ACTIVE',
+        waitingSince: new Date('2026-08-14T09:00:00Z'),
+      },
+    });
+
+    await service['persistMessage']('conversa-1', {
+      senderType: 'SYSTEM',
+      content: 'Conversa encaminhada para o setor Financeiro.',
+    });
+
+    expect(atualizacoes[0]).not.toHaveProperty('waitingSince');
+  });
+
+  it('anexo do atendente para o relógio', async () => {
+    // Este caminho não passa por persistMessage (sobe arquivo antes), e
+    // esquecer aqui deixaria a conversa presa no topo da fila depois de
+    // uma foto respondida.
+    const { service, atualizacoes } = montar();
+
+    const midia = {
+      upload: jest.fn().mockResolvedValue('media-1'),
+    };
+    const whatsapp = {
+      sendMedia: jest.fn().mockResolvedValue('wamid.MIDIA'),
+      motivoDaUltimaFalha: null,
+    };
+    Object.assign(service as unknown as Record<string, unknown>, {
+      media: midia,
+      whatsapp,
+    });
+
+    await service.sendAttachment('conversa-1', 'user-1', {
+      buffer: Buffer.from('imagem'),
+      mimetype: 'image/png',
+      originalname: 'foto.png',
+      size: 6,
+    });
+
+    expect(atualizacoes[0].waitingSince).toBeNull();
   });
 });

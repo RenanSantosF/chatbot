@@ -224,6 +224,47 @@ export function ChatPanel({
   const firstPaintRef = useRef(true);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * A linha que acabou de ser citada, acendendo.
+   *
+   * Dura meio segundo: o suficiente pra o olho registrar que o gesto pegou
+   * naquela mensagem, curto o bastante pra não virar destaque permanente
+   * numa conversa que a pessoa continua lendo.
+   */
+  const [linhaPiscando, setLinhaPiscando] = useState<string | null>(null);
+  const piscadaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function piscarLinha(messageId: string) {
+    if (piscadaRef.current) clearTimeout(piscadaRef.current);
+    setLinhaPiscando(messageId);
+    piscadaRef.current = setTimeout(() => setLinhaPiscando(null), 500);
+  }
+
+  useEffect(
+    () => () => {
+      if (piscadaRef.current) clearTimeout(piscadaRef.current);
+    },
+    [],
+  );
+
+  /**
+   * O cursor já no campo quando a conversa abre.
+   *
+   * Abrir uma conversa é sempre o começo de "vou responder isto". Obrigar
+   * um clique no campo antes de digitar é um passo que existe em todo
+   * atendimento, o dia inteiro — e ninguém abre uma conversa pra olhar.
+   *
+   * O painel é remontado a cada troca (key={selectedId} no Inbox), então
+   * este efeito roda uma vez por conversa aberta.
+   */
+  useEffect(() => {
+    // No celular o foco automático abre o teclado por cima da conversa,
+    // tapando justamente o que a pessoa acabou de abrir pra ler.
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+    composerRef.current?.focus();
+  }, []);
 
   /**
    * Onde a leitura estava quando o "carregar mensagens anteriores" foi
@@ -520,7 +561,17 @@ export function ChatPanel({
     event?.preventDefault();
     const content = draft.trim();
     if (!content) return;
+
     setDraft("");
+    // O foco volta ANTES do envio terminar, não depois.
+    //
+    // O envio é otimista: o balão já apareceu na conversa e a viagem até o
+    // servidor não interessa a quem está digitando. Esperar o `await` pra
+    // devolver o cursor obrigava a clicar no campo de novo pra mandar a
+    // segunda mensagem — e conversa de atendimento é feita de mensagens
+    // curtas em sequência, não de um parágrafo só.
+    composerRef.current?.focus();
+
     await onSend(content);
   }
 
@@ -697,16 +748,29 @@ export function ChatPanel({
                 onDoubleClick={(event) => {
                   // Só o vazio: dentro do balão o gesto atrapalharia
                   // selecionar e copiar o texto.
-                  if (event.target === event.currentTarget) onReply(message);
+                  if (event.target !== event.currentTarget) return;
+                  onReply(message);
+                  piscarLinha(message.id);
                 }}
                 title={message.senderType === "SYSTEM" ? undefined : "Clique duas vezes para responder"}
                 className={cn(
                   // cursor-pointer só na faixa vazia: o balão volta pro
                   // cursor de texto (abaixo, no próprio balão) pra não
                   // atrapalhar quem quer selecionar e copiar.
-                  "flex w-full min-w-0 cursor-pointer",
+                  //
+                  // `select-none` na FAIXA, e não no balão: o duplo clique
+                  // no vazio ao lado da mensagem selecionava o texto do
+                  // balão vizinho, e a seleção fazia o navegador abrir o
+                  // menu de atalho dele por cima da conversa. Selecionar
+                  // continua funcionando dentro do balão, que é onde faz
+                  // sentido (ver `select-text` no MessageBubble).
+                  "flex w-full min-w-0 cursor-pointer rounded-lg transition-colors select-none",
                   message.senderType === "CUSTOMER" ? "justify-start" : "justify-end",
                   message.senderType === "SYSTEM" && "cursor-default justify-center",
+                  // O eco do gesto: a linha inteira acende por um instante
+                  // e apaga. Sem ele, o duplo clique só enche a barrinha de
+                  // citação lá embaixo — longe de onde o olho estava.
+                  linhaPiscando === message.id && "bg-primary/10",
                 )}
               >
               <MessageBubble
@@ -895,7 +959,15 @@ export function ChatPanel({
                 ? "Responder reabre o atendimento"
                 : "Escreva uma mensagem..."
           }
-          disabled={composicaoTravada || sending}
+          ref={composerRef}
+          // Desabilitado SÓ quando a conversa está travada de verdade.
+          //
+          // `sending` também travava, e travar o campo é o que impedia
+          // mandar duas mensagens seguidas: o campo apagava, ficava cinza
+          // por uns instantes e ainda perdia o foco (o navegador tira o
+          // foco de campo desabilitado). O envio é otimista — não há por
+          // que esperar por ele pra continuar escrevendo.
+          disabled={composicaoTravada}
           className="rounded-md"
         />
         {/* No canto onde estava o botão de enviar. O gravador se expande

@@ -149,7 +149,7 @@ describe('contadores concordam com a lista', () => {
 
     await service.counts({ viewer: atendente });
 
-    expect(wheres).toHaveLength(9);
+    expect(wheres).toHaveLength(10);
     for (const where of wheres) {
       expect(where).toMatchObject(recorteEsperado);
     }
