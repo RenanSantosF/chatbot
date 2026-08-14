@@ -340,6 +340,9 @@ export interface InboxSettings {
   groupWindowHours: number;
   autoCloseIdle: boolean;
   autoCloseHours: number;
+  /** Avisa o cliente antes de encerrar por inatividade. */
+  autoCloseNotify: boolean;
+  autoCloseMessage: string;
   showAgentName: boolean;
   queueVisibility: "ALL" | "OWN_QUEUES";
   /**

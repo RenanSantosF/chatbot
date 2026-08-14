@@ -119,6 +119,20 @@ export class UpdateInboxSettingsDto {
 
   @IsOptional()
   @IsBoolean()
+  autoCloseNotify?: boolean;
+
+  /**
+   * O mesmo teto da mensagem de encerramento manual. Despedida que não cabe
+   * numa mensagem de WhatsApp não é despedida.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  autoCloseMessage?: string;
+
+  @IsOptional()
+  @IsBoolean()
   showAgentName?: boolean;
 
   @IsOptional()

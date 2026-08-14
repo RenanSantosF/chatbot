@@ -29,12 +29,15 @@ export default function InboxSettingsPage() {
   const [settings, setSettings] = useState<InboxSettings | null>(null);
   const [message, setMessage] = useState("");
   const [savingMessage, setSavingMessage] = useState(false);
+  const [despedida, setDespedida] = useState("");
+  const [salvandoDespedida, setSalvandoDespedida] = useState(false);
 
   useEffect(() => {
     apiFetch<InboxSettings>("/inbox-settings")
       .then((result) => {
         setSettings(result);
         setMessage(result.resolveMessage);
+        setDespedida(result.autoCloseMessage);
       })
       .catch(() => toast.error("Não deu pra carregar as configurações."));
   }, []);
@@ -314,8 +317,9 @@ export default function InboxSettingsPage() {
             <span className="min-w-0">
               <span className="block text-sm font-medium">Encerrar sozinho por inatividade</span>
               <span className="block text-xs text-muted-foreground text-pretty">
-                Marca como resolvida e deixa uma nota na conversa. O cliente não é avisado — se ele
-                escrever de novo, o atendimento reabre normalmente.
+                Marca como resolvida e deixa uma nota na conversa. Se o cliente escrever de novo, o
+                atendimento reabre normalmente. Vem ligado porque é proteção de custo, não só
+                organização.
               </span>
             </span>
             <Switch
@@ -336,6 +340,64 @@ export default function InboxSettingsPage() {
               ajuda="No máximo 23: o objetivo é encerrar antes das 24 horas da janela do WhatsApp."
               onSave={(valor) => patch({ autoCloseHours: valor })}
             />
+          ) : null}
+
+          {settings.autoCloseIdle ? (
+            <>
+              <label className="flex items-center justify-between gap-4 rounded-md border p-3">
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">Avisar o cliente ao encerrar</span>
+                  <span className="block text-xs text-muted-foreground text-pretty">
+                    Sem o aviso a conversa some só do seu lado: o cliente continua achando que tem
+                    alguém do outro lado e volta dias depois cobrando. Só é enviado a quem ainda
+                    está dentro das 24 horas — fora disso o WhatsApp recusaria a mensagem, e
+                    conversa antiga é encerrada em silêncio.
+                  </span>
+                </span>
+                <Switch
+                  checked={settings.autoCloseNotify}
+                  onCheckedChange={(checked) => patch({ autoCloseNotify: checked })}
+                  aria-label="Avisar o cliente ao encerrar por inatividade"
+                />
+              </label>
+
+              {settings.autoCloseNotify ? (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="auto-close-message" className="text-xs">
+                    Mensagem de despedida
+                  </Label>
+                  <Textarea
+                    id="auto-close-message"
+                    rows={3}
+                    value={despedida}
+                    onChange={(event) => setDespedida(event.target.value)}
+                    maxLength={1000}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      disabled={
+                        salvandoDespedida ||
+                        despedida.trim().length < 5 ||
+                        despedida.trim() === settings.autoCloseMessage
+                      }
+                      onClick={async () => {
+                        setSalvandoDespedida(true);
+                        const atualizada = await patch({
+                          autoCloseMessage: despedida.trim(),
+                        });
+                        if (atualizada) toast.success("Mensagem de despedida salva.");
+                        setSalvandoDespedida(false);
+                      }}
+                    >
+                      {salvandoDespedida ? <Spinner /> : null}
+                      Salvar mensagem
+                    </Button>
+                    <span className="text-xs text-muted-foreground">{despedida.length}/1000</span>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : null}
         </CardContent>
       </Card>

@@ -218,11 +218,31 @@ model InboxSettings {
   // Janela em horas pro reagrupamento. Passou disso, o assunto é outro e
   // a conversa nova começa limpa.
   groupWindowHours Int      @default(72)
-  // Encerra sozinho o que ficou parado. Serve pra não deixar assunto
-  // pendurado até estourar a janela de 24h de atendimento do WhatsApp,
-  // quando responder passa a exigir modelo aprovado (e pago).
-  autoCloseIdle    Boolean  @default(false)
+  /// Encerra sozinho o que ficou parado.
+  ///
+  /// LIGADO por padrão, e a razão é dinheiro: passadas 24h sem mensagem do
+  /// cliente, a janela de atendimento do WhatsApp fecha e responder passa a
+  /// exigir modelo aprovado — que é burocrático e COBRADO por mensagem.
+  /// Conversa esquecida em aberto é uma dessas contas esperando pra
+  /// acontecer, e quem desliga o recurso deveria estar escolhendo pagar,
+  /// não descobrindo depois que pagou.
+  ///
+  /// O padrão de 20 horas encerra com folga antes das 24, enquanto ainda dá
+  /// tempo de alguém reabrir de graça.
+  autoCloseIdle    Boolean  @default(true)
   autoCloseHours   Int      @default(20)
+  /// Avisa o cliente antes de encerrar por inatividade.
+  ///
+  /// Sem o aviso, a conversa some do lado de cá e o cliente fica achando
+  /// que ainda tem alguém do outro lado — ele volta dias depois cobrando
+  /// uma resposta que, pro sistema, já era assunto encerrado. Uma frase
+  /// resolve isso e ainda convida a voltar.
+  ///
+  /// Só é enviado dentro da janela de 24h (ver AutoCloseService): fora
+  /// dela a Meta recusa texto livre, e insistir seria pagar por um aviso
+  /// de despedida.
+  autoCloseNotify  Boolean  @default(true)
+  autoCloseMessage String   @default("Olá! Percebemos que faz um tempo que você não interage nesta conversa e, para manter nosso atendimento organizado, vamos encerrá-la por aqui. Se precisar de ajuda novamente, é só nos chamar. Será um prazer atender você!")
   // Assina a mensagem com o nome de quem respondeu ("*Renan:*" em negrito,
   // antes do texto). Desligado por padrão porque é decisão de imagem: tem
   // empresa que quer que o cliente saiba com quem falou, e tem empresa que

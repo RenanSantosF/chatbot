@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { motivoDaMeta } from './meta-erro';
+import { postarTexto } from './meta-texto';
 
 const GRAPH_API_VERSION = 'v21.0';
 // Mesma base sobrescrevível do serviço de mídia (ver whatsapp-media.service):
@@ -47,51 +48,29 @@ export class WhatsappSenderService {
     }
 
     const accessToken = this.encryption.decrypt(settings.accessTokenEncrypted);
-    const url = `${GRAPH_BASE}/${GRAPH_API_VERSION}/${settings.phoneNumberId}/messages`;
 
     this.logger.log(
       `Enviando mensagem via WhatsApp: phoneNumberId=${settings.phoneNumberId}, to=${to}`,
     );
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to,
-          type: 'text',
-          text: { body },
-          // context faz a mensagem sair como resposta citada no aparelho
-          // do cliente, do mesmo jeito que o WhatsApp normal.
-          ...(replyToExternalId
-            ? { context: { message_id: replyToExternalId } }
-            : {}),
-        }),
-      });
+    // A chamada em si mora em `meta-texto` porque o encerramento
+    // automático também precisa dela, e aquele é uma rotina de fundo que
+    // não pode injetar um serviço de escopo de requisição.
+    const { wamid, erro } = await postarTexto({
+      phoneNumberId: settings.phoneNumberId,
+      accessToken,
+      to,
+      body,
+      replyToExternalId,
+    });
 
-      const responseBody = await response.text();
-
-      if (!response.ok) {
-        this.logger.error(
-          `Falha ao enviar mensagem via WhatsApp (${response.status}): ${responseBody}`,
-        );
-        return null;
-      }
-
-      this.logger.log(
-        `Mensagem enviada via WhatsApp com sucesso: ${responseBody}`,
-      );
-      return this.extractMessageId(responseBody);
-    } catch (error) {
-      this.logger.error(
-        `Erro de rede ao enviar mensagem via WhatsApp: ${error instanceof Error ? error.message : error}`,
-      );
+    if (erro) {
+      this.logger.error(`Falha ao enviar mensagem via WhatsApp: ${erro}`);
       return null;
     }
+
+    this.logger.log(`Mensagem enviada via WhatsApp com sucesso: ${wamid}`);
+    return wamid;
   }
 
   /**
