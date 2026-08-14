@@ -852,7 +852,12 @@ export class ConversationsService {
     return {
       ...file,
       buffer: convertido,
-      mimetype: 'audio/ogg',
+      // O codec vai declarado, e não é detalhe: a Meta documenta que aceita
+      // "audio/ogg (somente codecs OPUS)" — ogg puro ela NÃO suporta. Como
+      // a porta de upload é leniente e aceita de qualquer jeito, a recusa
+      // só aparecia lá na frente, na entrega, como o erro 131053 genérico.
+      // O arquivo sempre foi opus; faltava dizer isso pra ela.
+      mimetype: 'audio/ogg; codecs=opus',
       originalname: file.originalname.replace(/\.[^.]+$/, '') + '.ogg',
     };
   }

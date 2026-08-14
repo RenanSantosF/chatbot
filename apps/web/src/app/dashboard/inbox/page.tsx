@@ -14,6 +14,7 @@ import {
   type InboxFilters,
 } from "@/components/inbox/inbox-filters";
 import { useRealtime } from "@/components/realtime-provider";
+import { useSession } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
 import { conversationCache } from "@/lib/conversation-cache";
 import { usePersistedState } from "@/lib/use-persisted-state";
@@ -60,6 +61,7 @@ function buildQuery(filters: InboxFilters, cursor?: string | null): string {
 
 export default function InboxPage() {
   const searchParams = useSearchParams();
+  const { user } = useSession();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -309,11 +311,23 @@ export default function InboxPage() {
     // jeito que o WhatsApp faz. Se o servidor confirmar, o evento de tempo
     // real substitui pela versão real; se falhar, ela some e avisamos.
     const optimisticId = `pending-${Date.now()}`;
+
+    // A empresa mostra o nome de quem respondeu no balão? Em vez de buscar
+    // a configuração (que atendente não tem permissão de ler), a resposta
+    // está na própria conversa: se as mensagens de atendente já carregam
+    // nome, o ajuste está ligado. Sem isso o balão otimista nasce sem nome
+    // e ganha um quando a versão do servidor chega — o mesmo salto visual
+    // que a troca abaixo existe pra evitar.
+    const mostraNome = Boolean(
+      detail?.messages.some((m) => m.senderType === "AGENT" && m.senderName),
+    );
+
     const optimistic: ConversationMessage = {
       id: optimisticId,
       conversationId: selectedId,
       senderType: "AGENT",
       senderId: null,
+      senderName: mostraNome ? user.name : null,
       content,
       messageType: "TEXT",
       metadata: null,
@@ -337,14 +351,25 @@ export default function InboxPage() {
     setSending(true);
 
     try {
-      await apiFetch(`/conversations/${selectedId}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ content, replyToId: quoted }),
-      });
-      // A mensagem real chega pelo socket; tirar a otimista aqui evita ela
-      // ficar duplicada na tela por um instante.
+      const salva = await apiFetch<ConversationMessage>(
+        `/conversations/${selectedId}/messages`,
+        { method: "POST", body: JSON.stringify({ content, replyToId: quoted }) },
+      );
+      // TROCA a otimista pela real, no lugar. Antes ela era removida e a
+      // versão do servidor entrava depois, pelo socket — duas operações
+      // separadas, e entre elas a mensagem sumia da tela. Era isso o
+      // "pisca duas vezes": o balão aparecia, sumia, e voltava com o nome
+      // de quem respondeu em cima (que só a versão do servidor tem).
+      //
+      // O evento do socket chega em seguida com a mesma mensagem e é
+      // descartado pela checagem de id que já existe lá.
       setDetail((prev) =>
-        prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev,
+        prev
+          ? {
+              ...prev,
+              messages: prev.messages.map((m) => (m.id === optimisticId ? salva : m)),
+            }
+          : prev,
       );
     } catch {
       setDetail((prev) =>

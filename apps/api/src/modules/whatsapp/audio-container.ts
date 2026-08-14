@@ -61,11 +61,21 @@ export function converterParaOggOpus(input: Buffer): Promise<Buffer | null> {
         'error',
         '-i',
         'pipe:0',
+        // Sem faixa de vídeo e sem metadados: capa de álbum e tags de
+        // gravador não servem pra nada numa mensagem de voz e são exatamente
+        // o tipo de bagagem que faz um parser alheio recusar o arquivo.
         '-vn',
+        '-map_metadata',
+        '-1',
         '-c:a',
         'libopus',
         '-b:a',
         '32k',
+        // 48 kHz mono: é a taxa nativa do Opus e o formato das mensagens de
+        // voz do próprio WhatsApp. Fixar evita depender do que o navegador
+        // gravou.
+        '-ar',
+        '48000',
         '-ac',
         '1',
         '-f',

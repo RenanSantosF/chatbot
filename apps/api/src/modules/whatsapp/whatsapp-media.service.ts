@@ -163,20 +163,57 @@ export class WhatsappMediaService {
     };
   }
 
-  /** Sobe um arquivo pra Meta e devolve o id de mídia usado no envio. */
+  /**
+   * Sobe um arquivo pra Meta e devolve o id de mídia usado no envio.
+   *
+   * Tenta primeiro com o tipo completo que recebeu — inclusive o parâmetro
+   * de codec, que é o que a Meta exige pra reconhecer ogg como opus. Se ela
+   * recusar ESSE formato de declaração (a documentação e o comportamento
+   * dela nem sempre batem), tenta de novo com o tipo base antes de desistir:
+   * uma declaração mais precisa nunca pode deixar de funcionar o que já
+   * funcionava.
+   */
   async upload(file: {
     buffer: Buffer;
     mimetype: string;
     originalname: string;
   }): Promise<string | null> {
+    const tipoBase = file.mimetype.split(';')[0].trim();
+    const tentativas =
+      tipoBase === file.mimetype ? [file.mimetype] : [file.mimetype, tipoBase];
+
+    let ultimaFalha = '';
+    for (const tipo of tentativas) {
+      const resultado = await this.tentarUpload(file, tipo);
+      if (resultado.id) {
+        if (tipo !== file.mimetype) {
+          this.logger.warn(
+            `A Meta recusou o tipo "${file.mimetype}"; subiu como "${tipo}".`,
+          );
+        }
+        return resultado.id;
+      }
+      ultimaFalha = resultado.erro ?? 'motivo não informado';
+    }
+
+    // O motivo da Meta sobe junto. "A Meta recusou o arquivo" sozinho não
+    // diz se o problema é o formato, o tamanho ou o token vencido — e sem
+    // isso a única saída de quem atende é tentar de novo até desistir.
+    throw new BadRequestException(`A Meta recusou o arquivo: ${ultimaFalha}`);
+  }
+
+  private async tentarUpload(
+    file: { buffer: Buffer; mimetype: string; originalname: string },
+    tipo: string,
+  ): Promise<{ id?: string; erro?: string }> {
     const { phoneNumberId, accessToken } = await this.credentials();
 
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
-    form.append('type', file.mimetype);
+    form.append('type', tipo);
     form.append(
       'file',
-      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
+      new Blob([new Uint8Array(file.buffer)], { type: tipo }),
       file.originalname,
     );
 
@@ -191,19 +228,18 @@ export class WhatsappMediaService {
 
     const body = await response.text();
     if (!response.ok) {
-      this.logger.error(`Falha ao subir mídia (${response.status}): ${body}`);
-      // O motivo da Meta sobe junto. "A Meta recusou o arquivo" sozinho não
-      // diz se o problema é o formato, o tamanho ou o token vencido — e sem
-      // isso a única saída de quem atende é tentar de novo até desistir.
-      throw new BadRequestException(
-        `A Meta recusou o arquivo: ${motivoDaMeta(body, response.status)}`,
+      this.logger.error(
+        `Falha ao subir mídia como "${tipo}" (${response.status}): ${body}`,
       );
+      return { erro: motivoDaMeta(body, response.status) };
     }
 
     try {
-      return (JSON.parse(body) as { id?: string }).id ?? null;
+      const id = (JSON.parse(body) as { id?: string }).id;
+      this.logger.log(`Mídia subida como "${tipo}": id=${id ?? 'ausente'}.`);
+      return { id: id ?? undefined, erro: id ? undefined : 'sem id na resposta' };
     } catch {
-      return null;
+      return { erro: 'resposta da Meta ilegível' };
     }
   }
 
