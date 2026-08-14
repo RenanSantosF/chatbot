@@ -257,6 +257,37 @@ export class AiEngineService {
       this.logger.warn(
         `IA não conseguiu responder a conversa ${conversationId}: ${error instanceof Error ? error.message : error}`,
       );
+
+      /*
+       * A ferramenta já rodou. A falha veio DEPOIS disso.
+       *
+       * Este era o buraco que sobrou da correção anterior: eu tinha
+       * tratado só o caso "o modelo devolveu texto vazio". Mas o provedor
+       * também estoura por outros motivos depois de executar uma
+       * ferramenta — estourou o limite de idas-e-voltas, o tempo acabou, a
+       * rede caiu. Em todos eles a transferência JÁ ACONTECEU, e cair aqui
+       * produzia duas coisas erradas de uma vez:
+       *
+       * 1. O cliente não recebia nada, embora alguém já estivesse a
+       *    caminho.
+       * 2. A conversa era escalada DE NOVO, agora com a nota "não houve
+       *    resposta automática" — que é falsa, porque houve ação — e
+       *    passando pelas regras de direcionamento outra vez. No painel
+       *    apareciam dois avisos seguidos se contradizendo sobre o mesmo
+       *    evento.
+       *
+       * Com `usadas` em mãos dá pra dizer a verdade: aconteceu isto, e é
+       * isto que o cliente ouve. Sem handoff novo — a conversa já está
+       * onde tem que estar.
+       */
+      const cortesia = textoDeCortesia(usadas);
+      if (cortesia) {
+        return {
+          tipo: 'respondeu',
+          resposta: { content: cortesia, verificacao: { precisaHandoff: false } },
+        };
+      }
+
       return {
         tipo: 'indisponivel',
         motivo: 'O cliente escreveu e não houve resposta automática.',

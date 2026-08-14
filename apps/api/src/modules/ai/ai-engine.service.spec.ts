@@ -434,3 +434,100 @@ describe('resposta meio certa não é jogada fora', () => {
     expect(resultado.resposta.verificacao.precisaHandoff).toBe(true);
   });
 });
+
+describe('o provedor falha DEPOIS de a ferramenta ter rodado', () => {
+  /**
+   * O buraco que sobrou da primeira correção: eu tinha tratado só o caso
+   * "o modelo devolveu texto vazio". Mas o provedor também estoura por
+   * outros motivos depois de executar uma ferramenta — limite de
+   * idas-e-voltas, tempo esgotado, rede. Em todos eles a transferência já
+   * aconteceu.
+   *
+   * No painel isso aparecia como dois avisos seguidos se contradizendo: "IA
+   * encaminhou para o setor Jurídico" e, logo abaixo, "não houve resposta
+   * automática". E o cliente, sem uma palavra.
+   */
+  function motorQueEstouraDepoisDaFerramenta(ferramenta: string) {
+    return new AiEngineService(
+      {
+        build: jest.fn().mockResolvedValue({
+          systemPrompt: 'Você é a assistente.',
+          history: [{ role: 'user', content: 'Onde fica o escritório?' }],
+        }),
+      } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+      } as never,
+      {
+        getEnabledDeclarations: jest
+          .fn()
+          .mockResolvedValue([
+            { name: ferramenta, description: '', parametersSchema: {} },
+          ]),
+        execute: jest.fn().mockResolvedValue({ output: { status: 'ok' } }),
+      } as never,
+      {
+        generateReply: jest.fn(
+          async (input: { executeTool?: AiToolExecutor }) => {
+            await input.executeTool?.(ferramenta, {});
+            throw new Error(
+              'A IA excedeu o limite de chamadas de ferramenta nesta resposta.',
+            );
+          },
+        ),
+      },
+    );
+  }
+
+  it('o cliente é avisado, em vez de ficar no silêncio', async () => {
+    const resultado =
+      await motorQueEstouraDepoisDaFerramenta(
+        'transferToQueue',
+      ).generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    expect(resultado.resposta.content).toContain('equipe');
+  });
+
+  it('não escala de novo — a conversa já está na fila certa', async () => {
+    // O segundo escalonamento é que produzia a nota falsa e mandava a
+    // conversa pelas regras de direcionamento outra vez.
+    const resultado =
+      await motorQueEstouraDepoisDaFerramenta(
+        'transferToQueue',
+      ).generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    expect(resultado.resposta.verificacao.precisaHandoff).toBe(false);
+  });
+
+  it('falha sem ferramenta nenhuma continua sendo IA indisponível', async () => {
+    const service = new AiEngineService(
+      {
+        build: jest.fn().mockResolvedValue({
+          systemPrompt: 'Você é a assistente.',
+          history: [{ role: 'user', content: 'oi' }],
+        }),
+      } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+      } as never,
+      { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      {
+        generateReply: jest
+          .fn()
+          .mockRejectedValue(new Error('O provedor de IA não respondeu.')),
+      },
+    );
+
+    const resultado = await service.generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('indisponivel');
+  });
+});
