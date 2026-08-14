@@ -66,6 +66,42 @@ export const STATUS_GROUPS = {
 
 export type StatusGroup = keyof typeof STATUS_GROUPS;
 
+/**
+ * O recorte que a pessoa escolheu na barra do Inbox.
+ *
+ * O MESMO objeto alimenta a lista e os contadores — e isso é o ponto. Com
+ * dois filtros escritos em lugares separados, os números do cabeçalho
+ * passam a discordar da lista embaixo: "12 pendentes" com cinco conversas
+ * na tela. Quem trabalha ali não tem como saber se as outras sete são de
+ * outro setor ou se a página parou de carregar, e a dúvida contamina a
+ * confiança na tela inteira.
+ */
+export interface FiltroDoInbox {
+  status?: ConversationStatus;
+  /** Grupo de trabalho (ver STATUS_GROUPS). Ignorado se `status` vier. */
+  statusGroup?: StatusGroup;
+  assignedUserId?: string;
+  queueId?: string;
+  customerId?: string;
+  priority?: ConversationPriority;
+  unreadOnly?: boolean;
+  unassignedOnly?: boolean;
+  search?: string;
+  /** Quem está olhando — define o que ela pode enxergar. */
+  viewer?: { userId: string; role: UserRole };
+}
+
+/**
+ * As facetas da barra, na forma que o contador entende.
+ *
+ * Um contador responde sempre a mesma pergunta: "se eu ligar ISTO, mantendo
+ * o resto como está, quantas vou ver?". Pra responder, ele monta o filtro
+ * atual SEM a própria faceta — senão "Minhas" contaria só o que já está
+ * filtrado por "Minhas", e o número seria o tamanho da lista, não uma
+ * informação nova.
+ */
+type Faceta = 'situacao' | 'priority' | 'mine' | 'unread' | 'unassigned';
+
 const OPEN_STATUSES: ConversationStatus[] = [
   'OPEN',
   'WAITING_CUSTOMER',
@@ -195,57 +231,12 @@ export class ConversationsService {
    * usuário o tempo todo: com offset, uma conversa que sobe pro topo faria
    * a página seguinte repetir ou pular itens.
    */
-  async list(filter: {
-    status?: ConversationStatus;
-    /** Grupo de trabalho (ver STATUS_GROUPS). Ignorado se `status` vier. */
-    statusGroup?: StatusGroup;
-    assignedUserId?: string;
-    queueId?: string;
-    customerId?: string;
-    priority?: ConversationPriority;
-    unreadOnly?: boolean;
-    unassignedOnly?: boolean;
-    search?: string;
-    cursor?: string;
-    limit?: number;
-    /** Quem está olhando — define o que ela pode enxergar. */
-    viewer?: { userId: string; role: UserRole };
-  }) {
+  async list(filter: FiltroDoInbox & { cursor?: string; limit?: number }) {
     const take = Math.min(Math.max(filter.limit ?? 30, 1), 100);
-    const search = filter.search?.trim();
     const recorte = await this.recorteDeVisibilidade(filter.viewer);
 
     const items = await this.prisma.db.conversation.findMany({
-      where: {
-        ...recorte,
-        // Status exato ganha do grupo: se alguém pediu "só as fechadas",
-        // não faz sentido devolver também as resolvidas.
-        ...(filter.status
-          ? { status: filter.status }
-          : filter.statusGroup
-            ? { status: { in: [...STATUS_GROUPS[filter.statusGroup]] } }
-            : {}),
-        ...(filter.assignedUserId
-          ? { assignedUserId: filter.assignedUserId }
-          : {}),
-        ...(filter.queueId ? { queueId: filter.queueId } : {}),
-        ...(filter.customerId ? { customerId: filter.customerId } : {}),
-        ...(filter.priority ? { priority: filter.priority } : {}),
-        ...(filter.unreadOnly ? { unreadCount: { gt: 0 } } : {}),
-        ...(filter.unassignedOnly ? { assignedUserId: null } : {}),
-        ...(search
-          ? {
-              customer: {
-                is: {
-                  OR: [
-                    { name: { contains: search, mode: 'insensitive' } },
-                    { phone: { contains: search } },
-                  ],
-                },
-              },
-            }
-          : {}),
-      },
+      where: this.montarWhere(filter, recorte),
       include: conversationInclude,
       orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
       take: take + 1,
@@ -260,6 +251,67 @@ export class ConversationsService {
     return {
       items: page.map(toSummary),
       nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+    };
+  }
+
+  /**
+   * Traduz o recorte da barra num `where` do Prisma.
+   *
+   * `exceto` é o que faz os contadores serem úteis: pra saber quantas
+   * conversas "Minhas" existem dentro do que já está filtrado, o filtro é
+   * montado sem a própria opção "Minhas".
+   *
+   * `situacao` cobre grupo e status exato juntos porque são o MESMO eixo —
+   * "Pendentes" e "Aguard. cliente" respondem a mesma pergunta em duas
+   * granularidades. Separá-los deixaria contar um recorte impossível
+   * (grupo Resolvidas com status Aberta), e nenhum número desses ajudaria
+   * ninguém.
+   */
+  private montarWhere(
+    filtro: FiltroDoInbox,
+    recorte: Prisma.ConversationWhereInput,
+    exceto: Faceta[] = [],
+  ): Prisma.ConversationWhereInput {
+    const fora = new Set(exceto);
+    const search = filtro.search?.trim();
+
+    return {
+      ...recorte,
+      // Status exato ganha do grupo: se alguém pediu "só as fechadas",
+      // não faz sentido devolver também as resolvidas.
+      ...(fora.has('situacao')
+        ? {}
+        : filtro.status
+          ? { status: filtro.status }
+          : filtro.statusGroup
+            ? { status: { in: [...STATUS_GROUPS[filtro.statusGroup]] } }
+            : {}),
+      ...(filtro.assignedUserId && !fora.has('mine')
+        ? { assignedUserId: filtro.assignedUserId }
+        : {}),
+      ...(filtro.queueId ? { queueId: filtro.queueId } : {}),
+      ...(filtro.customerId ? { customerId: filtro.customerId } : {}),
+      ...(filtro.priority && !fora.has('priority')
+        ? { priority: filtro.priority }
+        : {}),
+      ...(filtro.unreadOnly && !fora.has('unread')
+        ? { unreadCount: { gt: 0 } }
+        : {}),
+      ...(filtro.unassignedOnly && !fora.has('unassigned')
+        ? { assignedUserId: null }
+        : {}),
+      ...(search
+        ? {
+            customer: {
+              is: {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { phone: { contains: search } },
+                ],
+              },
+            },
+          }
+        : {}),
     };
   }
 
@@ -300,21 +352,35 @@ export class ConversationsService {
   }
 
   /**
-   * Contadores de cada filtro, calculados no banco pra não depender da
-   * página carregada.
+   * Contadores da barra de filtros.
    *
-   * Passa pelo MESMO recorte de visibilidade da lista (ver
-   * `recorteDeVisibilidade`). Sem isso, quem trabalha no modo restrito via
-   * "12 pendentes" no cabeçalho e cinco conversas na lista — e não tinha
-   * como saber se as sete restantes eram de outro setor ou se a tela tinha
-   * parado de carregar.
+   * Duas regras, e as duas vieram de a tela se contradizer na frente de
+   * quem usa:
+   *
+   * 1. Passam pelo MESMO recorte de visibilidade da lista. Sem isso, quem
+   *    trabalha no modo restrito via "12 pendentes" no cabeçalho e cinco
+   *    conversas embaixo.
+   *
+   * 2. Cada número já considera os OUTROS filtros ligados. Filtrar por
+   *    Pendentes e ver "Minhas 5" quando a lista mostra uma só é a mesma
+   *    contradição de outra forma — o contador estava respondendo sobre a
+   *    empresa inteira enquanto a lista respondia sobre o recorte.
+   *
+   * O que cada um responde agora: "se eu ligar isto, mantendo o resto,
+   * quantas vou ver?". Por isso a própria faceta sai do filtro antes de
+   * contar (ver `montarWhere`).
    */
-  async counts(viewer: { userId: string; role: UserRole }) {
-    const userId = viewer.userId;
-    const recorte = await this.recorteDeVisibilidade(viewer);
-    const visiveis = (extra: Prisma.ConversationWhereInput = {}) => ({
-      where: { ...recorte, ...extra },
+  async counts(filtro: FiltroDoInbox & { viewer: { userId: string; role: UserRole } }) {
+    const recorte = await this.recorteDeVisibilidade(filtro.viewer);
+    const onde = (exceto: Faceta[], extra: Prisma.ConversationWhereInput = {}) => ({
+      where: { ...this.montarWhere(filtro, recorte, exceto), ...extra },
     });
+
+    // Os quatro botões de situação são um eixo só: contar cada um exige
+    // tirar a situação atual do filtro, senão "Resolvidas" contaria dentro
+    // de "Pendentes" e daria zero sempre.
+    const semSituacao = (extra: Prisma.ConversationWhereInput = {}) =>
+      onde(['situacao'], extra);
 
     const [
       total,
@@ -327,31 +393,35 @@ export class ConversationsService {
       byStatus,
       byPriority,
     ] = await Promise.all([
-      this.prisma.db.conversation.count(visiveis()),
-      this.prisma.db.conversation.count(visiveis({ unreadCount: { gt: 0 } })),
-      this.prisma.db.conversation.count(visiveis({ assignedUserId: userId })),
-      this.prisma.db.conversation.count(visiveis({ assignedUserId: null })),
+      this.prisma.db.conversation.count(semSituacao()),
+      this.prisma.db.conversation.count(onde(['unread'], { unreadCount: { gt: 0 } })),
+      this.prisma.db.conversation.count(
+        onde(['mine'], { assignedUserId: filtro.viewer.userId }),
+      ),
+      this.prisma.db.conversation.count(
+        onde(['unassigned'], { assignedUserId: null }),
+      ),
       // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
       // quem atende faz de manhã — o que é minha vez, o que está com o
       // cliente, o que já acabou.
       this.prisma.db.conversation.count(
-        visiveis({ status: { in: [...STATUS_GROUPS.PENDING] } }),
+        semSituacao({ status: { in: [...STATUS_GROUPS.PENDING] } }),
       ),
       this.prisma.db.conversation.count(
-        visiveis({ status: { in: [...STATUS_GROUPS.WAITING] } }),
+        semSituacao({ status: { in: [...STATUS_GROUPS.WAITING] } }),
       ),
       this.prisma.db.conversation.count(
-        visiveis({ status: { in: [...STATUS_GROUPS.DONE] } }),
+        semSituacao({ status: { in: [...STATUS_GROUPS.DONE] } }),
       ),
       this.prisma.db.conversation.groupBy({
         by: ['status'],
         _count: { _all: true },
-        ...visiveis(),
+        ...semSituacao(),
       }),
       this.prisma.db.conversation.groupBy({
         by: ['priority'],
         _count: { _all: true },
-        ...visiveis(),
+        ...onde(['priority']),
       }),
     ]);
 
@@ -1711,7 +1781,7 @@ export class ConversationsService {
    * amanhã não sabe como chegou ali.
    */
   private async registrarNota(conversationId: string, texto: string) {
-    await this.prisma.db.message.create({
+    const nota = await this.prisma.db.message.create({
       data: {
         tenantId: this.prisma.tenantId,
         conversationId,
@@ -1720,6 +1790,12 @@ export class ConversationsService {
         messageType: 'TEXT',
       },
     });
+
+    // A nota também é anunciada. Antes ela só aparecia depois de alguém
+    // recarregar: respondendo numa conversa encerrada, a resposta surgia
+    // na hora e a tarja "o atendimento foi reaberto" — que é a explicação
+    // do que acabou de acontecer — chegava atrasada, ou nunca.
+    await this.emitirMensagemCriada(conversationId, nota);
   }
 
   /** Quem foi indicado confirma que vai atender. */

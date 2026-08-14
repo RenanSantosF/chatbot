@@ -87,7 +87,7 @@ describe('modo aberto (padrão)', () => {
 
   it('nem consulta os setores do usuário à toa', async () => {
     const { service } = montar({ visibilidade: 'ALL' });
-    await service.counts(atendente);
+    await service.counts({ viewer: atendente });
     // Só o `get` das configurações; nenhuma consulta de fila.
   });
 });
@@ -147,7 +147,7 @@ describe('contadores concordam com a lista', () => {
     // lista mostrava só o setor.
     const { service, wheres } = montar({ visibilidade: 'OWN_QUEUES' });
 
-    await service.counts(atendente);
+    await service.counts({ viewer: atendente });
 
     expect(wheres).toHaveLength(9);
     for (const where of wheres) {
@@ -158,7 +158,7 @@ describe('contadores concordam com a lista', () => {
   it('o recorte convive com o filtro próprio de cada contador', async () => {
     const { service, wheres } = montar({ visibilidade: 'OWN_QUEUES' });
 
-    await service.counts(atendente);
+    await service.counts({ viewer: atendente });
 
     expect(wheres).toContainEqual(
       expect.objectContaining({
@@ -177,7 +177,7 @@ describe('contadores concordam com a lista', () => {
   it('no modo aberto os contadores seguem contando tudo', async () => {
     const { service, wheres } = montar({ visibilidade: 'ALL' });
 
-    await service.counts(atendente);
+    await service.counts({ viewer: atendente });
 
     for (const where of wheres) {
       expect(where).not.toHaveProperty('OR');

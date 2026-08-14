@@ -113,6 +113,22 @@ export function InboxFilterBar({
   const set = <K extends keyof InboxFilters>(key: K, next: InboxFilters[K]) =>
     onChange({ ...value, [key]: next });
 
+  /**
+   * Grupo e "situação exata" são o MESMO eixo, em duas granularidades:
+   * "Pendentes" e "Aguard. cliente" respondem a mesma pergunta. Escolher um
+   * limpa o outro.
+   *
+   * Sem isso dava pra montar um recorte impossível — grupo Resolvidas com
+   * situação Aberta — em que a lista mostrava uma coisa (o backend faz a
+   * situação exata ganhar do grupo) e os botões diziam outra. Ninguém
+   * escolhe isso de propósito; dá pra chegar lá clicando duas vezes.
+   */
+  const escolherGrupo = (grupo: InboxFilters["grupo"]) =>
+    onChange({ ...value, grupo, status: "ALL" });
+
+  const escolherStatus = (status: InboxFilters["status"]) =>
+    onChange({ ...value, status, grupo: "ALL" });
+
   const contagemDoGrupo: Record<StatusGroup | "ALL", number> = {
     PENDING: counts.pendentes,
     WAITING: counts.aguardando,
@@ -153,7 +169,7 @@ export function InboxFilterBar({
               role="radio"
               aria-checked={ativo}
               title={grupo.ajuda}
-              onClick={() => set("grupo", grupo.value)}
+              onClick={() => escolherGrupo(grupo.value)}
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors",
                 ativo
@@ -225,7 +241,7 @@ export function InboxFilterBar({
           <Grupo
             titulo="Situação exata"
             value={value.status}
-            onChange={(next) => set("status", next as InboxFilters["status"])}
+            onChange={(next) => escolherStatus(next as InboxFilters["status"])}
             options={[
               { value: "ALL", label: "Todas" },
               ...STATUS_ORDER.map((status) => ({

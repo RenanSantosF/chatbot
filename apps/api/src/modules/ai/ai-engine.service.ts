@@ -85,14 +85,21 @@ export class AiEngineService {
       );
       return {
         tipo: 'indisponivel',
-        motivo: 'A IA está desligada nas configurações.',
+        // O motivo aparece no painel em "por que veio pra equipe", e é a
+        // primeira coisa que quem vai atender lê. Descreve o CASO, não o
+        // estado interno do sistema: "A IA falhou (erro no provedor)"
+        // soava alarme de incidente numa conversa que era só um "oi" sem
+        // resposta — e, numa demonstração pra cliente, deprecia o produto
+        // sem necessidade. O detalhe técnico continua no log, que é onde
+        // ele serve pra alguma coisa.
+        motivo: 'O atendimento automático está desligado e o cliente está esperando.',
       };
     }
     if (!credentials) {
       this.logger.warn('Sem API key de IA configurada.');
       return {
         tipo: 'indisponivel',
-        motivo: 'A IA está sem chave de API configurada.',
+        motivo: 'O atendimento automático ainda não foi configurado e o cliente está esperando.',
       };
     }
 
@@ -167,7 +174,7 @@ export class AiEngineService {
       );
       return {
         tipo: 'indisponivel',
-        motivo: 'A IA falhou ao responder (erro no provedor).',
+        motivo: 'O cliente escreveu e não houve resposta automática.',
       };
     }
   }

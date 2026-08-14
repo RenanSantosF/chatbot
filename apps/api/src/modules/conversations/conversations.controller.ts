@@ -62,11 +62,37 @@ export class ConversationsController {
     });
   }
 
+  /**
+   * Os mesmos parâmetros da listagem, de propósito.
+   *
+   * A barra manda o recorte que está na tela, e cada contador responde
+   * "quantas eu veria se ligasse isto, mantendo o resto". Sem receber os
+   * filtros, o cabeçalho contava a empresa inteira enquanto a lista
+   * mostrava um recorte — e os dois números na mesma tela se
+   * contradiziam.
+   */
   @Get('counts')
-  counts(@CurrentUser() user: RequestUser) {
+  counts(
+    @Query('status') status: ConversationStatus | undefined,
+    @Query('statusGroup') statusGroup: StatusGroup | undefined,
+    @Query('mine') mine: string | undefined,
+    @Query('queueId') queueId: string | undefined,
+    @Query('priority') priority: ConversationPriority | undefined,
+    @Query('unread') unread: string | undefined,
+    @Query('unassigned') unassigned: string | undefined,
+    @Query('search') search: string | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.conversationsService.counts({
-      userId: user.userId,
-      role: user.role,
+      status,
+      statusGroup,
+      assignedUserId: mine === 'true' ? user.userId : undefined,
+      queueId,
+      priority,
+      unreadOnly: unread === 'true',
+      unassignedOnly: unassigned === 'true',
+      search,
+      viewer: { userId: user.userId, role: user.role },
     });
   }
 

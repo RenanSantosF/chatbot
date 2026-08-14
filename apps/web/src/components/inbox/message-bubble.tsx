@@ -1,4 +1,14 @@
-import { Ban, Check, CheckCheck, Forward, Reply, Trash2, TriangleAlert } from "lucide-react";
+import {
+  Ban,
+  Check,
+  CheckCheck,
+  Forward,
+  Reply,
+  SmilePlus,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
@@ -51,6 +61,92 @@ function DeliveryTicks({ status, motivo }: { status: MessageStatus; motivo?: str
 }
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏"];
+
+/**
+ * O botão de reagir, e as carinhas atrás dele.
+ *
+ * Antes os cinco emojis coloridos apareciam de uma vez ao passar o mouse.
+ * Cinco figuras coloridas pulando em cima de cada balão viram festa visual
+ * numa tela que a pessoa encara o dia inteiro, e o alvo real — responder,
+ * encaminhar, apagar — ficava espremido do lado delas.
+ *
+ * Agora é o caminho do WhatsApp Web: passa o mouse e aparece uma carinha
+ * discreta; quem quer reagir clica nela e escolhe. Um passo a mais para
+ * quem reage, silêncio para quem não vai reagir — que é a maioria das
+ * vezes que o mouse passa por cima de um balão.
+ */
+function BotaoDeReagir({
+  onPick,
+  alinharADireita,
+}: {
+  onPick: (emoji: string) => void;
+  alinharADireita: boolean;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+
+    const foraDaqui = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setAberto(false);
+    };
+    const noEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAberto(false);
+    };
+
+    document.addEventListener("mousedown", foraDaqui);
+    document.addEventListener("keydown", noEsc);
+    return () => {
+      document.removeEventListener("mousedown", foraDaqui);
+      document.removeEventListener("keydown", noEsc);
+    };
+  }, [aberto]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        title="Reagir"
+        aria-label="Reagir a esta mensagem"
+        aria-expanded={aberto}
+        onClick={() => setAberto((estava) => !estava)}
+        className={cn(
+          "rounded-full p-1 transition-colors",
+          aberto ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <SmilePlus className="size-4.5" />
+      </button>
+
+      {aberto ? (
+        <div
+          className={cn(
+            // Emoji em 20px porque abaixo disso o navegador rasteriza a
+            // fonte de emoji e ela sai serrilhada.
+            "absolute bottom-full z-20 mb-1.5 flex items-center gap-1 rounded-full bg-popover px-1.5 py-1 shadow-[0_2px_12px_oklch(0_0_0/18%)]",
+            alinharADireita ? "right-0" : "left-0",
+          )}
+        >
+          {QUICK_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              title={`Reagir com ${emoji}`}
+              onClick={() => {
+                onPick(emoji);
+                setAberto(false);
+              }}
+              className="rounded-full px-1 text-[20px] leading-none transition-transform hover:scale-125"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Pinta os trechos que casam com a busca. Divide pelo termo em vez de usar
@@ -158,23 +254,19 @@ export function MessageBubble({
             // Sem borda: a sombra já destaca, e o traço em volta de um menu
             // pequeno vira moldura. Emoji em 20px porque abaixo disso o
             // navegador rasteriza a fonte de emoji e ela sai serrilhada.
-            "absolute bottom-full z-10 mb-1.5 flex items-center gap-1 rounded-full bg-popover px-1.5 py-1 opacity-0 shadow-[0_2px_12px_oklch(0_0_0/18%)] transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
+            // `focus-within` também segura a barra visível: sem ele, abrir
+            // o seletor de reação e mover o mouse pra escolher fazia a
+            // barra inteira sumir junto com ele.
+            "absolute bottom-full z-10 mb-1.5 flex items-center gap-1 rounded-full bg-popover px-1.5 py-1 opacity-0 shadow-[0_2px_12px_oklch(0_0_0/18%)] transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100",
             fromCustomer ? "left-2" : "right-2",
           )}
         >
-          {onReact
-            ? QUICK_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  title={`Reagir com ${emoji}`}
-                  onClick={() => void onReact(message.id, emoji)}
-                  className="rounded-full px-1 text-[20px] leading-none transition-transform hover:scale-125"
-                >
-                  {emoji}
-                </button>
-              ))
-            : null}
+          {onReact ? (
+            <BotaoDeReagir
+              alinharADireita={!fromCustomer}
+              onPick={(emoji) => void onReact(message.id, emoji)}
+            />
+          ) : null}
           {onReply ? (
             <button
               type="button"

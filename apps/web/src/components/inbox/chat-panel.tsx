@@ -246,6 +246,37 @@ export function ChatPanel({
   const pularIdaAoFimRef = useRef(false);
   const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
 
+  /**
+   * Esc fecha o que estiver aberto, um de cada vez.
+   *
+   * A ordem é a de "quanto isso está no meu caminho agora": primeiro a
+   * confirmação de apagar e o encaminhamento, que são janelas por cima de
+   * tudo; depois a busca dentro da conversa; por último a citação presa no
+   * compositor.
+   *
+   * De propósito NÃO fecha a conversa: Esc é o gesto de desfazer o último
+   * passo, e perder a conversa aberta (e o rascunho junto) por uma tecla
+   * seria caro demais pra quem só queria cancelar a resposta citada.
+   */
+  useEffect(() => {
+    const aoTeclar = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+
+      if (apagando) return setApagando(null);
+      if (forwarding) return setForwarding(null);
+      if (pendingFile) return setPendingFile(null);
+      if (searchOpen) {
+        setSearchOpen(false);
+        setNeedle("");
+        return;
+      }
+      if (replyTo) onCancelReply();
+    };
+
+    document.addEventListener("keydown", aoTeclar);
+    return () => document.removeEventListener("keydown", aoTeclar);
+  }, [apagando, forwarding, pendingFile, searchOpen, replyTo, onCancelReply]);
+
   async function carregarAnteriores() {
     const area = scrollAreaRef.current;
     if (!area || carregandoAnteriores) return;
