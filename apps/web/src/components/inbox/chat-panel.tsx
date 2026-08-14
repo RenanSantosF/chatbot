@@ -256,15 +256,29 @@ export function ChatPanel({
    * um clique no campo antes de digitar é um passo que existe em todo
    * atendimento, o dia inteiro — e ninguém abre uma conversa pra olhar.
    *
-   * O painel é remontado a cada troca (key={selectedId} no Inbox), então
-   * este efeito roda uma vez por conversa aberta.
+   * Roda quando o COMPOSITOR aparece, não na montagem do painel. A
+   * diferença decidia se funcionava: abrindo uma conversa a partir do
+   * estado vazio, o painel monta mostrando o carregamento e o campo ainda
+   * não existe — o foco caía no nada. Trocando de uma conversa pra outra
+   * ele funcionava por acaso, porque o cache pinta a conversa no mesmo
+   * quadro da montagem.
+   *
+   * O painel é remontado a cada troca (key={selectedId} no Inbox), então o
+   * `jaFocou` reinicia sozinho a cada conversa aberta.
    */
+  const jaFocou = useRef(false);
   useEffect(() => {
+    if (jaFocou.current || !conversation) return;
     // No celular o foco automático abre o teclado por cima da conversa,
     // tapando justamente o que a pessoa acabou de abrir pra ler.
     if (window.matchMedia("(pointer: coarse)").matches) return;
-    composerRef.current?.focus();
-  }, []);
+
+    const campo = composerRef.current;
+    if (!campo || campo.disabled) return;
+
+    jaFocou.current = true;
+    campo.focus();
+  }, [conversation]);
 
   /**
    * Onde a leitura estava quando o "carregar mensagens anteriores" foi
@@ -735,7 +749,10 @@ export function ChatPanel({
           const previous = conversation.messages[index - 1];
           const startsNewDay = !previous || !sameDay(previous.createdAt, message.createdAt);
           return (
-            <div key={message.id} className="contents">
+            // `clientKey` antes do `id`: é o que mantém o MESMO elemento
+            // quando o balão otimista vira a versão do servidor, em vez de
+            // desmontar e remontar (e reanimar) no lugar.
+            <div key={message.clientKey ?? message.id} className="contents">
               {startsNewDay ? <DaySeparator label={dayLabel(message.createdAt)} /> : null}
               {message.id === primeiraNaoLida ? (
                 <UnreadDivider count={naoLidasAoAbrir} />

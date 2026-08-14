@@ -369,7 +369,11 @@ export default function InboxPage() {
 
         const messages =
           otimista >= 0
-            ? prev.messages.map((m, i) => (i === otimista ? message : m))
+            ? prev.messages.map((m, i) =>
+                i === otimista
+                  ? { ...message, clientKey: prev.messages[otimista].clientKey }
+                  : m,
+              )
             : [...prev.messages, message];
 
         conversationCache.patchMessages(conversationId, messages);
@@ -447,6 +451,10 @@ export default function InboxPage() {
 
     const optimistic: ConversationMessage = {
       id: optimisticId,
+      // A chave de tela nasce aqui e acompanha a mensagem até o fim: é ela
+      // que impede o balão de ser remontado (e reanimado) quando o id
+      // provisório der lugar ao do servidor.
+      clientKey: optimisticId,
       conversationId: selectedId,
       senderType: "AGENT",
       senderId: null,
@@ -499,7 +507,9 @@ export default function InboxPage() {
         const jaChegouPeloSocket = prev.messages.some((m) => m.id === salva.id);
         const messages = jaChegouPeloSocket
           ? prev.messages.filter((m) => m.id !== optimisticId)
-          : prev.messages.map((m) => (m.id === optimisticId ? salva : m));
+          : prev.messages.map((m) =>
+              m.id === optimisticId ? { ...salva, clientKey: optimisticId } : m,
+            );
 
         return { ...prev, messages };
       });

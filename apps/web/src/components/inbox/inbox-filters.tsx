@@ -185,28 +185,6 @@ export function InboxFilterBar({
             className="h-10 rounded-lg border-transparent bg-muted pl-8 text-[13px] shadow-none"
           />
         </div>
-        {/* A troca de ordem fica ao lado da busca, e não escondida em
-            "Mais": é uma decisão de COMO trabalhar, não um refinamento do
-            que aparece. Um clique liga a fila, outro volta pro normal. */}
-        <button
-          type="button"
-          aria-pressed={naFila}
-          onClick={() => set("ordem", naFila ? "RECENTE" : "ESPERA")}
-          title={
-            naFila
-              ? "Ordenado por tempo de espera. Clique pra voltar à ordem por mensagem mais recente."
-              : "Ordenar pela fila: quem espera resposta há mais tempo primeiro."
-          }
-          className={cn(
-            "flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
-            naFila
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-        >
-          <ArrowDownWideNarrow className="size-4" />
-          {naFila ? "Fila" : "Recentes"}
-        </button>
         {action}
       </div>
 
@@ -243,6 +221,33 @@ export function InboxFilterBar({
             </button>
           );
         })}
+      </div>
+
+      {/* Como a lista é ordenada.
+          
+          Um botão só, que alternava e mostrava o estado atual, era ambíguo:
+          lendo "Fila" não dá pra saber se é onde estou ou pra onde vou. Duas
+          opções lado a lado com a atual acesa respondem isso sem legenda —
+          é a mesma leitura de um interruptor de duas posições. */}
+      <div
+        role="radiogroup"
+        aria-label="Ordem da lista"
+        className="flex items-center gap-1 rounded-lg bg-muted p-0.5"
+      >
+        <OpcaoDeOrdem
+          ativa={!naFila}
+          onClick={() => set("ordem", "RECENTE")}
+          icone={Clock3}
+          rotulo="Mais recentes"
+          ajuda="Quem falou por último em cima, como num mensageiro."
+        />
+        <OpcaoDeOrdem
+          ativa={naFila}
+          onClick={() => set("ordem", "ESPERA")}
+          icone={ArrowDownWideNarrow}
+          rotulo="Fila de espera"
+          ajuda="Quem está sem resposta há mais tempo primeiro."
+        />
       </div>
 
       {/* Recortes que se somam ao grupo, como interruptores. Antes eram
@@ -330,6 +335,46 @@ export function InboxFilterBar({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Uma das duas posições do seletor de ordem.
+ *
+ * A acesa fica com fundo claro e sombra, do jeito que um controle
+ * segmentado se comporta em qualquer sistema: a posição levantada é onde
+ * você está, a rebaixada é pra onde dá pra ir.
+ */
+function OpcaoDeOrdem({
+  ativa,
+  onClick,
+  icone: Icone,
+  rotulo,
+  ajuda,
+}: {
+  ativa: boolean;
+  onClick: () => void;
+  icone: typeof Inbox;
+  rotulo: string;
+  ajuda: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={ativa}
+      onClick={onClick}
+      title={ajuda}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+        ativa
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icone className="size-3.5 shrink-0" />
+      {rotulo}
+    </button>
   );
 }
 
