@@ -597,7 +597,33 @@ export class AiToolsService {
     }
 
     const config = await this.prisma.db.aiTool.findFirst({ where: { key } });
-    const permission = config?.permission ?? 'REQUIRES_APPROVAL';
+
+    /**
+     * Sem linha no banco, vale o padrão do catálogo — o MESMO que a tela
+     * mostra (ver `listConfigured`).
+     *
+     * Aqui o padrão tinha ficado em "Aprovar" enquanto a tela e a
+     * declaração ao modelo já usavam "Permitir", e empresa que nunca abriu
+     * Configurações > IA > Ferramentas não tem linha nenhuma gravada — ou
+     * seja, toda conta nova. O efeito era pior que uma ferramenta
+     * desligada: a tela mostrava tudo em "Permitir", o modelo recebia as
+     * ferramentas normalmente, chamava `transferToQueue`, e a execução
+     * respondia "isto exige aprovação de um humano". Ninguém era
+     * transferido, cada tentativa deixava uma tarefa "Aprovar: Transferir
+     * atendimento" pra trás, e `collectCustomerData` também não gravava
+     * nada — o que trancava a transferência de vez, já que a barreira de
+     * coleta exige justamente esses dados.
+     *
+     * `enabled` é conferido aqui também. Desligada, a ferramenta some da
+     * lista oferecida ao modelo, mas isso é só o pedido: o nome dela
+     * continua no histórico da conversa e a chamada pode voltar de lá.
+     * Quem decide o que acontece é esta função, não o prompt.
+     */
+    if (config?.enabled === false) {
+      return { error: 'Esta ferramenta não está disponível.' };
+    }
+
+    const permission = config?.permission ?? 'ALLOW';
 
     if (permission === 'DENY') {
       return { error: 'Esta ferramenta não está disponível.' };

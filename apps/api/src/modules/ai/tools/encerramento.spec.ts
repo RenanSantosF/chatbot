@@ -43,7 +43,9 @@ function servicoCom(
           }),
       },
       aiTool: {
-        findFirst: jest.fn().mockResolvedValue({ permission: 'ALLOW' }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ enabled: true, permission: 'ALLOW' }),
         findMany: jest.fn().mockResolvedValue([]),
       },
       aiSettings: {
