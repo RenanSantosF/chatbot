@@ -1,4 +1,8 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 
 const logger = new Logger('AudioContainer');
@@ -59,6 +63,14 @@ export function converterParaOggOpus(input: Buffer): Promise<Buffer | null> {
         '-hide_banner',
         '-loglevel',
         'error',
+        // Timestamps do navegador não são de confiança. O MediaRecorder
+        // grava com a base de tempo que quiser, e o resultado é um arquivo
+        // pequeno que se diz enorme: 5 KB alegando cinco minutos. O player
+        // do painel mostrava "5:03 / 5:04" pra um áudio de sete segundos, e
+        // a Meta recusava o mesmo arquivo com "Media upload error" —
+        // duração declarada e conteúdo não batiam.
+        '-fflags',
+        '+genpts',
         '-i',
         'pipe:0',
         // Sem faixa de vídeo e sem metadados: capa de álbum e tags de
@@ -67,6 +79,11 @@ export function converterParaOggOpus(input: Buffer): Promise<Buffer | null> {
         '-vn',
         '-map_metadata',
         '-1',
+        // Reescreve os tempos a partir da CONTAGEM DE AMOSTRAS, ignorando o
+        // que o container de entrada dizia. É o que faz a duração do Ogg
+        // corresponder ao áudio que existe dentro dele.
+        '-af',
+        'asetpts=N/SR/TB',
         '-c:a',
         'libopus',
         '-b:a',
@@ -130,14 +147,84 @@ export function converterParaOggOpus(input: Buffer): Promise<Buffer | null> {
         return;
       }
 
-      logger.log(
-        `Áudio convertido pra ogg/opus: ${input.length} bytes -> ${saida.length} bytes.`,
+      // A duração dos dois lados vai pro log. É o número que separa "o
+      // arquivo está certo e o player é que mente" de "estamos produzindo
+      // um arquivo que se diz mais longo do que é" — e sem ele a diferença
+      // só aparece como um erro genérico da Meta, horas depois.
+      void Promise.all([duracaoDe(input), duracaoDe(saida)]).then(
+        ([antes, depois]) => {
+          logger.log(
+            `Áudio convertido pra ogg/opus: ${input.length} bytes (${antes}) -> ` +
+              `${saida.length} bytes (${depois}).`,
+          );
+        },
       );
       resolve(saida);
     });
 
     child.stdin?.end(input);
   });
+}
+
+/**
+ * Duração que o arquivo DECLARA, em segundos, lida pelo ffprobe.
+ *
+ * "Declara" é o ponto: um arquivo de 5 KB pode se dizer de cinco minutos
+ * quando os tempos internos estão errados, e é essa mentira — não o
+ * tamanho — que faz a Meta recusar e o player mostrar bobagem. Devolve
+ * texto pronto pro log, porque é só pra ler.
+ */
+async function duracaoDe(buffer: Buffer): Promise<string> {
+  // Arquivo temporário, e não pipe: a duração de um Ogg mora na ÚLTIMA
+  // página, então lê-la exige pular pro fim — coisa que um fluxo sequencial
+  // não permite. Medir por pipe devolvia "ilegível" mesmo pra arquivo
+  // perfeito.
+  //
+  // Esse mesmo detalhe explica o defeito no painel: sem resposta parcial no
+  // proxy de mídia, o navegador também não conseguia alcançar o fim do
+  // arquivo e inventava a duração — "5:04" pra sete segundos de áudio.
+  const caminho = join(
+    tmpdir(),
+    `clara-audio-${randomUUID()}${buffer.length}.tmp`,
+  );
+
+  try {
+    await writeFile(caminho, buffer);
+    return await new Promise<string>((resolve) => {
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn('ffprobe', [
+          '-v',
+          'error',
+          '-show_entries',
+          'format=duration',
+          '-of',
+          'default=noprint_wrappers=1:nokey=1',
+          caminho,
+        ]);
+      } catch {
+        resolve('duração desconhecida');
+        return;
+      }
+
+      let saida = '';
+      child.on('error', () => resolve('duração desconhecida'));
+      child.stdout?.on('data', (chunk: Buffer) => (saida += chunk.toString()));
+      child.on('close', () => {
+        const segundos = Number.parseFloat(saida.trim());
+        resolve(
+          Number.isFinite(segundos)
+            ? `${segundos.toFixed(1)}s`
+            : 'duração ilegível',
+        );
+      });
+    });
+  } catch {
+    return 'duração desconhecida';
+  } finally {
+    // Medir não pode encher o disco do servidor.
+    await rm(caminho, { force: true }).catch(() => undefined);
+  }
 }
 
 /**

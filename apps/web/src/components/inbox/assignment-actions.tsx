@@ -4,6 +4,7 @@ import { Check, UserPlus, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { SelectField } from "@/components/ui/select-field";
 import {
   Sheet,
@@ -106,7 +107,7 @@ export function AssignmentActions({
           Indicada a você
         </span>
         <Button size="sm" disabled={ocupado} onClick={() => void chamar("accept")}>
-          <Check className="size-4" />
+          {ocupado ? <Spinner className="size-3.5" /> : <Check className="size-4" />}
           Aceitar
         </Button>
         <Button
@@ -115,7 +116,7 @@ export function AssignmentActions({
           disabled={ocupado}
           onClick={() => void chamar("decline")}
         >
-          <X className="size-4" />
+          {ocupado ? <Spinner className="size-3.5" /> : <X className="size-4" />}
           Recusar
         </Button>
       </div>
@@ -137,7 +138,7 @@ export function AssignmentActions({
               title={`Atendida por ${conversation.assignedUser.name}`}
               onClick={() => void chamar("assign")}
             >
-              <UserPlus className="size-4" />
+              {ocupado ? <Spinner className="size-3.5" /> : <UserPlus className="size-4" />}
               Assumir
             </Button>
           ) : null}
@@ -148,7 +149,7 @@ export function AssignmentActions({
         </>
       ) : (
         <Button size="sm" variant="outline" disabled={ocupado} onClick={() => void chamar("assign")}>
-          <UserPlus className="size-4" />
+          {ocupado ? <Spinner className="size-3.5" /> : <UserPlus className="size-4" />}
           Assumir
         </Button>
       )}

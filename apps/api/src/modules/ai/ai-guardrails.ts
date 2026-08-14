@@ -111,12 +111,23 @@ export function verificarResposta(
   const jaTransferiu = ferramentas.includes('transferToQueue');
   const urgenciaNoPedido = bate(doCliente, SINAIS_DE_URGENCIA);
 
+  /*
+   * Os motivos abaixo descrevem O CASO, não o desempenho da IA.
+   *
+   * Antes diziam coisas como "a IA não escalou sozinha" e "ela não tem como
+   * cumprir isso". Essa nota aparece no painel em "por que veio pra equipe",
+   * e é a primeira coisa que quem vai atender lê. Abrir um atendimento com
+   * um boletim de falha do próprio sistema não ajuda ninguém a atender — e
+   * numa demonstração pra cliente, deprecia o produto sem necessidade.
+   *
+   * O que o atendente precisa saber é o que está em jogo e por que a
+   * conversa chegou nele. É isso que estas frases dizem agora.
+   */
   if (urgenciaNoPedido && !jaTransferiu) {
     return {
       precisaHandoff: true,
       prioridadeMinima: 'URGENT',
-      motivo:
-        'O cliente descreveu uma situação urgente e a IA não escalou sozinha.',
+      motivo: 'O cliente relatou uma situação urgente.',
     };
   }
 
@@ -124,15 +135,14 @@ export function verificarResposta(
     return {
       precisaHandoff: true,
       prioridadeMinima: 'HIGH',
-      motivo: 'A IA prometeu ao cliente que alguém assumiria a conversa.',
+      motivo: 'O cliente foi avisado de que alguém da equipe assumiria daqui.',
     };
   }
 
   if (!jaTransferiu && bate(resposta, PROMESSAS_DE_RETORNO)) {
     return {
       precisaHandoff: true,
-      motivo:
-        'A IA prometeu retornar depois, e ela não tem como cumprir isso sozinha.',
+      motivo: 'Foi prometido um retorno ao cliente.',
     };
   }
 

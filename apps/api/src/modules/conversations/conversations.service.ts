@@ -1329,7 +1329,7 @@ export class ConversationsService {
           tenantId: this.prisma.tenantId,
           conversationId,
           senderType: 'SYSTEM',
-          content: `Encaminhado automaticamente: ${verificacao.motivo}`,
+          content: `Encaminhado para a equipe: ${verificacao.motivo}`,
           messageType: 'TEXT',
         },
       });

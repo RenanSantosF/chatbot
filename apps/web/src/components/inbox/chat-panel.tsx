@@ -285,11 +285,18 @@ export function ChatPanel({
     if (!area) return;
 
     const primeira = firstPaintRef.current;
-    // Mensagem nova só arrasta a tela pra baixo se quem está lendo já
-    // estava no fim. Antes ia sempre, e ler o histórico com a conversa
-    // ativa era impossível: cada mensagem que chegava puxava a página de
-    // volta pro rodapé no meio da leitura.
-    if (!primeira && !pertoDoFim) return;
+
+    // Mensagem do CLIENTE só arrasta a tela se quem está lendo já estava no
+    // fim — ler o histórico com a conversa ativa era impossível quando toda
+    // mensagem que chegava puxava a página de volta pro rodapé.
+    //
+    // Mensagem NOSSA sempre desce. Quem acabou de escrever quer ver o que
+    // escreveu: mandar do meio do histórico e a tela não se mexer parece
+    // que a mensagem não saiu.
+    const mensagens = conversation?.messages ?? [];
+    const ultima = mensagens[mensagens.length - 1];
+    const foiEuQueMandei = Boolean(ultima) && ultima.senderType !== "CUSTOMER";
+    if (!primeira && !pertoDoFim && !foiEuQueMandei) return;
     firstPaintRef.current = false;
 
     // Mexe no scrollTop do container em vez de scrollIntoView: este último
