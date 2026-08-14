@@ -63,6 +63,10 @@ export interface MessageMetadata {
   fileName?: string;
   size?: number;
   voice?: boolean;
+  /** Motivo da recusa da Meta, gravado quando o envio falha. */
+  falha?: string;
+  /** Chave do anexo no bucket próprio, quando já foi arquivado. */
+  storageKey?: string;
   latitude?: number;
   longitude?: number;
   name?: string;

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res, UnauthorizedException } from '@nestjs/common';
+import { Throttle, seconds } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { Public } from '../../common/auth/public.decorator';
@@ -36,7 +37,12 @@ export class AuthController {
     return { ...rest, accessToken };
   }
 
+  /**
+   * Cinco por minuto. Criar empresa é ato raro — quem faz isso em rajada
+   * está enchendo o banco de tenants, não abrindo negócio.
+   */
   @Public()
+  @Throttle({ curto: { ttl: seconds(60), limit: 5 } })
   @Post('register')
   async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.register(dto);
@@ -44,7 +50,19 @@ export class AuthController {
     return this.toResponseBody(result);
   }
 
+  /**
+   * Dez tentativas por minuto, por IP.
+   *
+   * É o teto que separa "errei a senha e tentei de novo" de "estou testando
+   * uma lista de senhas". Dez cabe folgado no primeiro caso e torna o
+   * segundo inviável: uma senha fraca de seis dígitos levaria mais de dois
+   * meses nesse ritmo.
+   *
+   * O balde é por IP, então não dá pra travar a conta de alguém de fora —
+   * quem exagera trava a si mesmo.
+   */
   @Public()
+  @Throttle({ curto: { ttl: seconds(60), limit: 10 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {

@@ -13,7 +13,6 @@ import {
   type FilterCounts,
   type InboxFilters,
 } from "@/components/inbox/inbox-filters";
-import { SimulateInboundDialog } from "@/components/inbox/simulate-inbound-dialog";
 import { useRealtime } from "@/components/realtime-provider";
 import { apiFetch } from "@/lib/api-client";
 import { conversationCache } from "@/lib/conversation-cache";
@@ -132,11 +131,28 @@ export default function InboxPage() {
         setDetail(conversation);
         setMessagesCursor(conversation.messagesCursor);
       }
-      clearUnread(id);
-      setConversations((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, unreadCount: 0 } : item)),
-      );
-      loadCounts();
+      // Abrir não zera mais nada: quem zera é `marcarLida`, quando o fim da
+      // conversa aparece na tela. O contador segue intacto até lá porque é
+      // dele que sai a tarja de "N mensagens não lidas".
+    },
+    [],
+  );
+
+  /**
+   * O fim da conversa apareceu pra quem está olhando. Só então ela conta
+   * como lida — aqui, na lista, no menu lateral e no tique azul do cliente.
+   */
+  const marcarLida = useCallback(
+    (id: string) => {
+      apiFetch(`/conversations/${id}/read`, { method: "POST" })
+        .then(() => {
+          clearUnread(id);
+          setConversations((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, unreadCount: 0 } : item)),
+          );
+          loadCounts();
+        })
+        .catch(() => {});
     },
     [clearUnread, loadCounts],
   );
@@ -385,6 +401,13 @@ export default function InboxPage() {
     if (!selectedId) return;
     try {
       await apiFetch(`/conversations/${selectedId}/${path}`, { method: "POST" });
+      // Espera a conversa voltar antes de devolver o controle: é isso que
+      // faz o botão continuar em "carregando" até o estado novo estar na
+      // tela, em vez de voltar ao normal e mudar de rótulo um instante
+      // depois — que dava a impressão de que o clique não pegou.
+      await loadDetail(selectedId).catch(() => {});
+      await loadConversations(filters).catch(() => {});
+      loadCounts();
     } catch {
       toast.error(errorMessage);
     }
@@ -408,12 +431,11 @@ export default function InboxPage() {
     // filtros já dizem onde a pessoa está.
     <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[400px_1fr] xl:grid-cols-[400px_1fr_330px] [&>*]:min-h-0">
       <div className="hidden min-h-0 flex-col border-r md:flex">
-        <InboxFilterBar
-          value={filters}
-          counts={counts}
-          onChange={setFilters}
-          action={<SimulateInboundDialog onSimulated={() => loadConversations(filters)} />}
-        />
+        {/* Sem o simulador de cliente: ele existia pra testar o fluxo antes
+            de o WhatsApp estar conectado. Com o canal no ar ele só criava
+            conversa falsa no meio das de verdade. O endpoint continua na
+            API pros testes automatizados. */}
+        <InboxFilterBar value={filters} counts={counts} onChange={setFilters} />
         <ConversationList
           conversations={conversations}
           selectedId={selectedId}
@@ -438,6 +460,7 @@ export default function InboxPage() {
         onReply={setReplyTo}
         onCancelReply={() => setReplyTo(null)}
         onReact={handleReact}
+        onRead={() => selectedId && marcarLida(selectedId)}
         onSend={handleSend}
         onSendFile={handleSendFile}
         onRefresh={refreshCurrent}

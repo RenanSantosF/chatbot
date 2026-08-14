@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import type {
@@ -122,6 +123,12 @@ const STATUS_MAP: Record<string, MessageStatus | undefined> = {
  * mensagem pelo phone_number_id que vem em todo payload (ver
  * WhatsAppSettings.phoneNumberId, único globalmente).
  */
+// Sem limite de requisições: a Meta entrega em rajada (uma conversa
+// movimentada, um lote de histórico na migração) e ela reage a HTTP 429
+// reenviando — e, se insistir, desativando o webhook. Barrar aqui derrubaria
+// o recebimento de mensagens pra defender de um ataque que a assinatura HMAC
+// já barra: sem o segredo do app, nada passa da porta.
+@SkipThrottle()
 @Controller('webhooks/whatsapp')
 export class WhatsappWebhookController {
   private readonly logger = new Logger(WhatsappWebhookController.name);

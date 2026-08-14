@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { ffmpegDisponivel } from './modules/whatsapp/audio-container';
 
 async function bootstrap() {
   // rawBody: true preserva o corpo bruto da requisição (além do JSON já
@@ -28,5 +29,17 @@ async function bootstrap() {
   await app.listen(port);
 
   console.log(`API rodando em http://localhost:${port}/api`);
+
+  // Aviso na subida, e não na primeira tentativa de envio: sem ffmpeg todo
+  // áudio gravado no painel é recusado, e descobrir isso pelo relato de um
+  // atendente ("mandei e não chegou") custa dias.
+  if (!(await ffmpegDisponivel())) {
+    console.warn(
+      '[ffmpeg] Não encontrado no PATH. O envio de áudio gravado no painel vai ' +
+        'falhar, porque o formato do navegador precisa ser convertido antes de ir ' +
+        'pro WhatsApp. No Railway, o nixpacks.toml na raiz resolve; em máquina ' +
+        'local, instale o ffmpeg.',
+    );
+  }
 }
 bootstrap();

@@ -1,11 +1,20 @@
 "use client";
 
-import { ChevronDown, ChevronUp, MessagesSquare, Paperclip, Search, X } from "lucide-react";
+import {
+  ArrowDown,
+  ChevronDown,
+  ChevronUp,
+  MessagesSquare,
+  Paperclip,
+  Search,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select-field";
+import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useSession } from "@/components/session-provider";
 import { avatarColor, initials } from "@/lib/avatar";
@@ -60,6 +69,26 @@ function DaySeparator({ label }: { label: string }) {
       <span className="rounded-full bg-bubble-in px-3 py-1 text-xs font-medium text-muted-foreground capitalize shadow-xs">
         {label}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Onde a leitura parou da última vez.
+ *
+ * Diferente do separador de dia: aquele é uma marca do calendário, este é
+ * uma marca pessoal e some quando a conversa é reaberta. Por isso a linha
+ * colorida atravessando a conversa inteira — quem volta a uma conversa com
+ * quarenta mensagens novas precisa achar esse ponto de relance, sem ler.
+ */
+function UnreadDivider({ count }: { count: number }) {
+  return (
+    <div className="flex items-center gap-2 py-2" role="separator">
+      <span className="h-px flex-1 bg-primary/40" />
+      <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+        {count === 1 ? "1 mensagem não lida" : `${count} mensagens não lidas`}
+      </span>
+      <span className="h-px flex-1 bg-primary/40" />
     </div>
   );
 }
@@ -126,6 +155,7 @@ export function ChatPanel({
   onReply,
   onCancelReply,
   onReact,
+  onRead,
 }: {
   conversation: ConversationDetail | null;
   /** Há conversa escolhida, mas os dados ainda estão vindo. */
@@ -144,6 +174,8 @@ export function ChatPanel({
   onReply: (message: ConversationMessage) => void;
   onCancelReply: () => void;
   onReact: (messageId: string, emoji: string) => Promise<void>;
+  /** Chamada quando o fim da conversa aparece na tela. */
+  onRead: () => void;
 }) {
   const { user } = useSession();
   const [draft, setDraft] = useState("");
@@ -153,6 +185,22 @@ export function ChatPanel({
   const [forwarding, setForwarding] = useState<ConversationMessage | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
+  // O rodapé da conversa está à vista? Decide se mensagem nova arrasta a
+  // tela e se a conversa conta como lida.
+  const [pertoDoFim, setPertoDoFim] = useState(true);
+  // Resolver e Reabrir mexem no estado da conversa e passam por rede. Sem
+  // sinal de espera, o clique parecia não ter efeito e a pessoa clicava de
+  // novo — resolvendo uma conversa que já tinha resolvido.
+  const [mudandoEstado, setMudandoEstado] = useState(false);
+
+  async function comEspera(acao: () => Promise<void>) {
+    setMudandoEstado(true);
+    try {
+      await acao();
+    } finally {
+      setMudandoEstado(false);
+    }
+  }
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const firstPaintRef = useRef(true);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +238,39 @@ export function ChatPanel({
   // são antigas, então entram sem animação nenhuma, que é o certo.
   const [abertoEm] = useState(() => Date.now());
 
+  /**
+   * Quantas mensagens estavam por ler quando esta conversa foi aberta.
+   *
+   * Congelado no primeiro render (o painel é remontado a cada troca de
+   * conversa, então "primeiro render" é sempre "esta abertura"). Tem que
+   * ser congelado: assim que o rodapé aparece o contador zera no servidor,
+   * e um marcador que sumisse junto não serviria pra nada — ele existe
+   * justamente pra dizer "você parou de ler aqui" enquanto a pessoa lê.
+   */
+  const [naoLidasAoAbrir] = useState(() => conversation?.unreadCount ?? 0);
+
+  /**
+   * Id da primeira mensagem por ler, que é onde a tarja entra.
+   *
+   * O contador do servidor conta mensagens de cliente, então a conta é
+   * feita de trás pra frente pulando as nossas: numa troca "cliente,
+   * empresa, cliente" com duas não lidas, a tarja precisa ficar antes da
+   * primeira das duas do cliente, não três mensagens acima.
+   */
+  const primeiraNaoLida = useMemo(() => {
+    if (!conversation || naoLidasAoAbrir === 0) return null;
+    let restantes = naoLidasAoAbrir;
+    for (let i = conversation.messages.length - 1; i >= 0; i -= 1) {
+      const mensagem = conversation.messages[i];
+      if (mensagem.senderType !== "CUSTOMER") continue;
+      restantes -= 1;
+      if (restantes === 0) return mensagem.id;
+    }
+    // Menos mensagens carregadas que não lidas: a conversa foi aberta numa
+    // página antiga do histórico. Marcar a primeira da página seria mentira.
+    return null;
+  }, [conversation, naoLidasAoAbrir]);
+
   useEffect(() => {
     if (!currentMatchId) return;
     document
@@ -200,15 +281,21 @@ export function ChatPanel({
   useEffect(() => {
     // Não puxa pro fim enquanto a pessoa está navegando pelos resultados.
     if (currentMatchId) return;
+    const area = scrollAreaRef.current;
+    if (!area) return;
+
+    const primeira = firstPaintRef.current;
+    // Mensagem nova só arrasta a tela pra baixo se quem está lendo já
+    // estava no fim. Antes ia sempre, e ler o histórico com a conversa
+    // ativa era impossível: cada mensagem que chegava puxava a página de
+    // volta pro rodapé no meio da leitura.
+    if (!primeira && !pertoDoFim) return;
+    firstPaintRef.current = false;
+
     // Mexe no scrollTop do container em vez de scrollIntoView: este último
     // respeita `scroll-behavior` herdado e continuava animando na abertura,
     // que era exatamente o que incomodava. Aqui a primeira pintura salta
     // seco pro fim e só mensagem nova desliza.
-    const area = scrollAreaRef.current;
-    if (!area) return;
-    const primeira = firstPaintRef.current;
-    firstPaintRef.current = false;
-
     const irAoFim = () => {
       if (primeira) area.scrollTop = area.scrollHeight;
       else area.scrollTo({ top: area.scrollHeight, behavior: "smooth" });
@@ -219,7 +306,39 @@ export function ChatPanel({
     // de pintar, e sem isso a conversa abria parando pouco antes do fim.
     const quadro = requestAnimationFrame(irAoFim);
     return () => cancelAnimationFrame(quadro);
+    // `pertoDoFim` de propósito fora das dependências: ele muda a cada
+    // rolagem, e reagir a isso faria a tela se empurrar sozinha enquanto a
+    // pessoa rola. Aqui ele é só uma condição consultada quando chega
+    // mensagem nova.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.id, conversation?.messages.length, currentMatchId]);
+
+  /**
+   * Marca como lida quando o rodapé da conversa aparece de verdade.
+   *
+   * É a diferença entre "abri a conversa" e "li a mensagem": quem clica na
+   * conversa e fica no meio do histórico não viu o que chegou agora, e o
+   * cliente não deveria receber tique azul por isso.
+   */
+  useEffect(() => {
+    const fim = bottomRef.current;
+    const area = scrollAreaRef.current;
+    if (!fim || !area || !conversation) return;
+
+    const observer = new IntersectionObserver(
+      ([entrada]) => {
+        setPertoDoFim(entrada.isIntersecting);
+        if (entrada.isIntersecting) onRead();
+      },
+      // A margem trata o fim como "visível" um pouco antes de encostar:
+      // exigir o pixel exato deixava a conversa por ler quando a última
+      // mensagem estava inteira na tela mas o rodapé, não.
+      { root: area, rootMargin: "0px 0px 120px 0px", threshold: 0 },
+    );
+
+    observer.observe(fim);
+    return () => observer.disconnect();
+  }, [conversation?.id, onRead, conversation]);
 
   if (!conversation) {
     return (
@@ -306,13 +425,25 @@ export function ChatPanel({
                 currentUserId={user.id}
                 onChanged={onRefresh}
               />
-              <Button size="sm" variant="outline" onClick={onResolve}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={mudandoEstado}
+                onClick={() => void comEspera(onResolve)}
+              >
+                {mudandoEstado ? <Spinner className="size-3.5" /> : null}
                 Resolver
               </Button>
             </>
           )}
           {isResolved && (
-            <Button size="sm" variant="outline" onClick={onReopen}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={mudandoEstado}
+              onClick={() => void comEspera(onReopen)}
+            >
+              {mudandoEstado ? <Spinner className="size-3.5" /> : null}
               Reabrir
             </Button>
           )}
@@ -410,6 +541,9 @@ export function ChatPanel({
           return (
             <div key={message.id} className="contents">
               {startsNewDay ? <DaySeparator label={dayLabel(message.createdAt)} /> : null}
+              {message.id === primeiraNaoLida ? (
+                <UnreadDivider count={naoLidasAoAbrir} />
+              ) : null}
               {/* A LINHA inteira recebe o duplo clique — assim responder
                   funciona em qualquer ponto vazio ao lado da mensagem, e
                   não só colado nela. Faixa posicionada por fora do balão
@@ -444,6 +578,28 @@ export function ChatPanel({
           );
         })}
         <div ref={bottomRef} />
+
+        {/* Aparece só quando a pessoa está lendo o histórico. Sem ele, a
+            escolha de não arrastar a tela deixaria mensagem nova chegando
+            fora de vista e sem nenhum aviso. */}
+        {!pertoDoFim ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            aria-label="Ir para a última mensagem"
+            title="Ir para a última mensagem"
+            onClick={() =>
+              scrollAreaRef.current?.scrollTo({
+                top: scrollAreaRef.current.scrollHeight,
+                behavior: "smooth",
+              })
+            }
+            className="sticky bottom-2 z-10 self-end rounded-full shadow-md duration-200 animate-in fade-in zoom-in-95"
+          >
+            <ArrowDown className="size-4" />
+          </Button>
+        ) : null}
       </div>
 
       <ForwardDialog

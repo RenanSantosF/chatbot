@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/auth/permissions.guard';
 import { RolesGuard } from './common/auth/roles.guard';
@@ -29,6 +30,23 @@ import { StorageModule } from './modules/storage/storage.module';
 
 @Module({
   imports: [
+    /**
+     * Limite de requisições por IP.
+     *
+     * O alvo é o login: sem teto, uma senha de oito caracteres cai em
+     * tentativa e erro automatizada, e a única defesa que existia era a
+     * força da senha que o cliente escolheu. Os dois baldes valem juntos —
+     * o curto corta a rajada, o longo corta a tentativa paciente.
+     *
+     * O padrão é folgado de propósito: o painel dispara várias chamadas por
+     * tela (conversas, contadores, permissões) e apertar aqui quebraria o
+     * uso normal antes de atrapalhar qualquer atacante. Os endpoints que
+     * merecem rigor recebem @Throttle próprio (ver AuthController).
+     */
+    ThrottlerModule.forRoot([
+      { name: 'curto', ttl: seconds(10), limit: 60 },
+      { name: 'longo', ttl: seconds(60), limit: 300 },
+    ]),
     StorageModule,
     CryptoModule,
     PrismaModule,
@@ -53,6 +71,9 @@ import { StorageModule } from './modules/storage/storage.module';
     WhatsappWebhookModule,
   ],
   providers: [
+    // Antes de tudo: barrar excesso não deve custar consulta ao banco nem
+    // verificação de token.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

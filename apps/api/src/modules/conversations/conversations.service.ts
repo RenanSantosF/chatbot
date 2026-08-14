@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -18,13 +19,14 @@ import type {
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
 import type { VerificacaoDaResposta } from '../ai/ai-guardrails';
+import { CollectionService } from '../collection/collection.service';
 import { CustomersService } from '../customers/customers.service';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RoutingService } from '../routing/routing.service';
 import {
-  isAcceptedAudio,
-  remuxToOggOpus,
+  converterParaOggOpus,
+  jaEhOggOpus,
 } from '../whatsapp/audio-container';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
@@ -85,7 +87,7 @@ const STATUS_RANK: Record<MessageStatus, number> = {
  * próprio. O que não for imagem/áudio/vídeo conhecido vai como documento,
  * que é o balde que aceita qualquer coisa.
  */
-function mediaKindFor(
+export function mediaKindFor(
   mimeType: string,
 ): 'image' | 'document' | 'audio' | 'video' | 'sticker' {
   // webp é o formato de figurinha do WhatsApp. Mandado como imagem ele
@@ -151,6 +153,8 @@ const messageInclude = {
 
 @Injectable()
 export class ConversationsService {
+  private readonly logger = new Logger(ConversationsService.name);
+
   constructor(
     private readonly prisma: TenantPrismaService,
     private readonly customers: CustomersService,
@@ -160,6 +164,7 @@ export class ConversationsService {
     private readonly media: WhatsappMediaService,
     private readonly inboxSettings: InboxSettingsService,
     private readonly routing: RoutingService,
+    private readonly collection: CollectionService,
   ) {}
 
   /**
@@ -426,9 +431,17 @@ export class ConversationsService {
   }
 
   /**
-   * Abrir a conversa é o que marca ela como lida — é o gesto que significa
-   * "alguém viu isso". Só emite o evento quando havia algo pra zerar, pra
-   * não inundar o painel com atualizações a cada clique.
+   * Abre a conversa SEM marcar como lida.
+   *
+   * Antes, abrir zerava o contador. Isso confundia duas coisas diferentes:
+   * clicar na conversa e ler a mensagem. Quem clica numa conversa de
+   * duzentas mensagens e fica no meio do histórico não leu o que chegou
+   * agora — e a mensagem já contava como vista, sem tique azul devido pro
+   * cliente e sem o marcador de "não lidas" que diz onde parar de rolar.
+   *
+   * Quem marca como lida é `marcarComoLida`, chamada pela tela quando o fim
+   * da conversa aparece de verdade na área visível. O contador vem intacto
+   * daqui justamente pra ela conseguir desenhar o marcador antes disso.
    */
   async getById(id: string) {
     const conversation = await this.prisma.db.conversation.findFirst({
@@ -443,28 +456,46 @@ export class ConversationsService {
     // abertura carregando tudo. O resto sobe conforme a pessoa rola.
     const messages = await this.listMessages(id);
 
-    if (conversation.unreadCount > 0) {
-      const updated = await this.prisma.db.conversation.update({
-        where: { id },
-        data: { unreadCount: 0 },
-        include: conversationInclude,
-      });
-      this.realtime.emitToTenant(
-        this.prisma.tenantId,
-        'conversation.updated',
-        toSummary(updated),
-      );
-      // Avisa a Meta que a empresa leu — só se a empresa quiser revelar
-      // isso (ver InboxSettings.sendReadReceipts).
-      void this.markConversationRead(id);
-    }
-
     return {
       ...conversation,
-      unreadCount: 0,
       messages: messages.items,
       messagesCursor: messages.nextCursor,
     };
+  }
+
+  /**
+   * O fim da conversa apareceu na tela de alguém: agora sim foi lida.
+   *
+   * Idempotente e barata quando não há o que fazer — a tela chama isto a
+   * cada rolagem que chega no fim, e o caso comum é o contador já estar
+   * zerado.
+   */
+  async marcarComoLida(id: string) {
+    const conversation = await this.prisma.db.conversation.findFirst({
+      where: { id },
+      select: { unreadCount: true },
+    });
+    if (!conversation) {
+      throw new NotFoundException('Conversa não encontrada.');
+    }
+    if (conversation.unreadCount === 0) return { ok: true };
+
+    const updated = await this.prisma.db.conversation.update({
+      where: { id },
+      data: { unreadCount: 0 },
+      include: conversationInclude,
+    });
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(updated),
+    );
+    // Avisa a Meta que a empresa leu — só se a empresa quiser revelar isso
+    // (ver InboxSettings.sendReadReceipts). Agora o tique azul do cliente
+    // corresponde a alguém ter mesmo olhado a mensagem.
+    void this.markConversationRead(id);
+
+    return { ok: true };
   }
 
   /**
@@ -791,29 +822,36 @@ export class ConversationsService {
    * guardamos o id dela, mesmo caminho da mídia que o cliente envia.
    */
   /**
-   * Áudio gravado no navegador chega em webm/opus (padrão do Chrome), que a
-   * Cloud API não aceita. Aqui ele vira ogg/opus antes de subir. Se a
-   * máquina não tiver ffmpeg, o erro diz exatamente isso em vez de deixar a
-   * Meta recusar com uma mensagem genérica.
+   * Normaliza áudio pra ogg/opus antes de subir.
+   *
+   * Converte TUDO que não for ogg, e não só o que a Meta recusa no upload.
+   * A distinção importa porque ela é frouxa na porta e rígida na entrega: o
+   * mp4 que o MediaRecorder produz passa no upload e é recusado no envio da
+   * mensagem, e o atendente fica com um balão de erro sem explicação. O
+   * ogg/opus é o formato das mensagens de voz do próprio WhatsApp — é o
+   * único que atravessa os dois passos sempre.
    */
   private async prepareAudio<
     T extends { buffer: Buffer; mimetype: string; originalname: string },
   >(file: T): Promise<T> {
-    if (!file.mimetype.startsWith('audio/') || isAcceptedAudio(file.mimetype)) {
+    if (!file.mimetype.startsWith('audio/') || jaEhOggOpus(file.mimetype)) {
       return file;
     }
 
-    const converted = await remuxToOggOpus(file.buffer);
-    if (!converted) {
+    const convertido = await converterParaOggOpus(file.buffer);
+    if (!convertido) {
+      // Sem ffmpeg só sobra recusar — mandar assim mesmo produziria
+      // exatamente o defeito que esta função existe pra evitar.
       throw new BadRequestException(
-        'Não deu pra converter o áudio pro formato que o WhatsApp aceita. ' +
-          'Instale o ffmpeg no servidor da API pra habilitar o envio de áudio gravado.',
+        'O servidor da API está sem ffmpeg, então não dá pra converter o áudio ' +
+          'pro formato que o WhatsApp reproduz. Instale o ffmpeg no servidor ' +
+          '(no Railway, o nixpacks.toml na raiz do projeto já faz isso).',
       );
     }
 
     return {
       ...file,
-      buffer: converted,
+      buffer: convertido,
       mimetype: 'audio/ogg',
       originalname: file.originalname.replace(/\.[^.]+$/, '') + '.ogg',
     };
@@ -951,9 +989,18 @@ export class ConversationsService {
         ...(externalId ? {} : { status: 'FAILED' as const }),
         metadata: {
           mediaId,
-          mimeType: file.mimetype,
+          // O mime gravado é o que REALMENTE subiu: áudio convertido vira
+          // ogg, e registrar o original faria o painel pedir o arquivo com
+          // o tipo errado depois.
+          mimeType: toUpload.mimetype,
           fileName: file.originalname,
           size: file.size,
+          // O porquê fica junto da mensagem, não só no log do servidor:
+          // é o que transforma o triângulo vermelho em algo acionável pra
+          // quem está atendendo e não tem acesso ao Railway.
+          ...(externalId
+            ? {}
+            : { falha: this.whatsapp.motivoDaUltimaFalha ?? 'a Meta recusou o envio' }),
         } as Prisma.InputJsonValue,
       },
     });
@@ -1204,6 +1251,27 @@ export class ConversationsService {
     }
 
     if (verificacao.precisaHandoff) {
+      // A trava também respeita a coleta obrigatória.
+      //
+      // A barreira existia só na ferramenta transferToHuman, que é o
+      // caminho em que a IA DECIDE escalar. Mas metade das transferências
+      // vem por aqui — a IA prometeu um humano sem chamar ferramenta, ou
+      // uma regra de urgência disparou — e por esse caminho a conversa
+      // chegava na fila sem nome, sem documento, sem nada. O atendente
+      // abria e a primeira coisa que tinha a fazer era perguntar o que o
+      // sistema deveria ter perguntado.
+      //
+      // Aqui não dá pra pedir pro modelo perguntar de novo: ele já
+      // respondeu, a resposta já foi gravada e mandada. Então o próprio
+      // sistema pergunta, com uma frase montada a partir dos campos que
+      // faltam, e adia a transferência pro próximo turno. Determinístico:
+      // não depende de o modelo lembrar.
+      const faltando = await this.collection.missingRequired(conversationId);
+      if (faltando.length > 0) {
+        await this.perguntarDadosQueFaltam(conversationId, faltando);
+        return null;
+      }
+
       data.status = 'WAITING_AGENT';
       data.aiMode = 'HUMAN_ACTIVE';
       data.escalationReason = verificacao.motivo ?? 'Trava automática.';
@@ -1259,6 +1327,39 @@ export class ConversationsService {
       toSummary(conversation),
     );
     return conversation;
+  }
+
+  /**
+   * Pede ao cliente o que falta antes de passar pra um humano.
+   *
+   * A frase é montada aqui, não pedida ao modelo: neste ponto ele já
+   * respondeu e a resposta já saiu, então não há turno pra ele usar. Sai
+   * como mensagem da IA (não do sistema) porque, do lado do cliente, quem
+   * está conversando é ela — uma tarja cinza de sistema no meio do papo
+   * seria estranha.
+   */
+  private async perguntarDadosQueFaltam(
+    conversationId: string,
+    faltando: string[],
+  ) {
+    const lista =
+      faltando.length === 1
+        ? faltando[0]
+        : `${faltando.slice(0, -1).join(', ')} e ${faltando[faltando.length - 1]}`;
+
+    const pergunta =
+      faltando.length === 1
+        ? `Antes de te encaminhar pro nosso time, preciso de mais um dado: ${lista}. Pode me informar?`
+        : `Antes de te encaminhar pro nosso time, preciso de alguns dados: ${lista}. Pode me informar?`;
+
+    await this.persistMessage(conversationId, {
+      senderType: 'AI',
+      content: pergunta,
+    });
+
+    this.logger.log(
+      `Transferência adiada na conversa ${conversationId}: falta coletar ${faltando.join(', ')}.`,
+    );
   }
 
   /**

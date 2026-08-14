@@ -12,10 +12,13 @@ function timeLabel(iso: string) {
  * no aparelho, dois tiques azuis = o cliente leu. Só aparece em mensagem que
  * a empresa mandou — mensagem de cliente não tem status de entrega nosso.
  */
-function DeliveryTicks({ status }: { status: MessageStatus }) {
+function DeliveryTicks({ status, motivo }: { status: MessageStatus; motivo?: string }) {
   if (status === "FAILED") {
     return (
-      <span title="Falha ao entregar" className="text-destructive">
+      <span
+        title={motivo ? `Não entregue: ${motivo}` : "Falha ao entregar"}
+        className="text-destructive"
+      >
         <TriangleAlert className="size-3.5" />
       </span>
     );
@@ -234,9 +237,21 @@ export function MessageBubble({
       >
         {message.senderType === "AI" ? <span className="font-medium">IA</span> : null}
         <span>{timeLabel(message.createdAt)}</span>
-        {fromCustomer ? null : <DeliveryTicks status={message.status} />}
+        {fromCustomer ? null : (
+          <DeliveryTicks status={message.status} motivo={message.metadata?.falha} />
+        )}
       </span>
     </div>
+
+    {/* A recusa por extenso, embaixo do balão. O triângulo sozinho diz que
+        deu errado; sem o motivo, quem atende não sabe se reenvia o mesmo
+        arquivo, troca o formato ou chama alguém — e o log do servidor está
+        fora do alcance dela. */}
+    {message.status === "FAILED" && message.metadata?.falha ? (
+      <p className={cn("mt-0.5 max-w-full text-[11px] text-destructive", fromCustomer ? "pl-2" : "pr-2 text-right")}>
+        Não entregue: {message.metadata.falha}
+      </p>
+    ) : null}
 
       {reactions.length > 0 ? (
         <div className={cn("-mt-1.5 flex gap-1", fromCustomer ? "self-start pl-2" : "self-end pr-2")}>

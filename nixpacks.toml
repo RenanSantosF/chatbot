@@ -1,0 +1,12 @@
+# ffmpeg no servidor da API.
+#
+# Não é enfeite: o navegador grava áudio no container que ele quiser
+# (webm/opus no Chrome, mp4 no Safari e no Edge) e a Cloud API do WhatsApp
+# só aceita aac, amr, mpeg, mp4 e ogg — e, na prática, só reproduz direito
+# o ogg/opus, que é o formato das mensagens de voz do próprio aplicativo.
+# Sem ffmpeg aqui, todo áudio gravado no painel sobe pra Meta e é recusado
+# no envio: o atendente vê a mensagem com erro e o cliente não recebe nada.
+#
+# O "..." preserva os pacotes que o Nixpacks detecta sozinho (node, pnpm).
+[phases.setup]
+nixPkgs = ["...", "ffmpeg"]

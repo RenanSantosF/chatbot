@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { motivoDaMeta } from './meta-erro';
 
 const GRAPH_API_VERSION = 'v21.0';
 // Mesma base sobrescrevível do serviço de mídia (ver whatsapp-media.service):
@@ -255,15 +256,35 @@ export class WhatsappSenderService {
         this.logger.error(
           `Falha ao enviar mídia via WhatsApp (${response.status}): ${responseBody}`,
         );
+        // O motivo volta pra quem chamou gravar junto da mensagem. Sem isso
+        // o atendente via só o triângulo vermelho e não tinha como saber se
+        // o problema era o arquivo, o número do cliente ou o token.
+        this.ultimaFalha = motivoDaMeta(responseBody, response.status);
         return null;
       }
+      this.ultimaFalha = null;
       return this.extractMessageId(responseBody);
     } catch (error) {
-      this.logger.error(
-        `Erro de rede ao enviar mídia via WhatsApp: ${error instanceof Error ? error.message : error}`,
-      );
+      const detalhe = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Erro de rede ao enviar mídia via WhatsApp: ${detalhe}`);
+      this.ultimaFalha = `não deu pra falar com a Meta (${detalhe})`;
       return null;
     }
+  }
+
+  /**
+   * Motivo da última recusa de envio de mídia.
+   *
+   * Guardado no serviço porque `sendMedia` promete `string | null` pra meia
+   * dúzia de chamadores e mudar a assinatura por causa de um caso de erro
+   * espalharia tratamento por todos eles. O serviço tem escopo de
+   * requisição (TenantPrismaService), então isto não vaza entre pedidos
+   * simultâneos — cada requisição tem a sua instância.
+   */
+  private ultimaFalha: string | null = null;
+
+  get motivoDaUltimaFalha(): string | null {
+    return this.ultimaFalha;
   }
 
   /**

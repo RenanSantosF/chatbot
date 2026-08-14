@@ -7,6 +7,7 @@ import {
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { motivoDaMeta } from './meta-erro';
 
 const GRAPH_API_VERSION = 'v21.0';
 // Base sobrescrevível pra apontar num ambiente de teste da Meta ou num
@@ -195,7 +196,7 @@ export class WhatsappMediaService {
       // diz se o problema é o formato, o tamanho ou o token vencido — e sem
       // isso a única saída de quem atende é tentar de novo até desistir.
       throw new BadRequestException(
-        `A Meta recusou o arquivo: ${this.motivoDaMeta(body, response.status)}`,
+        `A Meta recusou o arquivo: ${motivoDaMeta(body, response.status)}`,
       );
     }
 
@@ -206,21 +207,4 @@ export class WhatsappMediaService {
     }
   }
 
-  /**
-   * Puxa a explicação de dentro do erro da Meta. Ela nem sempre responde
-   * JSON — proxy e gateway dela devolvem HTML em dia ruim —, então o
-   * fallback é o código HTTP, que ao menos separa "recusou" de "está fora".
-   */
-  private motivoDaMeta(body: string, status: number): string {
-    try {
-      const payload = JSON.parse(body) as {
-        error?: { message?: string; error_user_msg?: string };
-      };
-      const motivo = payload.error?.error_user_msg ?? payload.error?.message;
-      if (motivo) return motivo;
-    } catch {
-      /* resposta não-JSON: cai no código HTTP abaixo */
-    }
-    return `erro HTTP ${status}`;
-  }
 }

@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -181,6 +183,17 @@ export class ConversationsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.declineAssignment(id, user.userId, reason);
+  }
+
+  /**
+   * "O fim da conversa está na minha tela." Chamada pela tela quando o
+   * rodapé da conversa entra na área visível — abrir a conversa, sozinho,
+   * não marca mais nada como lido.
+   */
+  @Post(':id/read')
+  @HttpCode(HttpStatus.OK)
+  markRead(@Param('id') id: string) {
+    return this.conversationsService.marcarComoLida(id);
   }
 
   @Post(':id/reopen')
