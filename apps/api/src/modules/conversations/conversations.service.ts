@@ -952,6 +952,15 @@ export class ConversationsService {
 
     const toUpload = await this.prepareAudio(file);
 
+    // Rastro do que sai daqui. A Meta aceita o upload e só recusa na
+    // ENTREGA quando o arquivo é ruim (erro 131053), e essa recusa chega
+    // depois, por webhook, sem dizer o que foi enviado. Sem estas duas
+    // linhas no log não há como ligar uma coisa na outra.
+    this.logger.log(
+      `Anexo recebido: ${file.mimetype} (${file.size} bytes) -> subindo como ` +
+        `${toUpload.mimetype} (${toUpload.buffer.length} bytes).`,
+    );
+
     // `upload` já lança com o motivo da Meta quando ela recusa; um null aqui
     // é o caso raro de ela responder 200 sem id.
     const mediaId = await this.media.upload(toUpload);

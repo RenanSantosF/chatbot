@@ -30,10 +30,28 @@ async function bootstrap() {
 
   console.log(`API rodando em http://localhost:${port}/api`);
 
-  // Aviso na subida, e não na primeira tentativa de envio: sem ffmpeg todo
-  // áudio gravado no painel é recusado, e descobrir isso pelo relato de um
-  // atendente ("mandei e não chegou") custa dias.
-  if (!(await ffmpegDisponivel())) {
+  /**
+   * Carimbo do que está rodando de verdade.
+   *
+   * Existe por causa de uma hora perdida: um defeito de áudio continuou
+   * depois da correção, e não havia como saber se o servidor tinha o código
+   * novo ou não — a única pista era a AUSÊNCIA de um aviso, que também é o
+   * comportamento do código antigo. Ausência não é evidência. Agora cada
+   * subida diz qual commit é e o que tem instalado, sempre, mesmo quando
+   * está tudo certo.
+   */
+  const commit =
+    process.env.RAILWAY_GIT_COMMIT_SHA ??
+    process.env.GIT_COMMIT ??
+    'desconhecido';
+  const temFfmpeg = await ffmpegDisponivel();
+
+  console.log(
+    `[build] commit=${commit.slice(0, 8)} ffmpeg=${temFfmpeg ? 'sim' : 'NÃO'} ` +
+      `armazenamento=${process.env.S3_BUCKET ? 'ligado' : 'desligado'}`,
+  );
+
+  if (!temFfmpeg) {
     console.warn(
       '[ffmpeg] Não encontrado no PATH. O envio de áudio gravado no painel vai ' +
         'falhar, porque o formato do navegador precisa ser convertido antes de ir ' +
@@ -42,4 +60,7 @@ async function bootstrap() {
     );
   }
 }
-bootstrap();
+// Falha na subida precisa derrubar o processo com código de erro: o
+// Railway reinicia, e um servidor meio inicializado atendendo requisição é
+// pior que um servidor fora do ar.
+void bootstrap();

@@ -52,6 +52,7 @@ function baseType(mimeType: string) {
  */
 export function converterParaOggOpus(input: Buffer): Promise<Buffer | null> {
   return new Promise((resolve) => {
+    const erros: string[] = [];
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn('ffmpeg', [
@@ -87,17 +88,42 @@ export function converterParaOggOpus(input: Buffer): Promise<Buffer | null> {
       /* o processo pode morrer antes de consumir tudo; o 'close' resolve */
     });
     child.stdout?.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.stderr?.on('data', (chunk: Buffer) =>
-      logger.debug(chunk.toString().trim()),
-    );
+    // A saída de erro do ffmpeg é guardada, não descartada: quando a
+    // conversão falha é a única coisa que diz o porquê ("codec libopus não
+    // encontrado", "moov atom not found"), e sem ela o defeito volta a ser
+    // adivinhação.
+    child.stderr?.on('data', (chunk: Buffer) => erros.push(chunk.toString()));
 
     child.on('close', (code) => {
       if (failed) return;
+
+      const detalhe = erros.join('').trim();
       if (code !== 0 || chunks.length === 0) {
+        logger.error(
+          `ffmpeg falhou (código ${code}): ${detalhe || 'sem saída de erro'}`,
+        );
         resolve(null);
         return;
       }
-      resolve(Buffer.concat(chunks));
+
+      const saida = Buffer.concat(chunks);
+
+      // Um Ogg começa com "OggS". Sem essa conferência, um ffmpeg que sai
+      // com código 0 mas escreve lixo produziria um arquivo que a Meta
+      // aceita no upload e recusa na entrega — que é exatamente o defeito
+      // que esta conversão existe pra evitar.
+      if (saida.length < 64 || saida.subarray(0, 4).toString() !== 'OggS') {
+        logger.error(
+          `ffmpeg terminou bem mas não produziu um Ogg (${saida.length} bytes). ${detalhe}`,
+        );
+        resolve(null);
+        return;
+      }
+
+      logger.log(
+        `Áudio convertido pra ogg/opus: ${input.length} bytes -> ${saida.length} bytes.`,
+      );
+      resolve(saida);
     });
 
     child.stdin?.end(input);
