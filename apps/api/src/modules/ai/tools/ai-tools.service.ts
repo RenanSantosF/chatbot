@@ -282,6 +282,64 @@ export class AiToolsService {
       },
     },
     {
+      key: 'resolveConversation',
+      name: 'Encerrar atendimento',
+      description:
+        'Marca o atendimento como resolvido. Use SÓ quando o assunto do cliente foi de fato respondido e ele não pediu mais nada — uma despedida ("obrigado", "ok", "era só isso") é o sinal típico. Nunca use se prometeu que alguém entraria em contato, se transferiu a conversa, ou se ficou alguma pergunta em aberto: encerrar nesses casos tira o caso da fila e ninguém volta nele.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            description: 'Resumo curto do que foi resolvido, pro histórico',
+          },
+        },
+        required: ['reason'],
+      },
+      execute: async (args, ctx) => {
+        const reason = String(args.reason ?? '').trim() || 'Atendimento concluído.';
+
+        // Conversa que espera atendente não se encerra por aqui. É o caso
+        // de a IA ter transferido e, no mesmo fôlego, se despedir: o
+        // cliente sai satisfeito, mas alguém da equipe ainda precisa
+        // assumir — e encerrar a tiraria da fila.
+        const atual = await this.prisma.db.conversation.findFirst({
+          where: { id: ctx.conversationId },
+          select: { status: true, assignedUserId: true },
+        });
+        if (atual?.status === 'WAITING_AGENT' || atual?.assignedUserId) {
+          return {
+            status: 'blocked',
+            error:
+              'Esta conversa está com a equipe. Não encerre — quem assumir é que decide isso.',
+          };
+        }
+
+        await this.prisma.db.message.create({
+          data: {
+            tenantId: this.prisma.tenantId,
+            conversationId: ctx.conversationId,
+            senderType: 'SYSTEM',
+            content: `IA encerrou o atendimento: ${reason}`,
+          },
+        });
+
+        const conversation = await this.prisma.db.conversation.update({
+          where: { id: ctx.conversationId },
+          data: { status: 'RESOLVED', waitingSince: null },
+          include: conversationInclude,
+        });
+
+        this.realtime.emitToTenant(
+          this.prisma.tenantId,
+          'conversation.updated',
+          conversation,
+        );
+
+        return { status: 'resolved' };
+      },
+    },
+    {
       key: 'rememberCustomerInfo',
       name: 'Lembrar dados do cliente',
       description:

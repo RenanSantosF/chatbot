@@ -159,7 +159,27 @@ export class AiEngineService {
 
       const ultimaDoCliente =
         [...context.history].reverse().find((m) => m.role === 'user')?.content ?? '';
-      const verificacao = verificarResposta(result.content, ultimaDoCliente, usadas);
+
+      /*
+       * Tudo que o modelo teve à disposição, num texto só.
+       *
+       * É contra isto que a trava de fato inventado confere o que ele
+       * afirmou (ver ai-fatos). O prompt carrega as instruções da empresa,
+       * a memória do cliente e os trechos da base; o histórico carrega o
+       * que o próprio cliente escreveu. Fora daí, nada mais entrou — então
+       * um endereço que não esteja aqui não foi lido, foi produzido.
+       */
+      const fontes = [
+        context.systemPrompt,
+        ...context.history.map((turno) => turno.content),
+      ].join('\n');
+
+      const verificacao = verificarResposta(
+        result.content,
+        ultimaDoCliente,
+        usadas,
+        fontes,
+      );
 
       if (verificacao.precisaHandoff || verificacao.prioridadeMinima) {
         this.logger.warn(
@@ -167,7 +187,23 @@ export class AiEngineService {
         );
       }
 
-      return { tipo: 'respondeu', resposta: { content: result.content, verificacao } };
+      if (verificacao.substituirPor) {
+        this.logger.warn(
+          `Resposta barrada na conversa ${conversationId} (dado sem lastro). ` +
+            `A IA tinha escrito: ${result.content}`,
+        );
+      }
+
+      return {
+        tipo: 'respondeu',
+        resposta: {
+          // A resposta barrada nunca chega ao cliente, mas o texto original
+          // fica no log acima: é o que permite ao dono ver o que a IA quase
+          // mandou e decidir se falta alguma coisa na base.
+          content: verificacao.substituirPor ?? result.content,
+          verificacao,
+        },
+      };
     } catch (error) {
       this.logger.warn(
         `IA não conseguiu responder a conversa ${conversationId}: ${error instanceof Error ? error.message : error}`,

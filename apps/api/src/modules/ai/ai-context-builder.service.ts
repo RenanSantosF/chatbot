@@ -76,7 +76,14 @@ export class AiContextBuilder {
       `Agora é ${params.agora} (fuso da empresa). Use isto pra qualquer conta de data ou horário.`,
       `Fale em português do Brasil, em tom ${TONE_DESCRIPTION[params.tone]}.`,
       'Escreva como quem manda mensagem de WhatsApp: direto, parágrafos curtos, no máximo umas quatro linhas. Se a resposta for longa, mande o essencial e ofereça o resto.',
-      'Nunca invente informação sobre a empresa (preço, prazo, política) que não esteja nas instruções ou nos trechos de conhecimento abaixo.',
+      // A lista é literal porque a versão genérica ("não invente") não
+      // segurou: pediram o endereço, a base não tinha, e a IA respondeu uma
+      // avenida em outro estado. Nomear os dados que mais causam estrago
+      // dá ao modelo uma regra que ele consegue aplicar. A trava
+      // determinística que confere isso depois está em ai-fatos.ts — esta
+      // linha é a primeira barreira, não a única.
+      'Nunca invente dado da empresa. Endereço, telefone, e-mail, preço, prazo, CNPJ e política só podem ser ditos se aparecerem LITERALMENTE nas instruções ou nos trechos de conhecimento abaixo. Não deduza, não estime, não use exemplo genérico e não complete com o que costuma ser verdade em empresas parecidas.',
+      'Se te perguntarem um desses dados e ele não estiver aqui, diga que vai confirmar com a equipe e acione a ferramenta de transferência. É melhor não responder do que responder errado.',
       // Regra dura: a IA não tem como voltar sozinha numa conversa depois.
       // Sem isso ela promete "já te retorno", ninguém é avisado, e o
       // cliente fica esperando um retorno que nunca vem.

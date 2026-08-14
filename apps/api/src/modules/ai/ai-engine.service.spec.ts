@@ -225,3 +225,92 @@ describe('AiEngineService.generateReply — quando a IA não responde', () => {
     expect(resultado.tipo).toBe('indisponivel');
   });
 });
+
+/**
+ * O motor com uma resposta escolhida pelo teste.
+ *
+ * Serve pra provar a única trava que mexe NO TEXTO: a resposta com dado
+ * inventado não pode sair do motor como o modelo escreveu, porque quem
+ * recebe grava e manda pro cliente sem olhar de novo.
+ */
+function motorQueResponde(conteudo: string, prompt: string) {
+  const service = new AiEngineService(
+    {
+      build: jest.fn().mockResolvedValue({
+        systemPrompt: prompt,
+        history: [{ role: 'user', content: 'Onde fica o escritório?' }],
+      }),
+    } as never,
+    {
+      resolve: jest
+        .fn()
+        .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+    } as never,
+    { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+    { generateReply: jest.fn().mockResolvedValue({ content: conteudo }) },
+  );
+  return service;
+}
+
+describe('AiEngineService.generateReply — dado inventado não sai', () => {
+  const INVENTADO =
+    'O nosso escritório fica na Avenida Paulista, nº 1000, Bela Vista - São Paulo/SP.';
+
+  it('substitui a resposta antes de ela chegar em quem envia', async () => {
+    const service = motorQueResponde(
+      INVENTADO,
+      'Você é a assistente do escritório. Atendemos das 08h às 17h.',
+    );
+
+    const resultado = await service.generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    expect(resultado.resposta.content).not.toContain('Paulista');
+    expect(resultado.resposta.verificacao.precisaHandoff).toBe(true);
+  });
+
+  it('não mexe na resposta quando o endereço veio da base', async () => {
+    const service = motorQueResponde(
+      'Ficamos na Avenida Paulista, 1000.',
+      'Você é a assistente.\n[Base] Endereço: Av. Paulista, 1000 - São Paulo.',
+    );
+
+    const resultado = await service.generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    expect(resultado.resposta.content).toBe('Ficamos na Avenida Paulista, 1000.');
+  });
+
+  it('o histórico conta como fonte: repetir o dado do cliente é permitido', async () => {
+    const service = new AiEngineService(
+      {
+        build: jest.fn().mockResolvedValue({
+          systemPrompt: 'Você é a assistente.',
+          history: [
+            { role: 'user', content: 'meu telefone é (27) 3333-4444' },
+            { role: 'user', content: 'confere?' },
+          ],
+        }),
+      } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+      } as never,
+      { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      {
+        generateReply: jest
+          .fn()
+          .mockResolvedValue({ content: 'Confirmado: (27) 3333-4444.' }),
+      },
+    );
+
+    const resultado = await service.generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    expect(resultado.resposta.content).toBe('Confirmado: (27) 3333-4444.');
+  });
+});

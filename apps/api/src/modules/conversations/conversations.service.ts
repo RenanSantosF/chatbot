@@ -1704,11 +1704,74 @@ export class ConversationsService {
    * motivo registrado, e a IA para de responder pra não atropelar quem
    * assumir.
    */
+  /**
+   * Encerra o atendimento que a IA disse ao cliente que estava encerrado.
+   *
+   * Não repete a mensagem de encerramento das configurações: a IA já se
+   * despediu com as próprias palavras, e mandar o texto padrão logo em
+   * seguida faria o cliente receber duas despedidas seguidas.
+   *
+   * Conversa com dono ou já esperando atendente não encerra por aqui —
+   * seria tirar da fila um caso que alguém precisa pegar. Nesse cenário a
+   * despedida da IA foi um engano dela, e o certo é a conversa continuar
+   * viva pra a pessoa assumir.
+   */
+  private async encerrarPelaIa(conversationId: string, motivo?: string) {
+    const atual = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { status: true, assignedUserId: true },
+    });
+    if (!atual) return null;
+    if (atual.assignedUserId || atual.status === 'WAITING_AGENT') return null;
+    if (atual.status === 'RESOLVED' || atual.status === 'CLOSED') return null;
+
+    await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId,
+        senderType: 'SYSTEM',
+        content: motivo
+          ? `Atendimento encerrado pela IA. ${motivo}`
+          : 'Atendimento encerrado pela IA.',
+        messageType: 'TEXT',
+      },
+    });
+
+    const conversation = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'RESOLVED', waitingSince: null },
+      include: conversationInclude,
+    });
+
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(conversation),
+    );
+    return conversation;
+  }
+
   private async aplicarTravasDaIa(
     conversationId: string,
     verificacao: VerificacaoDaResposta,
     prioridadeAtual: ConversationPriority,
   ) {
+    /*
+     * A IA avisou que encerrou — então encerra.
+     *
+     * O defeito: o cliente leu "Atendimento encerrado por aqui" e o painel
+     * continuou marcando "aguardando cliente". Os dois lados discordando
+     * sobre se o atendimento acabou, e a conversa parada num estado que
+     * ninguém ia revisitar.
+     *
+     * Fica antes do resto porque encerrar e escalar são caminhos opostos:
+     * a trava de encerramento só chega aqui quando nenhuma promessa de
+     * humano foi detectada (ver ai-guardrails).
+     */
+    if (verificacao.encerrar) {
+      return this.encerrarPelaIa(conversationId, verificacao.motivo);
+    }
+
     if (!verificacao.precisaHandoff && !verificacao.prioridadeMinima) {
       return null;
     }
