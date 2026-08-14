@@ -3,6 +3,12 @@ import type { AiTone } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { CollectionService } from '../collection/collection.service';
+import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
+import {
+  dentroDoExpediente,
+  descreverSemana,
+  proximaAbertura,
+} from '../inbox-settings/horario-comercial';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import {
   LIMITE_DA_MEMORIA,
@@ -54,6 +60,7 @@ export class AiContextBuilder {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly knowledge: KnowledgeService,
     private readonly collection: CollectionService,
+    private readonly inboxSettings: InboxSettingsService,
   ) {}
 
   private buildSystemPrompt(params: {
@@ -67,6 +74,7 @@ export class AiContextBuilder {
     relevantChunks: RelevantChunk[];
     customerMemory: Record<string, string>;
     pendingFields: string[];
+    expediente: { semana: string[]; aberto: boolean; volta: string | null };
   }): string {
     const lines = [
       `Você é ${params.aiName}, a assistente de atendimento da empresa "${params.tenantName}".`,
@@ -91,6 +99,38 @@ export class AiContextBuilder {
       'Quando não souber, quando pedirem uma pessoa, ou quando o assunto for sensível: acione a ferramenta de transferir NA MESMA resposta e diga que alguém da equipe continua dali. Sem a ferramenta, ninguém é avisado.',
       'Sem a ferramenta de transferência disponível, seja honesta: diga que não tem essa informação e oriente a procurar a equipe pelos canais da empresa — não invente um retorno.',
     ];
+
+    /**
+     * O expediente da empresa.
+     *
+     * Duas coisas diferentes entram aqui, e as duas faltavam. A primeira é
+     * a pergunta direta — "que horas vocês abrem?" — que antes só tinha
+     * resposta se alguém tivesse escrito o horário à mão numa instrução, em
+     * duplicata com a configuração. A segunda é o que a IA promete: fora do
+     * expediente, "vou passar pra equipe agora" é falso, porque não há
+     * equipe até segunda. Dizer quando alguém volta é a diferença entre um
+     * cliente que espera sabendo e um que espera no escuro.
+     *
+     * Transferir continua valendo fora do horário: a conversa fica na fila
+     * pra quem abrir amanhã. O que muda é a frase, não o encaminhamento.
+     */
+    if (params.expediente.semana.length > 0) {
+      lines.push('', 'Horário de atendimento da empresa:');
+      for (const dia of params.expediente.semana) {
+        lines.push(`- ${dia}`);
+      }
+      lines.push(
+        'Nos dias que não estão nesta lista a empresa não atende. Responda sobre horário usando SÓ o que está aqui.',
+      );
+
+      if (!params.expediente.aberto) {
+        lines.push(
+          params.expediente.volta
+            ? `AGORA a empresa está FORA do horário de atendimento — a equipe volta ${params.expediente.volta}. Não diga que alguém vai responder "em instantes" nem "ainda hoje": diga quando a equipe volta. Se precisar de uma pessoa, transfira do mesmo jeito (a conversa fica na fila) e explique que alguém responde ${params.expediente.volta}.`
+            : 'AGORA a empresa está FORA do horário de atendimento. Não prometa resposta imediata de uma pessoa.',
+        );
+      }
+    }
 
     if (params.customerName) {
       lines.push(
@@ -155,13 +195,14 @@ export class AiContextBuilder {
   ): Promise<string> {
     const tenantId = this.tenantPrisma.tenantId;
 
-    const [tenant, settings, instructions] = await Promise.all([
+    const [tenant, settings, instructions, expediente] = await Promise.all([
       this.prisma.client.tenant.findUniqueOrThrow({ where: { id: tenantId } }),
       this.tenantPrisma.db.aiSettings.findFirst(),
       this.tenantPrisma.db.aiInstruction.findMany({
         where: { active: true },
         orderBy: { priority: 'desc' },
       }),
+      this.inboxSettings.expediente(),
     ]);
 
     const memoria = extras.customerMemory ?? {};
@@ -179,6 +220,11 @@ export class AiContextBuilder {
       // usado — não é só a gravação nova que fica bloqueada.
       customerMemory: settings?.memoryMode === 'NONE' ? {} : memoria,
       pendingFields: extras.pendingFields ?? [],
+      expediente: {
+        semana: descreverSemana(expediente),
+        aberto: dentroDoExpediente(expediente, tenant.timezone),
+        volta: proximaAbertura(expediente, tenant.timezone),
+      },
     });
   }
 

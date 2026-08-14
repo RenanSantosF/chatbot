@@ -1,0 +1,14 @@
+-- O horário de atendimento da empresa.
+--
+-- Sem isto o sistema não sabia que dia era pra empresa: às 3h de um domingo
+-- a IA atendia como se fosse terça às 10h, prometia retorno "ainda hoje" e
+-- transferia pra uma fila que ninguém ia olhar até segunda.
+--
+-- Fica em JSONB porque o que se guarda é uma semana inteira de faixas, lida
+-- e escrita sempre de uma vez só — nunca se pergunta ao banco "quais
+-- empresas abrem às 8h". Uma tabela de sete linhas por empresa custaria
+-- junção em toda resposta da IA pra responder a mesma pergunta.
+--
+-- Nulo é "não configurado": quem não preencher continua atendendo em
+-- qualquer horário, exatamente como antes desta coluna existir.
+ALTER TABLE "inbox_settings" ADD COLUMN "businessHours" JSONB;

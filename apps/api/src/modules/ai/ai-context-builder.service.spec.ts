@@ -1,4 +1,5 @@
 import { AiContextBuilder } from './ai-context-builder.service';
+import { lerExpediente } from '../inbox-settings/horario-comercial';
 
 /**
  * A montagem do contexto, com o banco de mentira.
@@ -17,6 +18,8 @@ function montar(
     aiSettings?: Record<string, unknown> | null;
     /** Quando o atendimento foi reaberto, se foi. */
     reaberturaEm?: Date;
+    /** As faixas de atendimento, no formato guardado no banco. */
+    expediente?: Record<string, [string, string][]>;
   } = {},
 ) {
   const buscas: string[] = [];
@@ -90,6 +93,11 @@ function montar(
     tenantPrisma as never,
     knowledge as never,
     collection as never,
+    {
+      expediente: jest
+        .fn()
+        .mockResolvedValue(lerExpediente(opcoes.expediente ?? null)),
+    } as never,
   );
 
   return {
@@ -354,5 +362,72 @@ describe('histórico entregue ao modelo', () => {
     const { history } = await builder.build('conversa-1');
 
     expect(history[0].content).toContain('imagem');
+  });
+});
+
+/**
+ * O expediente chega no prompt.
+ *
+ * A regra de "está aberto?" é testada em horario-comercial.spec.ts. O que
+ * se confere aqui é o outro metade do problema: se a IA de fato RECEBE essa
+ * informação, e se o aviso de fora de horário só aparece quando é verdade.
+ * Sem isso a empresa configura o horário na tela e a IA continua prometendo
+ * atendimento pra madrugada de domingo.
+ */
+describe('horário de atendimento no prompt', () => {
+  // Todos os testes daqui usam o fuso de São Paulo (UTC-3) que o `montar`
+  // devolve, e horários em UTC — as três horas de diferença são justamente
+  // o que faria a conta errar se fosse feita com o relógio do servidor.
+  const comercial = {
+    '1': [['08:00', '18:00'] as [string, string]],
+    '2': [['08:00', '18:00'] as [string, string]],
+  };
+
+  function emSegunda(horaUtc: string) {
+    jest.useFakeTimers().setSystemTime(new Date(`2026-08-17T${horaUtc}:00Z`));
+  }
+
+  afterEach(() => jest.useRealTimers());
+
+  it('lista os dias e horários configurados', async () => {
+    emSegunda('13:00');
+    const { builder } = montar({ expediente: comercial });
+
+    const { systemPrompt } = await builder.build('conversa-1');
+
+    expect(systemPrompt).toContain('segunda-feira: 08:00 às 18:00');
+  });
+
+  it('dentro do expediente, não avisa nada de fechado', async () => {
+    // 13:00 UTC = 10:00 em São Paulo, segunda.
+    emSegunda('13:00');
+    const { builder } = montar({ expediente: comercial });
+
+    const { systemPrompt } = await builder.build('conversa-1');
+
+    expect(systemPrompt).not.toContain('FORA do horário');
+  });
+
+  it('fora do expediente, avisa e diz quando a equipe volta', async () => {
+    // 23:00 UTC = 20:00 em São Paulo: já fechou.
+    emSegunda('23:00');
+    const { builder } = montar({ expediente: comercial });
+
+    const { systemPrompt } = await builder.build('conversa-1');
+
+    expect(systemPrompt).toContain('FORA do horário');
+    expect(systemPrompt).toContain('amanhã às 08:00');
+  });
+
+  it('sem expediente configurado, o prompt não fala de horário', async () => {
+    // Empresa que nunca abriu a tela atende sempre — e nada é dito à toa,
+    // porque cada linha do prompt é paga em toda resposta.
+    emSegunda('23:00');
+    const { builder } = montar();
+
+    const { systemPrompt } = await builder.build('conversa-1');
+
+    expect(systemPrompt).not.toContain('Horário de atendimento');
+    expect(systemPrompt).not.toContain('FORA do horário');
   });
 });

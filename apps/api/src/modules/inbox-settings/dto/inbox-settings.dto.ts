@@ -8,7 +8,64 @@ import {
   MaxLength,
   Min,
   MinLength,
+  Validate,
+  ValidatorConstraint,
+  type ValidatorConstraintInterface,
 } from 'class-validator';
+import { lerHorario } from '../horario-comercial';
+
+/**
+ * Confere a forma do expediente antes de ele virar uma coluna Json.
+ *
+ * A normalização (`lerExpediente`) descarta faixa inválida em silêncio, o
+ * que é o certo na LEITURA — dado velho e torto não pode derrubar a
+ * resposta ao cliente. Na ESCRITA silêncio é ruim: quem digitou o horário
+ * errado salvaria a tela, veria o campo esvaziar e não saberia por quê.
+ */
+@ValidatorConstraint({ name: 'expedienteValido' })
+export class ExpedienteValido implements ValidatorConstraintInterface {
+  private erro = 'Horário de atendimento inválido.';
+
+  validate(valor: unknown): boolean {
+    if (valor === null) return true;
+    if (!valor || typeof valor !== 'object' || Array.isArray(valor)) {
+      this.erro = 'O horário de atendimento precisa ser um objeto por dia.';
+      return false;
+    }
+
+    for (const [dia, faixas] of Object.entries(
+      valor as Record<string, unknown>,
+    )) {
+      const numero = Number(dia);
+      if (!Number.isInteger(numero) || numero < 0 || numero > 6) {
+        this.erro = `"${dia}" não é um dia da semana (use 0 a 6, domingo é 0).`;
+        return false;
+      }
+      if (!Array.isArray(faixas)) {
+        this.erro = `As faixas de ${dia} precisam ser uma lista.`;
+        return false;
+      }
+      for (const faixa of faixas) {
+        const inicio = Array.isArray(faixa) ? lerHorario(faixa[0]) : null;
+        const fim = Array.isArray(faixa) ? lerHorario(faixa[1]) : null;
+        if (inicio === null || fim === null) {
+          this.erro = 'Cada faixa precisa ser [abertura, fechamento] no formato HH:MM.';
+          return false;
+        }
+        if (fim <= inicio) {
+          this.erro = 'O fechamento precisa vir depois da abertura.';
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  defaultMessage(): string {
+    return this.erro;
+  }
+}
 
 export class UpdateInboxSettingsDto {
   @IsOptional()
@@ -67,4 +124,15 @@ export class UpdateInboxSettingsDto {
   @IsOptional()
   @IsIn(['ALL', 'OWN_QUEUES'])
   queueVisibility?: 'ALL' | 'OWN_QUEUES';
+
+  /**
+   * As faixas de atendimento de cada dia, domingo em 0.
+   *
+   * `null` desliga o recurso: sem expediente configurado, a empresa atende
+   * em qualquer horário. É o mesmo estado de quem nunca abriu a tela, e por
+   * isso não existe um booleano separado pra ligar e desligar.
+   */
+  @IsOptional()
+  @Validate(ExpedienteValido)
+  businessHours?: Record<string, [string, string][]> | null;
 }

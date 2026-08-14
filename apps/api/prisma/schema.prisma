@@ -230,6 +230,25 @@ model InboxSettings {
   // o financeiro não abre conversa do jurídico. Dono e admin veem tudo nos
   // dois modos, senão não dá pra chefiar.
   queueVisibility  QueueVisibility @default(ALL)
+  /// Horário de atendimento da empresa, no fuso dela (Tenant.timezone).
+  ///
+  /// Formato: as faixas de cada dia da semana, com domingo em 0 — o mesmo
+  /// índice do `getDay()` do JavaScript.
+  ///
+  ///     { "1": [["08:00","12:00"],["13:00","18:00"]], "2": [...] }
+  ///
+  /// São faixas, e não um par abre/fecha, porque o almoço existe: comércio
+  /// que fecha das 12h às 14h é o caso comum.
+  ///
+  /// Nulo ou vazio significa "não configurado", e aí a empresa atende
+  /// sempre — que é como o sistema se comportava antes disto existir.
+  /// Ligar e desligar o recurso é preencher e limpar esta coluna; um
+  /// booleano separado seria uma segunda fonte de verdade capaz de
+  /// discordar dela.
+  ///
+  /// A leitura passa sempre por `lerExpediente` (horario-comercial.ts):
+  /// coluna Json não tem garantia de forma, e a validação mora num lugar só.
+  businessHours    Json?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

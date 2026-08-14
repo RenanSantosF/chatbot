@@ -340,6 +340,14 @@ export interface InboxSettings {
   autoCloseHours: number;
   showAgentName: boolean;
   queueVisibility: "ALL" | "OWN_QUEUES";
+  /**
+   * Faixas de atendimento por dia da semana, domingo em "0".
+   *
+   *     { "1": [["08:00", "12:00"], ["13:00", "18:00"]] }
+   *
+   * `null` é "não configurado": a empresa atende em qualquer horário.
+   */
+  businessHours: Record<string, [string, string][]> | null;
 }
 
 /** Anotação interna na ficha do cliente. Nunca vai pro cliente. */

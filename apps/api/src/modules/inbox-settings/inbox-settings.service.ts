@@ -1,6 +1,27 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { UpdateInboxSettingsDto } from './dto/inbox-settings.dto';
+import {
+  escreverExpediente,
+  lerExpediente,
+  type Expediente,
+} from './horario-comercial';
+
+/**
+ * Semana vazia é "não configurado", que no banco se escreve NULL.
+ *
+ * `Prisma.DbNull` e não `null`: em coluna Json anulável, `null` é ambíguo
+ * (existe o valor JSON `null`, que é diferente de campo vazio), então o
+ * Prisma exige que a intenção seja dita por extenso.
+ */
+function normalizar(
+  entrada: Record<string, [string, string][]> | null,
+): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  if (!entrada) return Prisma.DbNull;
+  const limpo = escreverExpediente(lerExpediente(entrada));
+  return Object.keys(limpo).length > 0 ? limpo : Prisma.DbNull;
+}
 
 @Injectable()
 export class InboxSettingsService {
@@ -44,11 +65,36 @@ export class InboxSettingsService {
     return this.emCache;
   }
 
+  /**
+   * O expediente já lido e validado.
+   *
+   * Quem precisa do horário nunca deve tocar na coluna Json direto: ela não
+   * tem garantia de forma, e a conferência tem que morar num lugar só.
+   */
+  async expediente(): Promise<Expediente> {
+    const settings = await this.get();
+    return lerExpediente(settings.businessHours);
+  }
+
   async update(dto: UpdateInboxSettingsDto) {
     const current = await this.get();
+    // O expediente sai do resto por tipo, e não só por gosto: o Prisma quer
+    // `DbNull` onde o DTO fala `null`, então os dois não cabem no mesmo
+    // espalhamento.
+    const { businessHours, ...resto } = dto;
+
     const atualizada = await this.prisma.db.inboxSettings.update({
       where: { id: current.id },
-      data: dto,
+      data: {
+        ...resto,
+        // Normalizado na entrada: as faixas chegam ordenadas e sem faixa
+        // inválida, e uma semana inteira sem atendimento nenhum vira NULL —
+        // o mesmo estado de quem nunca configurou. Sem isto, um `{}`
+        // gravado ficaria indistinguível de "configurado e sempre fechado".
+        ...(businessHours !== undefined
+          ? { businessHours: normalizar(businessHours) }
+          : {}),
+      },
     });
     // Quem escreveu não pode continuar lendo o de antes no resto do pedido.
     this.emCache = Promise.resolve(atualizada);

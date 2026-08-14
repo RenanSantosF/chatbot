@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { BusinessHoursCard } from "@/components/settings/business-hours-card";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import type { InboxSettings } from "@/lib/types";
@@ -61,6 +62,14 @@ export default function InboxSettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <BusinessHoursCard
+        value={settings.businessHours}
+        onSave={async (semana) => {
+          const atualizada = await patch({ businessHours: semana });
+          if (atualizada) toast.success("Horário de atendimento salvo.");
+        }}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
