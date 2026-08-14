@@ -10,7 +10,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -222,6 +222,56 @@ export function ChatPanel({
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  /**
+   * Onde a leitura estava quando o "carregar mensagens anteriores" foi
+   * clicado.
+   *
+   * Carregar histórico é a única operação que faz o conteúdo crescer PRA
+   * CIMA. O navegador mantém o `scrollTop` numérico, mas tudo o que estava
+   * naquela altura desceu quarenta mensagens — o efeito é a tela saltar
+   * sozinha. Guardando a altura de antes dá pra somar a diferença e deixar
+   * a mensagem que a pessoa estava lendo exatamente onde ela estava.
+   */
+  const ancoraRef = useRef<{ altura: number; topo: number } | null>(null);
+  /**
+   * Avisa o efeito de rolagem que esta atualização foi histórico antigo
+   * entrando, não mensagem nova chegando.
+   *
+   * Era o defeito: aquele efeito reage ao TAMANHO da lista, e uma das
+   * condições pra descer é "a última mensagem é nossa". Como quase toda
+   * conversa termina com uma resposta da empresa, clicar em "carregar
+   * anteriores" caía nessa condição e jogava a tela lá pro fim — o oposto
+   * exato do que o botão pede.
+   */
+  const pularIdaAoFimRef = useRef(false);
+  const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
+
+  async function carregarAnteriores() {
+    const area = scrollAreaRef.current;
+    if (!area || carregandoAnteriores) return;
+
+    ancoraRef.current = { altura: area.scrollHeight, topo: area.scrollTop };
+    pularIdaAoFimRef.current = true;
+    setCarregandoAnteriores(true);
+    try {
+      await onLoadOlder();
+    } finally {
+      setCarregandoAnteriores(false);
+    }
+  }
+
+  // useLayoutEffect, não useEffect: a correção precisa acontecer no mesmo
+  // quadro em que os balões antigos entram. Um quadro depois já teria
+  // aparecido como um salto.
+  useLayoutEffect(() => {
+    const ancora = ancoraRef.current;
+    const area = scrollAreaRef.current;
+    if (!ancora || !area) return;
+
+    ancoraRef.current = null;
+    area.scrollTop = ancora.topo + (area.scrollHeight - ancora.altura);
+  }, [conversation?.messages.length]);
+
   // Ids das mensagens que casam com a busca, na ordem da conversa. Roda
   // sobre o que já está carregado — que é o mesmo que o WhatsApp Web faz
   // enquanto você não rola pra trás.
@@ -297,6 +347,14 @@ export function ChatPanel({
   useEffect(() => {
     // Não puxa pro fim enquanto a pessoa está navegando pelos resultados.
     if (currentMatchId) return;
+
+    // Nem quando o que cresceu foi o começo da lista: quem pediu histórico
+    // quer ficar onde está, e a âncora acima já recolocou a tela no lugar.
+    if (pularIdaAoFimRef.current) {
+      pularIdaAoFimRef.current = false;
+      return;
+    }
+
     const area = scrollAreaRef.current;
     if (!area) return;
 
@@ -558,8 +616,16 @@ export function ChatPanel({
         ) : null}
         {hasOlder ? (
           <div className="flex justify-center pb-2">
-            <Button size="sm" variant="secondary" onClick={() => void onLoadOlder()}>
-              Carregar mensagens anteriores
+            <Button
+              size="sm"
+              variant="secondary"
+              // Desabilitado enquanto busca: dois cliques seguidos pediam
+              // duas páginas com o mesmo cursor e traziam o mesmo trecho
+              // do histórico duas vezes.
+              disabled={carregandoAnteriores}
+              onClick={() => void carregarAnteriores()}
+            >
+              {carregandoAnteriores ? "Carregando…" : "Carregar mensagens anteriores"}
             </Button>
           </div>
         ) : null}

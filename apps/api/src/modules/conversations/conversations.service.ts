@@ -133,6 +133,23 @@ const conversationInclude = {
  * `{...detalhe, ...resumo}` ao receber um evento, e o array de um item
  * sobrescreveria o histórico inteiro. Por isso vira `lastMessage`.
  */
+/**
+ * Tira o id da mídia de dentro do metadata pra gravar na coluna própria.
+ *
+ * A coluna é espelho, não substituta: o metadata continua carregando mime,
+ * nome do arquivo e chave do bucket, e é de lá que este valor sai. Ter o
+ * espelho num único lugar evita o defeito silencioso de um caminho de
+ * criação preencher a coluna e outro não — o anexo gravado pelo caminho
+ * esquecido simplesmente não abriria.
+ */
+export function mediaIdDe(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const valor = (metadata as { mediaId?: unknown }).mediaId;
+  return typeof valor === 'string' && valor ? valor : undefined;
+}
+
 function toSummary<T extends { messages: unknown[] }>(conversation: T) {
   const { messages, ...rest } = conversation;
   return { ...rest, lastMessage: messages[0] ?? null };
@@ -642,6 +659,7 @@ export class ConversationsService {
         tenantId: this.prisma.tenantId,
         conversationId,
         ...dadosDaMensagem,
+        mediaId: mediaIdDe(data.metadata),
       },
       include: messageInclude,
     });
@@ -1121,6 +1139,9 @@ export class ConversationsService {
         content: source.content,
         messageType: source.messageType,
         externalId,
+        // Encaminhar reaproveita o id de mídia da Meta em vez de baixar e
+        // subir de novo — então a mensagem nova aponta pro MESMO arquivo.
+        mediaId: metadata.mediaId,
         metadata: metadata as Prisma.InputJsonValue,
       },
     });
@@ -1201,6 +1222,7 @@ export class ConversationsService {
         content: caption ?? '',
         messageType: MEDIA_MESSAGE_TYPE[kind],
         externalId,
+        mediaId,
         // Sem id da Meta o anexo NÃO saiu. Marcar como falha é o que faz o
         // triângulo vermelho aparecer no balão: antes ela era gravada como
         // qualquer outra e ficava indistinguível de uma mensagem entregue,
@@ -2138,6 +2160,7 @@ export class ConversationsService {
         content: m.content,
         messageType: m.messageType ?? 'TEXT',
         metadata: m.metadata,
+        mediaId: mediaIdDe(m.metadata),
         externalId: m.externalId,
         // Já entregue: quem entregou foi o WhatsApp do celular, semanas atrás.
         status: 'SENT' as const,

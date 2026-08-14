@@ -1,16 +1,19 @@
 import {
   ArrowRight,
   BookOpenText,
+  ChevronDown,
   Clock,
   MessageCircle,
   Route,
   ShieldCheck,
   Users,
 } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ConversaDemo } from "@/components/publico/conversa-demo";
 import { apiFetchServer } from "@/lib/api-server";
+import { SITE_DESCRIPTION, SITE_NAME, absoluto } from "@/lib/site";
 import type { MeResponse } from "@/lib/types";
 
 /**
@@ -60,6 +63,44 @@ const RECURSOS = [
   },
 ];
 
+/**
+ * Perguntas que aparecem antes de alguém criar conta.
+ *
+ * Não é enfeite de página: são as três objeções reais de quem chega —
+ * "vou ter que trocar de número?", "quanto custa?", "a IA vai responder
+ * besteira pro meu cliente?". Responder aqui tira o atrito de quem está
+ * decidindo, e de quebra alimenta o bloco de perguntas frequentes do
+ * Google (ver o JSON-LD lá embaixo), que ocupa mais espaço no resultado
+ * de busca do que um link comum.
+ */
+const PERGUNTAS = [
+  {
+    pergunta: "Preciso trocar o número de WhatsApp da minha empresa?",
+    resposta:
+      "Não. O número que você já usa é conectado em um clique pelo próprio botão da Meta, e o histórico do celular é importado. Durante a coexistência dá pra continuar respondendo pelo aparelho: o que for digitado lá aparece no painel também.",
+  },
+  {
+    pergunta: "Quanto custa?",
+    resposta:
+      "Você conecta seu próprio número e usa sua própria chave de inteligência artificial, então os custos da Meta e do provedor de IA são cobrados direto na sua conta, sem intermediário. A página de termos explica cada um deles.",
+  },
+  {
+    pergunta: "E se a IA não souber responder?",
+    resposta:
+      "Ela transfere pra uma pessoa. O sistema confere o que a IA prometeu contra o que ela realmente fez: se o texto disse que alguém da equipe vai assumir e a transferência não aconteceu, a conversa é escalada mesmo assim, com o motivo escrito pra quem for atender.",
+  },
+  {
+    pergunta: "Quantas pessoas podem atender no mesmo número?",
+    resposta:
+      "Quantas você quiser. Cada conversa tem um responsável visível, filas por setor decidem quem vê o quê, e as permissões são configuradas por papel — ninguém responde por cima de ninguém.",
+  },
+  {
+    pergunta: "Os anexos somem depois de 30 dias, como no WhatsApp?",
+    resposta:
+      "Não. A Meta apaga a mídia depois de 30 dias; a Clara guarda uma cópia própria em armazenamento separado. Uma procuração enviada hoje continua abrindo no ano que vem.",
+  },
+];
+
 const PASSOS = [
   {
     titulo: "Conecte o número",
@@ -78,6 +119,35 @@ const PASSOS = [
   },
 ];
 
+/**
+ * A landing fala pelo problema, não pela categoria.
+ *
+ * O `title` foge do padrão "Clara · Clara" do template porque a home é a
+ * única página em que o nome do produto sozinho não diz nada a quem nunca
+ * ouviu falar dele — a promessa precisa caber no próprio resultado de
+ * busca.
+ */
+export const metadata: Metadata = {
+  title: {
+    absolute: "Clara — atendimento no WhatsApp com IA para a sua empresa",
+  },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    url: "/",
+    siteName: SITE_NAME,
+    title: "Seu cliente pergunta às duas da manhã. Alguém responde.",
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Seu cliente pergunta às duas da manhã. Alguém responde.",
+    description: SITE_DESCRIPTION,
+  },
+};
+
 export default async function Home() {
   const session = await apiFetchServer<MeResponse>("/auth/me");
   if (session) {
@@ -86,6 +156,46 @@ export default async function Home() {
 
   return (
     <div className="flex flex-1 flex-col bg-background">
+      {/*
+        O que a página é, dito numa linguagem que o buscador entende.
+        O texto visível continua sendo a fonte da verdade — isto só o
+        organiza, e é o que permite o Google montar o bloco de perguntas
+        frequentes em vez de um link solto.
+
+        Vai num <script type="application/ld+json">, que o React não
+        executa nem interpreta: por isso `dangerouslySetInnerHTML` aqui é
+        o caminho normal, e o conteúdo é serializado de constantes nossas,
+        nunca de entrada de usuário.
+      */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@graph": [
+              {
+                "@type": "SoftwareApplication",
+                name: SITE_NAME,
+                applicationCategory: "BusinessApplication",
+                operatingSystem: "Web",
+                url: absoluto("/"),
+                description: SITE_DESCRIPTION,
+                inLanguage: "pt-BR",
+                featureList: RECURSOS.map((r) => r.titulo),
+              },
+              {
+                "@type": "FAQPage",
+                mainEntity: PERGUNTAS.map((item) => ({
+                  "@type": "Question",
+                  name: item.pergunta,
+                  acceptedAnswer: { "@type": "Answer", text: item.resposta },
+                })),
+              },
+            ],
+          }),
+        }}
+      />
+
       <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <span className="text-base font-semibold tracking-tight">Clara</span>
@@ -200,6 +310,31 @@ export default async function Home() {
                 </p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="border-t bg-muted/30">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-5 py-16">
+            <h2 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+              Perguntas que todo mundo faz
+            </h2>
+
+            {/* <details>, e não um acordeão em JavaScript: o conteúdo já
+                está no HTML da primeira resposta do servidor — visível pro
+                buscador e pro leitor de tela — e abre sem carregar nada. */}
+            <div className="flex flex-col divide-y rounded-xl border bg-card">
+              {PERGUNTAS.map((item) => (
+                <details key={item.pergunta} className="group px-5 py-4">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-medium">
+                    {item.pergunta}
+                    <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                  </summary>
+                  <p className="pt-3 text-sm leading-relaxed text-muted-foreground text-pretty">
+                    {item.resposta}
+                  </p>
+                </details>
+              ))}
+            </div>
           </div>
         </section>
 

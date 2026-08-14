@@ -38,12 +38,16 @@ export class WhatsappMediaService {
   /**
    * Acha a mensagem dona de uma mídia pelo id que a Meta deu.
    *
-   * O id fica dentro do JSON de metadados, não em coluna própria — é o que
-   * permitiu guardar a chave do arquivo sem migração de banco.
+   * Busca pela COLUNA `mediaId`, não pelo caminho dentro do JSON de
+   * metadados. Filtro em campo Json não usa índice, e esta consulta roda em
+   * toda abertura de conversa com anexo e em todo arquivamento vindo do
+   * webhook — era uma varredura da tabela que mais cresce no sistema, várias
+   * vezes por conversa. A coluna é espelho do que continua no metadata (ver
+   * `mediaIdDe`, em ConversationsService).
    */
   private async mensagemDaMidia(mediaId: string) {
     return this.prisma.db.message.findFirst({
-      where: { metadata: { path: ['mediaId'], equals: mediaId } },
+      where: { mediaId },
       select: { id: true, metadata: true, deletedAt: true },
     });
   }

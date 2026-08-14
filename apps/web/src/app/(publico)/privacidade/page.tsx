@@ -7,7 +7,11 @@ import {
 } from "@/components/publico/documento-legal";
 
 export const metadata: Metadata = {
-  title: "Política de privacidade — Clara",
+  title: "Política de privacidade",
+  alternates: { canonical: "/privacidade" },
+  // Card próprio: sem isto o link destes documentos compartilhado
+  // num grupo aparecia com a chamada de venda da home.
+  openGraph: { type: "article", locale: "pt_BR", url: "/privacidade", title: "Política de privacidade — Clara" },
   description:
     "Que dados a Clara trata, onde eles ficam, por quanto tempo e com quem são compartilhados.",
 };

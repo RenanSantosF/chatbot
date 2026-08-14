@@ -388,6 +388,15 @@ model Message {
   // os webhooks de status depois encontram a linha certa pra atualizar.
   externalId     String?
   metadata       Json?
+  // ID da mídia na Meta, espelhado pra fora do metadata.
+  //
+  // Ele continua dentro do JSON (junto do mime, nome e chave do bucket),
+  // mas o proxy de anexo procura a mensagem POR ele em toda abertura de
+  // conversa e em todo arquivamento vindo do webhook. Buscar por caminho
+  // dentro de Json não usa índice: varria a tabela de mensagens inteira do
+  // tenant, e essa tabela é a que mais cresce no sistema. Como coluna, a
+  // busca é um índice direto.
+  mediaId        String?
   // Resposta citada: no WhatsApp o cliente pode responder uma mensagem
   // específica, e sem isso a conversa perde o fio quando ele responde algo
   // de cinco mensagens atrás.
@@ -413,6 +422,9 @@ model Message {
   @@index([tenantId])
   @@index([conversationId, createdAt])
   @@index([externalId])
+  // Composto e nesta ordem: a busca sempre chega com o tenant já fixado
+  // pela extensão de isolamento, então o filtro mais seletivo vem primeiro.
+  @@index([tenantId, mediaId])
   @@map("messages")
 }
 
