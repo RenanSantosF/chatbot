@@ -1,0 +1,83 @@
+# O que precisa estar verde antes de um commit chegar na main.
+#
+# Existiam 490 testes que só rodavam quando alguém lembrava de rodar. O
+# defeito mais caro achado até aqui — a tela da IA dizendo "Permitir"
+# enquanto a execução exigia aprovação, deixando toda empresa nova sem
+# transferência — é exatamente do tipo que um teste pega e uma revisão
+# humana não: nada quebrava, nada aparecia no log, e o painel dizia que
+# estava tudo certo.
+#
+# Os dois aplicativos rodam em jobs separados de propósito: quebrar a API
+# não pode esconder que o painel também quebrou, e ver os dois resultados de
+# uma vez economiza uma volta inteira.
+name: Verificação
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Empurrar um commit novo cancela a verificação do anterior: o que interessa
+# é o estado atual do ramo, e minuto de runner gasto num commit que já foi
+# substituído é minuto jogado fora.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (testes e tipos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # A versão sai do campo "engines" do package.json, então subir o
+          # Node em um lugar só continua valendo pra todo mundo.
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      # O cliente do Prisma é gerado, não versionado: sem este passo o
+      # TypeScript não acha `generated/prisma/client` e tudo abaixo falha por
+      # um motivo que não tem nada a ver com o commit.
+      - name: Gerar o cliente do Prisma
+        run: pnpm --filter api exec prisma generate
+
+      - name: Tipos
+        run: pnpm --filter api run typecheck
+
+      # Nenhum teste encosta em banco: o Prisma é sempre de mentira. É o que
+      # deixa a verificação rodar em segundos e sem serviço de apoio.
+      - name: Testes
+        run: pnpm --filter api test
+
+  web:
+    name: Painel (lint e build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter web run lint
+
+      # `next build` é a conferência de tipos do painel, e não só o empacote:
+      # esta versão do Next gera os tipos das rotas durante o build, então um
+      # `tsc --noEmit` solto reprova por tipo que ainda não existe.
+      - name: Build
+        run: pnpm --filter web run build
