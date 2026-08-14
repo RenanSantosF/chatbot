@@ -45,13 +45,13 @@ export default function RegisterPage() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>Crie sua empresa</CardTitle>
+    <Card className="w-full max-w-sm bg-transparent ring-0">
+      <CardHeader className="px-0">
+        <CardTitle className="text-2xl tracking-tight">Crie sua empresa</CardTitle>
         <CardDescription>Comece a configurar sua IA de atendimento em minutos.</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent className="flex flex-col gap-4 px-0">
           <div className="flex flex-col gap-2">
             <Label htmlFor="companyName">Nome da empresa</Label>
             <Input
@@ -97,9 +97,13 @@ export default function RegisterPage() {
               minLength={8}
             />
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
         </CardContent>
-        <CardFooter className="flex flex-col gap-4">
+        <CardFooter className="flex flex-col gap-4 px-0">
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Criando conta..." : "Criar conta"}
           </Button>
