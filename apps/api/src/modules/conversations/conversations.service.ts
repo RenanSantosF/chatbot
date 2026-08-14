@@ -188,6 +188,8 @@ export class ConversationsService {
     priority?: ConversationPriority;
     unreadOnly?: boolean;
     unassignedOnly?: boolean;
+    /** Só o que a IA está conduzindo agora. */
+    comIa?: boolean;
     search?: string;
     cursor?: string;
     limit?: number;
@@ -207,6 +209,21 @@ export class ConversationsService {
           ? { status: filter.status }
           : filter.statusGroup
             ? { status: { in: [...STATUS_GROUPS[filter.statusGroup]] } }
+            : {}),
+        // "Pendente" quer dizer "precisa de uma pessoa".
+        //
+        // Conversa que a IA está conduzindo não está esperando ninguém da
+        // equipe: ela já foi respondida e segue em andamento. Deixá-la na
+        // mesma lista fazia o atendente abrir uma por uma pra descobrir que
+        // não havia nada a fazer — e, num dia movimentado, era o suficiente
+        // pra enterrar a conversa que realmente precisava dele.
+        //
+        // O filtro "Com a IA" mostra justamente essas, pra o dono conseguir
+        // auditar o que ela anda respondendo.
+        ...(filter.comIa
+          ? { aiMode: 'AI_ACTIVE' as const }
+          : filter.statusGroup === 'PENDING'
+            ? { aiMode: { not: 'AI_ACTIVE' as const } }
             : {}),
         ...(filter.assignedUserId
           ? { assignedUserId: filter.assignedUserId }
@@ -292,6 +309,7 @@ export class ConversationsService {
       pendentes,
       aguardando,
       resolvidas,
+      comIa,
       byStatus,
       byPriority,
     ] = await Promise.all([
@@ -302,8 +320,15 @@ export class ConversationsService {
         // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
         // quem atende faz de manhã — o que é minha vez, o que está com o
         // cliente, o que já acabou.
+        // Mesma regra da lista: pendente é o que precisa de gente, então a
+        // conta não inclui o que a IA está conduzindo. Contador e lista têm
+        // que bater — número que não corresponde ao que a tela mostra é pior
+        // que nenhum número.
         this.prisma.db.conversation.count({
-          where: { status: { in: [...STATUS_GROUPS.PENDING] } },
+          where: {
+            status: { in: [...STATUS_GROUPS.PENDING] },
+            aiMode: { not: 'AI_ACTIVE' },
+          },
         }),
         this.prisma.db.conversation.count({
           where: { status: { in: [...STATUS_GROUPS.WAITING] } },
@@ -311,6 +336,7 @@ export class ConversationsService {
         this.prisma.db.conversation.count({
           where: { status: { in: [...STATUS_GROUPS.DONE] } },
         }),
+        this.prisma.db.conversation.count({ where: { aiMode: 'AI_ACTIVE' } }),
         this.prisma.db.conversation.groupBy({
           by: ['status'],
           _count: { _all: true },
@@ -324,6 +350,7 @@ export class ConversationsService {
     return {
       total,
       unread,
+      comIa,
       mine,
       unassigned,
       pendentes,
@@ -742,6 +769,7 @@ export class ConversationsService {
   ) {
     await this.requireConversationExists(conversationId);
     await this.reabrirSePreciso(conversationId, agentId);
+    await this.assumirAoResponder(conversationId, agentId);
 
     const { message } = await this.persistMessage(conversationId, {
       senderType: 'AGENT',
@@ -750,6 +778,59 @@ export class ConversationsService {
       replyToId,
     });
     return message;
+  }
+
+  /**
+   * Quem responde, assume — e a IA se cala.
+   *
+   * Duas coisas acontecem juntas porque o problema é um só: um humano
+   * acabou de falar com esse cliente.
+   *
+   * 1. A conversa sem dono passa a ser de quem respondeu. Era possível
+   *    responder e a conversa continuar "sem responsável", então ela seguia
+   *    aparecendo como disponível e um colega respondia por cima.
+   *
+   * 2. A IA para de responder ali. Esta é a mais grave: com ela ativa, a
+   *    próxima mensagem do cliente era respondida pelos dois — a pessoa e o
+   *    modelo, do mesmo número, possivelmente dizendo coisas diferentes.
+   *    Nenhum cliente entende isso, e a empresa fica com as duas respostas
+   *    na conta.
+   *
+   * Conversa que JÁ tem dono não muda de mão aqui: pra isso existe o
+   * "Assumir" com confirmação, que registra a troca no histórico.
+   */
+  private async assumirAoResponder(conversationId: string, agentId: string) {
+    const conversa = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { assignedUserId: true, aiMode: true },
+    });
+    if (!conversa) return;
+
+    const semDono = !conversa.assignedUserId;
+    const iaAtiva = conversa.aiMode === 'AI_ACTIVE';
+    if (!semDono && !iaAtiva) return;
+
+    const atualizada = await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: {
+        ...(semDono ? { assignedUserId: agentId, assignmentAccepted: true } : {}),
+        ...(iaAtiva ? { aiMode: 'HUMAN_ACTIVE' as const } : {}),
+      },
+      include: conversationInclude,
+    });
+
+    if (semDono) {
+      await this.registrarNota(
+        conversationId,
+        `${atualizada.assignedUser?.name ?? 'Um atendente'} respondeu e assumiu o atendimento.`,
+      );
+    }
+
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      toSummary(atualizada),
+    );
   }
 
   /**
@@ -1095,6 +1176,7 @@ export class ConversationsService {
   ) {
     const conversation = await this.requireConversation(conversationId);
     await this.reabrirSePreciso(conversationId, agentId);
+    await this.assumirAoResponder(conversationId, agentId);
 
     if (conversation.channel !== 'WHATSAPP') {
       throw new BadRequestException(

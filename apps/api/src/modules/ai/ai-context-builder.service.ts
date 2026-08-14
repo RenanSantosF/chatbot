@@ -168,9 +168,48 @@ export class AiContextBuilder {
     }
   }
 
+  /**
+   * Onde começa o atendimento atual.
+   *
+   * Encerrar é uma fronteira: o que veio antes está resolvido, e a IA não
+   * deve enxergar aquilo como conversa em andamento. Sem isto acontecia o
+   * seguinte — o atendimento era encerrado depois de a IA passar o caso
+   * para o Jurídico, o cliente voltava dias depois com um "Oi", e a IA
+   * lia o pedido antigo lá em cima e refazia a transferência. Da parte
+   * dela era coerente; para quem estava do outro lado, era um sistema que
+   * não percebeu que o assunto já tinha terminado.
+   *
+   * O que sobrevive à fronteira é a MEMÓRIA do cliente (profissão, como
+   * prefere ser chamado), que entra pelo prompt e não pelo histórico.
+   * Assim ele volta a ser tratado como conhecido, mas com assunto novo.
+   */
+  private async inicioDoAtendimentoAtual(
+    conversationId: string,
+  ): Promise<Date | null> {
+    const reabertura = await this.tenantPrisma.db.message.findFirst({
+      where: {
+        conversationId,
+        senderType: 'SYSTEM',
+        // A nota de reabertura é escrita por quem reabre — o cliente que
+        // voltou a escrever, ou o atendente que respondeu numa conversa
+        // encerrada (ver reabrirParaAgrupamento e reabrirSePreciso).
+        content: { contains: 'reaberto' },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+
+    return reabertura?.createdAt ?? null;
+  }
+
   async build(conversationId: string): Promise<AiConversationContext> {
+    const desde = await this.inicioDoAtendimentoAtual(conversationId);
+
     const messages = await this.tenantPrisma.db.message.findMany({
-      where: { conversationId },
+      where: {
+        conversationId,
+        ...(desde ? { createdAt: { gte: desde } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: HISTORY_LIMIT,
     });

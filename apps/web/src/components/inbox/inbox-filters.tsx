@@ -18,6 +18,8 @@ export interface InboxFilters {
   mine: boolean;
   unread: boolean;
   unassigned: boolean;
+  /** Só o que a IA está conduzindo agora. */
+  comIa: boolean;
   search: string;
 }
 
@@ -35,6 +37,7 @@ export const DEFAULT_FILTERS: InboxFilters = {
   mine: false,
   unread: false,
   unassigned: false,
+  comIa: false,
   search: "",
 };
 
@@ -44,6 +47,7 @@ export interface FilterCounts {
   unread: number;
   mine: number;
   unassigned: number;
+  comIa: number;
   pendentes: number;
   aguardando: number;
   resolvidas: number;
@@ -77,7 +81,7 @@ const GRUPOS: {
     value: "PENDING",
     label: "Pendentes",
     icon: Inbox,
-    ajuda: "Tudo que ainda não foi encerrado",
+    ajuda: "Precisa de uma pessoa — sem o que a IA está conduzindo",
   },
   {
     value: "WAITING",
@@ -121,7 +125,12 @@ export function InboxFilterBar({
   };
 
   const refinando =
-    value.status !== "ALL" || value.priority !== "ALL" || value.mine || value.unread || value.unassigned;
+    value.status !== "ALL" ||
+    value.priority !== "ALL" ||
+    value.mine ||
+    value.unread ||
+    value.unassigned ||
+    value.comIa;
 
   return (
     <div className="flex flex-col gap-2.5 p-3">
@@ -194,6 +203,15 @@ export function InboxFilterBar({
           onToggle={() => set("unassigned", !value.unassigned)}
           rotulo="Sem dono"
           quantos={counts.unassigned}
+        />
+        {/* Fora de "Pendentes" por padrão: conversa que a IA conduz não
+            espera ninguém da equipe. Este interruptor é o caminho de quem
+            quer justamente auditar o que ela anda respondendo. */}
+        <Interruptor
+          ligado={value.comIa}
+          onToggle={() => set("comIa", !value.comIa)}
+          rotulo="Com a IA"
+          quantos={counts.comIa}
         />
         <button
           type="button"

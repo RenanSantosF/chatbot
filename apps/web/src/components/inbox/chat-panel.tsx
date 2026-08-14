@@ -221,6 +221,7 @@ export function ChatPanel({
   const firstPaintRef = useRef(true);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerRef = useRef<HTMLInputElement | null>(null);
 
   // Ids das mensagens que casam com a busca, na ordem da conversa. Roda
   // sobre o que já está carregado — que é o mesmo que o WhatsApp Web faz
@@ -550,6 +551,21 @@ export function ChatPanel({
           if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
         }}
         onDrop={composicaoTravada ? undefined : handleDrop}
+        onMouseUp={(evento) => {
+          // Clicar em qualquer canto vazio da conversa põe o cursor no
+          // campo de mensagem — é o gesto de quem vai responder, e obrigar
+          // a mirar no campo depois de já ter clicado na tela é atrito à
+          // toa.
+          //
+          // Duas exceções, senão isto atrapalha mais do que ajuda: quem
+          // está selecionando texto pra copiar não pode perder a seleção, e
+          // clique em botão, link ou player de áudio pertence a eles.
+          if (window.getSelection()?.toString()) return;
+          if ((evento.target as HTMLElement).closest("button, a, audio, video, input")) {
+            return;
+          }
+          composerRef.current?.focus();
+        }}
       >
         {dragging ? (
           <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/80 backdrop-blur-sm">
@@ -771,6 +787,7 @@ export function ChatPanel({
               void handleSubmit(event);
             }
           }}
+          ref={composerRef}
           placeholder={
             composicaoTravada
               ? "Conversa encerrada — reabra para responder"
@@ -779,7 +796,12 @@ export function ChatPanel({
                 : "Escreva uma mensagem..."
           }
           disabled={composicaoTravada || sending}
-          className="rounded-md"
+          // Foco sem o anel verde. Num campo que fica selecionado o dia
+          // inteiro, o realce da cor da marca vira um brilho constante no
+          // canto da tela; a borda um pouco mais firme já diz onde o cursor
+          // está, e o verde volta a significar alguma coisa quando aparece
+          // em outro lugar.
+          className="rounded-md focus-visible:border-foreground/30 focus-visible:ring-0"
         />
         {/* No canto onde estava o botão de enviar. O gravador se expande
             sobre o compositor enquanto grava, então precisa ser o último

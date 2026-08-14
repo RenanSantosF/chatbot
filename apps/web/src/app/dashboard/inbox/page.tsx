@@ -37,6 +37,7 @@ const EMPTY_COUNTS: FilterCounts = {
   unread: 0,
   mine: 0,
   unassigned: 0,
+  comIa: 0,
   pendentes: 0,
   aguardando: 0,
   resolvidas: 0,
@@ -54,6 +55,7 @@ function buildQuery(filters: InboxFilters, cursor?: string | null): string {
   if (filters.mine) params.set("mine", "true");
   if (filters.unread) params.set("unread", "true");
   if (filters.unassigned) params.set("unassigned", "true");
+  if (filters.comIa) params.set("comIa", "true");
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (cursor) params.set("cursor", cursor);
   const query = params.toString();

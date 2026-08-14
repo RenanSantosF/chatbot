@@ -332,7 +332,22 @@ export class AiToolsService {
     return tool;
   }
 
-  /** Configuração completa (catálogo + estado por tenant) — usado pela tela de Configurações > IA > Ferramentas. */
+  /**
+   * Configuração completa (catálogo + estado por tenant) — usado pela tela
+   * de Configurações > IA > Ferramentas.
+   *
+   * O padrão é LIGADO e em "Permitir". Antes tudo nascia desligado e em
+   * "Aprovar", e o resultado era uma IA que não fazia nada numa empresa
+   * recém-configurada — sem que ninguém entendesse por quê. A pior delas
+   * era "Transferir atendimento" desligada: a IA prometia um humano e não
+   * tinha como cumprir.
+   *
+   * As quatro ferramentas atuais são seguras por natureza: leem cadastro,
+   * criam tarefa interna, passam a conversa adiante e anotam preferência do
+   * cliente. Nenhuma gasta dinheiro nem fala com o mundo externo. Uma que
+   * fizesse isso entraria com padrão diferente, e o comentário aqui é o
+   * lembrete de que essa distinção existe.
+   */
   async listConfigured(): Promise<ConfiguredTool[]> {
     const configured = await this.prisma.db.aiTool.findMany();
     const byKey = new Map(configured.map((tool) => [tool.key, tool]));
@@ -341,8 +356,8 @@ export class AiToolsService {
       key: tool.key,
       name: tool.name,
       description: tool.description,
-      enabled: byKey.get(tool.key)?.enabled ?? false,
-      permission: byKey.get(tool.key)?.permission ?? 'REQUIRES_APPROVAL',
+      enabled: byKey.get(tool.key)?.enabled ?? true,
+      permission: byKey.get(tool.key)?.permission ?? 'ALLOW',
     }));
   }
 
@@ -372,12 +387,31 @@ export class AiToolsService {
    * fila que não existe.
    */
   async getEnabledDeclarations(): Promise<AiToolDeclaration[]> {
-    const configured = await this.prisma.db.aiTool.findMany({ where: { enabled: true } });
-    const enabledKeys = new Set(configured.map((tool) => tool.key));
+    // Ferramenta sem linha no banco é ferramenta que a empresa nunca
+    // configurou — e o padrão dela é ligada (ver listConfigured). Buscar só
+    // `enabled: true` deixaria de fora justamente as que ninguém tocou, que
+    // são a maioria numa conta nova.
+    const configured = await this.prisma.db.aiTool.findMany();
+    const desligadas = new Set(
+      configured.filter((tool) => !tool.enabled).map((tool) => tool.key),
+    );
+    const enabledKeys = new Set(
+      this.registry
+        .map((tool) => tool.key)
+        .filter((key) => !desligadas.has(key)),
+    );
 
-    const memoryMode = enabledKeys.has('rememberCustomerInfo')
-      ? await this.memoryMode()
-      : 'NONE';
+    // A memória do cliente tem UM controle, não dois.
+    //
+    // Havia "Memória do cliente" (Nada / Só o importante / Detalhes) dizendo
+    // O QUE guardar, e uma ferramenta "Lembrar dados do cliente" dizendo SE
+    // podia guardar. Duas chaves pro mesmo comportamento, capazes de se
+    // contradizer: memória em "Só o importante" com a ferramenta desligada
+    // prometia lembrar e não lembrava.
+    //
+    // Agora a memória manda. Em "Nada", a ferramenta não é nem oferecida ao
+    // modelo; em qualquer outro modo, ela existe.
+    const memoryMode = await this.memoryMode();
     if (memoryMode === 'NONE') {
       enabledKeys.delete('rememberCustomerInfo');
     }
