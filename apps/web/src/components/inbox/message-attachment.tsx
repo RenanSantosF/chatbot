@@ -1,8 +1,9 @@
 "use client";
 
-import { Download, ExternalLink, FileText, MapPin, Mic, Play } from "lucide-react";
+import { Download, ExternalLink, FileText, MapPin, Play } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { AudioMessage } from "./audio-message";
 import { ImageLightbox } from "./image-lightbox";
 import type { ConversationMessage } from "@/lib/types";
 
@@ -101,18 +102,13 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
   }
 
   if (message.messageType === "AUDIO") {
-    // Largura fixa e um rótulo em cima: o player nu do navegador nasce com
-    // largura de conteúdo, então cada áudio saía de um tamanho e a coluna
-    // de balões ficava serrilhada. O rótulo distingue o recado de voz do
-    // arquivo de áudio anexado, que é o que o remetente quis dizer.
     return (
-      <span className="flex w-60 max-w-full flex-col gap-1">
-        <span className="flex items-center gap-1.5 text-[11px] font-medium opacity-70">
-          <Mic className="size-3" />
-          {meta.voice ? "Mensagem de voz" : "Áudio"}
-        </span>
-        <audio controls src={url} className="h-9 w-full" />
-      </span>
+      <AudioMessage
+        url={url}
+        chave={meta.mediaId}
+        voz={meta.voice}
+        daEmpresa={message.senderType !== "CUSTOMER"}
+      />
     );
   }
 

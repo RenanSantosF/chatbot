@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -13,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
+import { RequiresPermission } from '../../common/auth/permission.decorator';
 import { Roles } from '../../common/auth/roles.decorator';
 import type {
   ConversationPriority,
@@ -106,6 +108,23 @@ export class ConversationsController {
     @Body('emoji') emoji: string,
   ) {
     return this.conversationsService.reactToMessage(id, messageId, emoji ?? '');
+  }
+
+  /**
+   * Apaga do painel. Não apaga do telefone do cliente — a Cloud API não
+   * tem esse recurso, e a tela avisa isso antes de confirmar.
+   */
+  @Delete(':id/messages/:messageId')
+  @RequiresPermission('conversations.send')
+  apagarMensagem(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.apagarMensagem(id, messageId, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   @Post(':id/messages/:messageId/forward')

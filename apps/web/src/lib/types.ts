@@ -86,6 +86,8 @@ export interface ConversationMessage {
   status: MessageStatus;
   /** Emoji -> quem reagiu (telefone do cliente ou "agent"). */
   reactions: Record<string, string[]> | null;
+  /** Quando foi apagada no painel. O conteúdo não vem mais junto. */
+  deletedAt?: string | null;
   replyToId: string | null;
   replyTo: {
     id: string;
@@ -311,6 +313,8 @@ export interface InboxSettings {
   sendReadReceipts: boolean;
   notifyOnResolve: boolean;
   resolveMessage: string;
+  /** Responder numa conversa encerrada reabre o atendimento? */
+  allowSendWhenResolved: boolean;
   groupByCustomer: boolean;
   groupWindowHours: number;
   autoCloseIdle: boolean;

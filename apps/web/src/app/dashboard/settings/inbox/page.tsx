@@ -1,6 +1,14 @@
 "use client";
 
-import { CheckCheck, Clock, Eye, Layers, MessageSquareX, PenLine } from "lucide-react";
+import {
+  CheckCheck,
+  Clock,
+  Eye,
+  Layers,
+  MessageSquareX,
+  PenLine,
+  Undo2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -132,6 +140,32 @@ export default function InboxSettingsPage() {
               </div>
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Undo2 className="size-4" />
+            Responder em conversa encerrada
+          </CardTitle>
+          <CardDescription>
+            Do lado do cliente não existe &ldquo;encerrado&rdquo;: existe uma conversa de WhatsApp
+            como qualquer outra. Com isto ligado, responder reabre o atendimento sozinho e o
+            histórico registra quem reabriu. Desligado, é preciso reabrir de propósito antes de
+            escrever — o que faz sentido em operação com auditoria, onde reabrir precisa ser um
+            ato deliberado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <label className="flex items-center justify-between gap-4 rounded-md border p-3">
+            <span className="text-sm font-medium">Deixar responder e reabrir</span>
+            <Switch
+              checked={settings.allowSendWhenResolved}
+              onCheckedChange={(checked) => patch({ allowSendWhenResolved: checked })}
+              aria-label="Deixar responder em conversa encerrada"
+            />
+          </label>
         </CardContent>
       </Card>
 

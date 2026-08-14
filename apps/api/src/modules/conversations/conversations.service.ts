@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -360,9 +361,38 @@ export class ConversationsService {
     const hasMore = items.length > take;
     const page = hasMore ? items.slice(0, take) : items;
 
+    const comNome = await this.comNomeDeQuemEnviou([...page].reverse());
+
     return {
-      items: await this.comNomeDeQuemEnviou([...page].reverse()),
+      items: comNome.map((mensagem) => this.esconderApagada(mensagem)),
       nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+    };
+  }
+
+  /**
+   * Tira o conteúdo de uma mensagem apagada antes de ela sair da API.
+   *
+   * O banco guarda o texto original (ver `apagarMensagem`); é aqui que ele
+   * para de trafegar. Fazer isso na saída, e não no banco, é o que permite
+   * apagar sem destruir: a prova continua existindo pra quem tiver acesso
+   * ao banco, e o painel — que é o que a equipe e uma tela compartilhada
+   * mostram — não exibe mais nada.
+   */
+  private esconderApagada<
+    T extends {
+      deletedAt: Date | null;
+      content: string;
+      metadata: Prisma.JsonValue | null;
+    },
+  >(mensagem: T): T {
+    if (!mensagem.deletedAt) return mensagem;
+    return {
+      ...mensagem,
+      content: '',
+      // Sem metadata não há mediaId, e sem mediaId o anexo não pode ser
+      // baixado pelo proxy. Apagar precisa valer pro arquivo também.
+      metadata: null,
+      replyTo: null,
     };
   }
 
@@ -711,6 +741,8 @@ export class ConversationsService {
     replyToId?: string,
   ) {
     await this.requireConversationExists(conversationId);
+    await this.reabrirSePreciso(conversationId, agentId);
+
     const { message } = await this.persistMessage(conversationId, {
       senderType: 'AGENT',
       senderId: agentId,
@@ -718,6 +750,53 @@ export class ConversationsService {
       replyToId,
     });
     return message;
+  }
+
+  /**
+   * Responder numa conversa encerrada reabre o atendimento.
+   *
+   * O "encerrado" é um estado nosso, de organização interna: do outro lado
+   * existe uma conversa de WhatsApp como qualquer outra, e o cliente que
+   * recebe uma resposta não faz ideia de que alguém teve de reabrir um
+   * ticket pra falar com ele. Fazer o atendente encerrar, reabrir e só
+   * então escrever seria burocracia que só existe do nosso lado.
+   *
+   * A empresa pode desligar isso (InboxSettings.allowSendWhenResolved) —
+   * operações com auditoria costumam querer que reabrir seja um ato
+   * deliberado, e essa é uma decisão de processo, não nossa.
+   */
+  private async reabrirSePreciso(conversationId: string, agentId: string) {
+    const conversa = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { status: true },
+    });
+    if (conversa?.status !== 'RESOLVED' && conversa?.status !== 'CLOSED') {
+      return;
+    }
+
+    const settings = await this.inboxSettings.get();
+    if (!settings.allowSendWhenResolved) {
+      throw new BadRequestException(
+        'Esta conversa está encerrada. Reabra antes de responder — ou libere o envio ' +
+          'em conversa encerrada em Configurações > Atendimento.',
+      );
+    }
+
+    const autor = await this.prisma.db.user.findFirst({
+      where: { id: agentId },
+      select: { name: true },
+    });
+
+    await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'OPEN', assignedUserId: agentId, assignmentAccepted: true },
+    });
+    await this.registrarNota(
+      conversationId,
+      autor?.name
+        ? `${autor.name} respondeu e o atendimento foi reaberto.`
+        : 'O atendimento foi reaberto por uma nova resposta.',
+    );
   }
 
   /**
@@ -863,6 +942,73 @@ export class ConversationsService {
   }
 
   /**
+   * Apaga uma mensagem do painel.
+   *
+   * Apagamento LÓGICO, e essa é a escolha central: a linha continua no
+   * banco com o conteúdo original, e só a exibição muda. Histórico de
+   * atendimento é prova — numa cobrança, numa reclamação no Procon ou num
+   * processo, o que foi dito importa, e um apagar de verdade transformaria
+   * um clique errado em perda de prova. Quem apagou e quando ficam
+   * registrados.
+   *
+   * E há um limite honesto: a Cloud API da Meta NÃO tem como apagar uma
+   * mensagem já entregue. O aplicativo do WhatsApp tem ("apagar para
+   * todos"), a API não — tanto que este sistema RECEBE avisos de exclusão
+   * feitos pelo celular (ver `revoke` no webhook) e não tem como emitir um.
+   * Então isto some daqui e permanece no telefone do cliente. A tela diz
+   * isso com todas as letras, porque prometer o contrário seria pior que
+   * não ter o recurso.
+   */
+  async apagarMensagem(
+    conversationId: string,
+    messageId: string,
+    quem: { userId: string; role: UserRole },
+  ) {
+    await this.requireConversationExists(conversationId);
+
+    const mensagem = await this.prisma.db.message.findFirst({
+      where: { id: messageId, conversationId },
+    });
+    if (!mensagem) {
+      throw new NotFoundException('Mensagem não encontrada.');
+    }
+    if (mensagem.deletedAt) {
+      // Já apagada: devolver o estado atual em vez de erro. Dois cliques
+      // não são uma falha.
+      return mensagem;
+    }
+    if (mensagem.senderType === 'CUSTOMER') {
+      throw new BadRequestException(
+        'Mensagem do cliente não pode ser apagada: ela é registro do que ele disse.',
+      );
+    }
+
+    // Quem escreveu apaga o que escreveu. Dono e admin apagam qualquer
+    // coisa, inclusive resposta da IA — são eles que respondem pelo que a
+    // empresa disse.
+    const meuTexto =
+      mensagem.senderType === 'AGENT' && mensagem.senderId === quem.userId;
+    const mandaNaCasa = quem.role === 'OWNER' || quem.role === 'ADMIN';
+    if (!meuTexto && !mandaNaCasa) {
+      throw new ForbiddenException(
+        'Só quem escreveu a mensagem (ou um administrador) pode apagá-la.',
+      );
+    }
+
+    const atualizada = await this.prisma.db.message.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date(), deletedById: quem.userId },
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
+      conversationId,
+      message: this.esconderApagada(atualizada),
+    });
+
+    return atualizada;
+  }
+
+  /**
    * Encaminha uma mensagem pra outra conversa. Mídia não é baixada e
    * subida de novo: o id de mídia da Meta é reaproveitado, que é o mesmo
    * que o aplicativo faz e evita um ida-e-volta de megabytes à toa.
@@ -948,6 +1094,7 @@ export class ConversationsService {
     caption?: string,
   ) {
     const conversation = await this.requireConversation(conversationId);
+    await this.reabrirSePreciso(conversationId, agentId);
 
     if (conversation.channel !== 'WHATSAPP') {
       throw new BadRequestException(

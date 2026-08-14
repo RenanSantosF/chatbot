@@ -25,6 +25,15 @@ export class UpdateInboxSettingsDto {
   @MaxLength(1000)
   resolveMessage?: string;
 
+  /**
+   * Deixa responder numa conversa encerrada, reabrindo o atendimento em vez
+   * de travar o compositor. Ligado por padrão: o cliente do outro lado não
+   * vê "encerrado", vê uma conversa de WhatsApp.
+   */
+  @IsOptional()
+  @IsBoolean()
+  allowSendWhenResolved?: boolean;
+
   @IsOptional()
   @IsBoolean()
   groupByCustomer?: boolean;

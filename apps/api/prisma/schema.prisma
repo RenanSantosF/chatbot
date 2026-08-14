@@ -205,6 +205,12 @@ model InboxSettings {
   // histórico anterior à vista, em vez de abrir um card novo do zero.
   // Desligado, cada assunto vira um atendimento separado — que é o que
   // uma operação com métrica por chamado costuma querer.
+  /// Deixa responder numa conversa já encerrada. Ligado, enviar reabre o
+  /// atendimento automaticamente — é o que a maioria espera, porque o
+  /// cliente do outro lado não vê "encerrado", vê uma conversa de WhatsApp.
+  /// Desligado, o compositor fica travado e é preciso reabrir de propósito.
+  allowSendWhenResolved Boolean @default(true)
+
   groupByCustomer  Boolean  @default(true)
   // Janela em horas pro reagrupamento. Passou disso, o assunto é outro e
   // a conversa nova começa limpa.
@@ -390,6 +396,13 @@ model Message {
   // própria mensagem reagida, não como mensagem nova — é assim que a Meta
   // manda e é assim que faz sentido exibir.
   reactions      Json?
+  // Quando alguém apagou a mensagem no painel. Apagamento é lógico: a
+  // linha permanece com o conteúdo, porque histórico de atendimento é
+  // prova — em cobrança, reclamação ou processo, "sumiu" e "nunca existiu"
+  // são coisas diferentes. O painel esconde o conteúdo e mostra a tarja de
+  // apagada; quem apagou e quando ficam registrados.
+  deletedAt      DateTime?
+  deletedById    String?
   createdAt      DateTime          @default(now())
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -7,6 +7,7 @@ import {
   MessagesSquare,
   Paperclip,
   Search,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -14,6 +15,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select-field";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useSession } from "@/components/session-provider";
@@ -156,6 +165,8 @@ export function ChatPanel({
   onCancelReply,
   onReact,
   onRead,
+  onDelete,
+  podeEnviarEncerrada,
 }: {
   conversation: ConversationDetail | null;
   /** Há conversa escolhida, mas os dados ainda estão vindo. */
@@ -176,6 +187,9 @@ export function ChatPanel({
   onReact: (messageId: string, emoji: string) => Promise<void>;
   /** Chamada quando o fim da conversa aparece na tela. */
   onRead: () => void;
+  onDelete: (messageId: string) => Promise<void>;
+  /** A empresa deixa responder em conversa encerrada (reabrindo)? */
+  podeEnviarEncerrada: boolean;
 }) {
   const { user } = useSession();
   const [draft, setDraft] = useState("");
@@ -192,6 +206,8 @@ export function ChatPanel({
   // sinal de espera, o clique parecia não ter efeito e a pessoa clicava de
   // novo — resolvendo uma conversa que já tinha resolvido.
   const [mudandoEstado, setMudandoEstado] = useState(false);
+  // Mensagem escolhida pra apagar — o diálogo só existe enquanto ela existe.
+  const [apagando, setApagando] = useState<ConversationMessage | null>(null);
 
   async function comEspera(acao: () => Promise<void>) {
     setMudandoEstado(true);
@@ -367,6 +383,11 @@ export function ChatPanel({
   }
 
   const isResolved = conversation.status === "RESOLVED" || conversation.status === "CLOSED";
+  // Encerrada não é o mesmo que travada. Quando a empresa libera, responder
+  // reabre o atendimento sozinho (ver reabrirSePreciso na API) — do lado do
+  // cliente é uma conversa de WhatsApp como outra qualquer, e obrigar o
+  // atendente a reabrir antes de escrever seria burocracia só nossa.
+  const composicaoTravada = isResolved && !podeEnviarEncerrada;
 
   function handleDrop(event: React.DragEvent) {
     event.preventDefault();
@@ -521,14 +542,14 @@ export function ChatPanel({
         className="chat-wallpaper relative flex min-h-0 flex-1 flex-col gap-1.5 overflow-x-hidden overflow-y-auto p-4"
         onDragOver={(event) => {
           event.preventDefault();
-          if (!isResolved) setDragging(true);
+          if (!composicaoTravada) setDragging(true);
         }}
         onDragLeave={(event) => {
           // Só apaga o realce quando o ponteiro sai de verdade da área —
           // sem isso ele pisca ao passar por cima de cada balão.
           if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
         }}
-        onDrop={isResolved ? undefined : handleDrop}
+        onDrop={composicaoTravada ? undefined : handleDrop}
       >
         {dragging ? (
           <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/80 backdrop-blur-sm">
@@ -579,6 +600,7 @@ export function ChatPanel({
                 onReply={onReply}
                 onReact={onReact}
                 onForward={setForwarding}
+                onDelete={setApagando}
               />
               </div>
             </div>
@@ -614,6 +636,52 @@ export function ChatPanel({
         fromConversationId={conversation.id}
         onClose={() => setForwarding(null)}
       />
+
+      <Sheet open={apagando !== null} onOpenChange={(aberto) => !aberto && setApagando(null)}>
+        <SheetContent className="gap-0">
+          <SheetHeader>
+            <SheetTitle>Apagar mensagem</SheetTitle>
+            <SheetDescription>
+              Ela sai do painel e some para toda a equipe.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-4 px-4 py-2">
+            {apagando?.content ? (
+              <p className="line-clamp-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                {apagando.content}
+              </p>
+            ) : null}
+
+            {/* O limite dito na cara, antes do clique. A API do WhatsApp não
+                tem como apagar mensagem já entregue — só o aplicativo tem.
+                Deixar isso implícito faria alguém apagar achando que o
+                cliente deixaria de ver, que é o pior mal-entendido possível
+                num sistema de atendimento. */}
+            <p className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-pretty">
+              <TriangleAlert className="mt-px size-4 shrink-0 text-amber-600 dark:text-amber-500" />
+              <span>
+                A mensagem <strong>continua no celular do cliente</strong>. O WhatsApp não
+                permite que sistemas apaguem o que já foi entregue — só o aplicativo, na
+                mão de quem enviou.
+              </span>
+            </p>
+
+            <SheetFooter className="px-0">
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const alvo = apagando;
+                  setApagando(null);
+                  if (alvo) void onDelete(alvo.id);
+                }}
+              >
+                Apagar do painel
+              </Button>
+            </SheetFooter>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {replyTo ? (
         <div className="flex items-center gap-2 bg-muted/60 px-3 py-2 duration-200 ease-out animate-in fade-in slide-in-from-bottom-2">
@@ -668,19 +736,31 @@ export function ChatPanel({
           variant="ghost"
           aria-label="Anexar arquivo"
           title="Anexar imagem, PDF, áudio ou vídeo"
-          disabled={isResolved || sending}
+          disabled={composicaoTravada || sending}
           onClick={() => fileInputRef.current?.click()}
         >
           <Paperclip className="size-4" />
         </Button>
         <EmojiPicker
-          disabled={isResolved || sending}
+          disabled={composicaoTravada || sending}
           onPick={(emoji) => setDraft((atual) => atual + emoji)}
         />
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onPaste={handlePaste}
+          // O navegador guarda o que foi digitado em campo dentro de
+          // formulário e oferece de volta na próxima vez. Num campo de
+          // mensagem isso é constrangedor: a resposta dada a um cliente
+          // aparece como sugestão enquanto se escreve pra outro — na frente
+          // dele, se a tela estiver compartilhada. `off` desliga o
+          // histórico; `new-password` é o reforço que o Chrome respeita
+          // quando ignora o `off`.
+          autoComplete="off"
+          data-form-type="other"
+          name="mensagem-nova"
+          spellCheck
+          enterKeyHint="send"
           onKeyDown={(event) => {
             // Um <input> já submeteria no Enter sozinho, mas só enquanto o
             // formulário tiver um botão de envio — que acabou de sair. Com
@@ -691,14 +771,20 @@ export function ChatPanel({
               void handleSubmit(event);
             }
           }}
-          placeholder={isResolved ? "Conversa resolvida" : "Escreva uma mensagem..."}
-          disabled={isResolved || sending}
+          placeholder={
+            composicaoTravada
+              ? "Conversa encerrada — reabra para responder"
+              : isResolved
+                ? "Responder reabre o atendimento"
+                : "Escreva uma mensagem..."
+          }
+          disabled={composicaoTravada || sending}
           className="rounded-md"
         />
         {/* No canto onde estava o botão de enviar. O gravador se expande
             sobre o compositor enquanto grava, então precisa ser o último
             item da linha pra não empurrar o campo de texto. */}
-        <VoiceRecorder disabled={isResolved || sending} onRecorded={onSendFile} />
+        <VoiceRecorder disabled={composicaoTravada || sending} onRecorded={onSendFile} />
       </form>
       )}
     </div>

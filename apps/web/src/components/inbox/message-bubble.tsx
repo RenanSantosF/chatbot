@@ -1,4 +1,4 @@
-import { Check, CheckCheck, Forward, Reply, TriangleAlert } from "lucide-react";
+import { Ban, Check, CheckCheck, Forward, Reply, Trash2, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
@@ -82,6 +82,7 @@ export function MessageBubble({
   onReply,
   onReact,
   onForward,
+  onDelete,
 }: {
   message: ConversationMessage;
   /**
@@ -97,7 +98,31 @@ export function MessageBubble({
   onReply?: (message: ConversationMessage) => void;
   onReact?: (messageId: string, emoji: string) => Promise<void>;
   onForward?: (message: ConversationMessage) => void;
+  onDelete?: (message: ConversationMessage) => void;
 }) {
+  // Apagada: sobra a tarja. Ocupa o mesmo lugar na linha do tempo, porque
+  // sumir por completo faria a conversa mentir sobre o que aconteceu — quem
+  // lê depois veria um pulo sem explicação.
+  if (message.deletedAt) {
+    return (
+      <div
+        data-message-id={message.id}
+        className={cn(
+          "flex max-w-[75%] items-center gap-1.5 rounded-2xl px-3.5 py-2 text-[13px] italic",
+          message.senderType === "CUSTOMER"
+            ? "self-start rounded-bl-sm bg-bubble-in/60 text-muted-foreground"
+            : "self-end rounded-br-sm bg-bubble-out/50 text-bubble-out-foreground/70",
+        )}
+      >
+        <Ban className="size-3.5 shrink-0" />
+        Mensagem apagada
+        <span className="ml-1 text-[11px] not-italic opacity-70">
+          {timeLabel(message.createdAt)}
+        </span>
+      </div>
+    );
+  }
+
   // Aviso do sistema: "Fulano assumiu", "encaminhada para o Financeiro". Usa
   // a mesma tarja do separador de dia de propósito — os dois são marcos na
   // linha do tempo, não fala de ninguém, e ler igual ajuda a bater o olho e
@@ -126,7 +151,7 @@ export function MessageBubble({
         isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
       )}
     >
-      {onReply || onReact || onForward ? (
+      {onReply || onReact || onForward || onDelete ? (
         <div
           className={cn(
             // Fica inteiro acima do balão (bottom-full), não por cima dele.
@@ -170,6 +195,20 @@ export function MessageBubble({
               className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
             >
               <Forward className="size-4.5" />
+            </button>
+          ) : null}
+          {/* Só no que a empresa mandou. Apagar fala do cliente seria
+              adulterar o registro do que ele disse — e é justamente esse
+              registro que protege a empresa numa reclamação. */}
+          {onDelete && !fromCustomer ? (
+            <button
+              type="button"
+              title="Apagar"
+              aria-label="Apagar esta mensagem"
+              onClick={() => onDelete(message)}
+              className="rounded-full p-1 text-muted-foreground transition-colors hover:text-destructive"
+            >
+              <Trash2 className="size-4.5" />
             </button>
           ) : null}
         </div>

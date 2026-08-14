@@ -44,7 +44,7 @@ export class WhatsappMediaService {
   private async mensagemDaMidia(mediaId: string) {
     return this.prisma.db.message.findFirst({
       where: { metadata: { path: ['mediaId'], equals: mediaId } },
-      select: { id: true, metadata: true },
+      select: { id: true, metadata: true, deletedAt: true },
     });
   }
 
@@ -106,9 +106,16 @@ export class WhatsappMediaService {
    * assim o acervo se completa sozinho conforme as conversas são abertas.
    */
   async download(mediaId: string): Promise<DownloadedMedia> {
+    // Mensagem apagada não entrega mais o anexo. Sem isto, apagar
+    // esconderia o balão e deixaria o arquivo acessível por quem tivesse
+    // guardado o endereço — apagar pela metade não é apagar.
+    const dona = await this.mensagemDaMidia(mediaId);
+    if (dona?.deletedAt) {
+      throw new NotFoundException('Esta mensagem foi apagada.');
+    }
+
     if (this.storage.ligado) {
-      const mensagem = await this.mensagemDaMidia(mediaId);
-      const metadata = (mensagem?.metadata ?? {}) as Record<string, unknown>;
+      const metadata = (dona?.metadata ?? {}) as Record<string, unknown>;
 
       if (typeof metadata.storageKey === 'string') {
         const guardado = await this.storage.buscar(metadata.storageKey);

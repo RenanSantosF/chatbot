@@ -16,6 +16,7 @@ import {
 import { useRealtime } from "@/components/realtime-provider";
 import { useSession } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 import { conversationCache } from "@/lib/conversation-cache";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type {
@@ -72,6 +73,10 @@ export default function InboxPage() {
   const [sending, setSending] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [replyTo, setReplyTo] = useState<ConversationMessage | null>(null);
+  // Vem das configurações da empresa. Otimista em true: o padrão do sistema
+  // é liberar, e travar o compositor por um instante enquanto a resposta não
+  // chega seria pior que o contrário.
+  const [podeEnviarEncerrada, setPodeEnviarEncerrada] = useState(true);
 
   // Filtros sobrevivem a recarregar e a sair da tela — quem trabalha o dia
   // todo no Inbox não quer reconfigurar a cada volta.
@@ -183,6 +188,16 @@ export default function InboxPage() {
   useEffect(() => {
     loadCounts();
   }, [loadCounts]);
+
+  useEffect(() => {
+    // Atendente não tem permissão de LER as configurações de atendimento, e
+    // é justamente ele quem mais usa o compositor. A falha silenciosa
+    // mantém o padrão liberado em vez de travar a tela de quem não pode
+    // consultar o ajuste.
+    apiFetch<{ allowSendWhenResolved?: boolean }>("/inbox-settings")
+      .then((s) => setPodeEnviarEncerrada(s.allowSendWhenResolved !== false))
+      .catch(() => setPodeEnviarEncerrada(true));
+  }, []);
 
   useEffect(() => {
     if (!selectedId) {
@@ -438,6 +453,33 @@ export default function InboxPage() {
     }
   }
 
+  /**
+   * Apaga do painel. A confirmação (com o aviso de que a mensagem continua
+   * no celular do cliente) já aconteceu no ChatPanel — aqui é só a chamada.
+   */
+  async function handleDelete(messageId: string) {
+    if (!selectedId) return;
+    try {
+      await apiFetch(`/conversations/${selectedId}/messages/${messageId}`, {
+        method: "DELETE",
+      });
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              messages: prev.messages.map((m) =>
+                m.id === messageId
+                  ? { ...m, deletedAt: new Date().toISOString(), content: "", metadata: null }
+                  : m,
+              ),
+            }
+          : prev,
+      );
+    } catch (erro) {
+      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra apagar a mensagem.");
+    }
+  }
+
   async function handlePriority(priority: ConversationPriority) {
     if (!selectedId) return;
     try {
@@ -486,6 +528,8 @@ export default function InboxPage() {
         onCancelReply={() => setReplyTo(null)}
         onReact={handleReact}
         onRead={() => selectedId && marcarLida(selectedId)}
+        onDelete={handleDelete}
+        podeEnviarEncerrada={podeEnviarEncerrada}
         onSend={handleSend}
         onSendFile={handleSendFile}
         onRefresh={refreshCurrent}
