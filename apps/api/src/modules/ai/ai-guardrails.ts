@@ -12,7 +12,7 @@
  * tenha a ferramenta sido chamada ou não.
  */
 
-import { fatosSemLastro } from './ai-fatos';
+import { podarFatosSemLastro } from './ai-fatos';
 
 /**
  * O que vai no lugar da resposta que afirmava um dado inventado.
@@ -24,6 +24,17 @@ import { fatosSemLastro } from './ai-fatos';
 const RESPOSTA_SEM_LASTRO =
   'Essa informação eu prefiro confirmar com a equipe pra não te passar nada errado. ' +
   'Já estou chamando alguém pra continuar seu atendimento por aqui.';
+
+/**
+ * Emenda usada quando parte da resposta se salva.
+ *
+ * O cliente fica com o que a empresa de fato sabe responder, e é avisado
+ * de que o resto vem de uma pessoa — em vez de receber um "vou confirmar"
+ * genérico que descarta a metade certa.
+ */
+const AVISO_DO_QUE_FALTA =
+  'Sobre o resto, prefiro confirmar com a equipe pra não te passar nada errado — ' +
+  'já estou chamando alguém pra continuar seu atendimento por aqui.';
 
 /** Normaliza pra comparar sem acento e sem caixa. */
 function simplificar(texto: string): string {
@@ -172,13 +183,18 @@ export function verificarResposta(
    * Então esta age antes, e o preço é o certo a pagar: um atendimento a
    * mais na fila da equipe em vez de um cliente indo ao lugar errado.
    */
-  const inventados = fatosSemLastro(resposta, fontes);
-  if (inventados.length > 0) {
-    const tipos = [...new Set(inventados.map((fato) => fato.tipo))].join(', ');
+  const podado = podarFatosSemLastro(resposta, fontes);
+  if (podado.removidos.length > 0) {
+    const tipos = [...new Set(podado.removidos.map((fato) => fato.tipo))].join(
+      ', ',
+    );
     return {
       precisaHandoff: true,
       prioridadeMinima: 'HIGH',
-      substituirPor: RESPOSTA_SEM_LASTRO,
+      // O que a empresa sabe responder continua indo; só o inventado sai.
+      substituirPor: podado.texto
+        ? `${podado.texto}\n\n${AVISO_DO_QUE_FALTA}`
+        : RESPOSTA_SEM_LASTRO,
       motivo: `O cliente pediu um dado (${tipos}) que não está na base de conhecimento.`,
     };
   }

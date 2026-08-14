@@ -110,3 +110,50 @@ export function fatosSemLastro(
 
   return achados;
 }
+
+/**
+ * Corta só a frase que inventou, preservando o resto da resposta.
+ *
+ * A primeira versão desta trava jogava a resposta inteira fora. Na prática
+ * ficou assim: o cliente perguntou o horário de atendimento — que ESTÁ
+ * cadastrado —, a IA respondeu o horário certo e emendou um preço que
+ * ninguém cadastrou. A resposta inteira foi barrada, e a pessoa recebeu
+ * "vou confirmar com a equipe" para uma pergunta que o sistema sabia
+ * responder. Barrar demais quebra o atendimento tão bem quanto responder
+ * errado.
+ *
+ * Frase é a unidade certa do corte: um dado concreto vive dentro de uma,
+ * e as vizinhas seguem de pé sem ela. Não é perfeito — dá pra sobrar um
+ * "Além disso," órfão —, e por isso o que sobra ainda passa por um piso de
+ * tamanho antes de valer como resposta.
+ */
+export function podarFatosSemLastro(
+  resposta: string,
+  fontes: string,
+): { texto: string; removidos: FatoSemLastro[] } {
+  const removidos = fatosSemLastro(resposta, fontes);
+  if (removidos.length === 0) return { texto: resposta, removidos };
+
+  const suspeitos = new Set(removidos.map((fato) => fato.trecho));
+  const mantidas = partirEmFrases(resposta).filter(
+    (frase) => ![...suspeitos].some((trecho) => frase.includes(trecho)),
+  );
+
+  // Sobrou pouca coisa demais pra valer como resposta ("Claro!", "Olá.").
+  // Aí é melhor não mandar nada e deixar a frase de encaminhamento falar.
+  const texto = mantidas.join(' ').replace(/\s+/g, ' ').trim();
+  return { texto: texto.length >= 25 ? texto : '', removidos };
+}
+
+/**
+ * Quebra em frases sem perder pontuação.
+ *
+ * Quebra também em linha nova: a IA escreve em parágrafos curtos de
+ * WhatsApp, e um parágrafo sem ponto final é uma frase do mesmo jeito.
+ */
+function partirEmFrases(texto: string): string[] {
+  return texto
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((parte) => parte.trim())
+    .filter(Boolean);
+}

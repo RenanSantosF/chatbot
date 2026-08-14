@@ -1,4 +1,4 @@
-import { fatosSemLastro } from './ai-fatos';
+import { fatosSemLastro, podarFatosSemLastro } from './ai-fatos';
 
 /**
  * O caso real, e as bordas que decidem se a trava serve ou atrapalha.
@@ -100,5 +100,56 @@ describe('o mesmo dado repetido', () => {
     );
 
     expect(achados).toHaveLength(1);
+  });
+});
+
+describe('poda: o certo continua indo, só o inventado sai', () => {
+  /**
+   * O relato que mudou esta trava: o cliente perguntou o horário de
+   * atendimento — que ESTÁ cadastrado —, a IA respondeu o horário certo e
+   * emendou um preço que ninguém cadastrou. Barrar a resposta inteira fez
+   * a pessoa receber "vou confirmar com a equipe" para uma pergunta que o
+   * sistema sabia responder. Barrar demais quebra o atendimento tão bem
+   * quanto responder errado.
+   */
+  it('mantém a frase com lastro e derruba a inventada', () => {
+    const { texto, removidos } = podarFatosSemLastro(
+      'Atendemos de segunda a sexta, das 08h às 17h. A consulta inicial custa R$ 350,00.',
+      '[Instruções] Horário de atendimento: segunda a sexta, das 08h às 17h.',
+    );
+
+    expect(removidos).toHaveLength(1);
+    expect(texto).toContain('08h às 17h');
+    expect(texto).not.toContain('350');
+  });
+
+  it('poda por parágrafo também — a IA escreve sem ponto final', () => {
+    const { texto } = podarFatosSemLastro(
+      'Claro, Renan! Nosso horário é das 08h às 17h\nO valor da consulta é R$ 500,00',
+      'Horário: das 08h às 17h.',
+    );
+
+    expect(texto).toContain('08h às 17h');
+    expect(texto).not.toContain('500');
+  });
+
+  it('devolve vazio quando não sobra resposta de verdade', () => {
+    // "Claro!" sozinho não responde nada — melhor a frase de
+    // encaminhamento falar por inteiro.
+    const { texto, removidos } = podarFatosSemLastro(
+      'Claro! Ficamos na Avenida Paulista, 1000.',
+      'Somos um escritório.',
+    );
+
+    expect(removidos).toHaveLength(1);
+    expect(texto).toBe('');
+  });
+
+  it('não mexe na resposta quando não há nada a podar', () => {
+    const original = 'Nosso horário é de segunda a sexta, das 08h às 17h.';
+    const { texto, removidos } = podarFatosSemLastro(original, 'das 08h às 17h');
+
+    expect(removidos).toEqual([]);
+    expect(texto).toBe(original);
   });
 });

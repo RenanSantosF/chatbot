@@ -55,8 +55,16 @@ const MAXIMO_DE_SAIDA = 700;
  * hoje e amanhã, e criatividade aqui é sinônimo de inventar política da
  * empresa. Zero deixaria o texto repetitivo a ponto de soar automático,
  * que é justamente o que a tela toda tenta evitar.
+ *
+ * Era 0.4, e 0.4 se mostrou caro. Num teste real, perguntaram o horário de
+ * atendimento — que estava cadastrado — e a resposta veio com o horário
+ * certo mais um preço que ninguém tinha cadastrado. Esse é o custo da
+ * margem: quanto mais liberdade pra escolher a próxima palavra, mais o
+ * modelo completa o que falta com o que costuma ser verdade em empresas
+ * parecidas. Numa conversa de atendimento, a variedade que se ganha não
+ * compensa o que se arrisca.
  */
-const TEMPERATURA = 0.4;
+const TEMPERATURA = 0.2;
 
 /**
  * Até quando esperar o Google responder.
@@ -134,6 +142,11 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
     // interessa pra conta do fim do mês é o total da resposta, não o de
     // cada pedaço.
     const consumo = { entrada: 0, saida: 0, raciocinio: 0 };
+    // Alguma ferramenta já rodou nesta resposta? Muda o que fazer com um
+    // texto vazio no fim: sem ferramenta é falha; COM ferramenta o mundo
+    // já mudou, e derrubar tudo com uma exceção apagaria a única coisa que
+    // ainda dava pra dizer ao cliente (ver o `return` vazio abaixo).
+    let usouFerramenta = false;
 
     try {
       for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
@@ -160,6 +173,27 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
         if (!calls || calls.length === 0) {
           const text = response.text?.trim();
           if (!text) {
+            /*
+             * Vazio depois de a ferramenta ter rodado não é falha — é o
+             * modelo achando que já fez o que tinha que fazer.
+             *
+             * Foi exatamente o que aconteceu em produção: perguntaram o
+             * endereço, a IA transferiu pro Jurídico corretamente e não
+             * escreveu nada. A exceção subia, o motor caía no caminho de
+             * "IA indisponível", e o cliente ficava sem UMA palavra — do
+             * lado dele, ninguém tinha respondido. A transferência, essa,
+             * já estava feita.
+             *
+             * Devolver vazio deixa a decisão com quem sabe o que foi
+             * executado: o motor (ver AiEngineService.generateReply).
+             */
+            if (usouFerramenta) {
+              this.logger.warn(
+                `A IA usou ferramenta e não escreveu resposta (${resolvedModel}). ` +
+                  'Quem chamou decide o que dizer ao cliente.',
+              );
+              return { content: '' };
+            }
             throw new Error('A IA retornou uma resposta vazia.');
           }
           // O custo real de cada resposta vai pro log. Sem isto, "a conta
@@ -187,6 +221,7 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
 
         for (const call of calls) {
           const name = call.name ?? '';
+          usouFerramenta = true;
           const result = await executeTool(name, call.args ?? {});
           contents.push({
             role: 'user',

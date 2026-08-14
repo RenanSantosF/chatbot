@@ -49,6 +49,30 @@ export function executouDeVerdade(resultado: AiToolCallResult): boolean {
   return true;
 }
 
+/**
+ * O que dizer quando a IA agiu e não escreveu nada.
+ *
+ * Nasceu de um silêncio real: a IA transferiu a conversa pro setor certo,
+ * pelo motivo certo, e não mandou uma palavra ao cliente. Pra quem estava
+ * do outro lado, era uma pergunta ignorada.
+ *
+ * A frase sai do que foi EXECUTADO, e por isso é sempre verdadeira. Vazio
+ * quando nada foi executado: aí não há o que anunciar, e inventar uma
+ * cortesia genérica só empurraria o problema pro cliente.
+ */
+export function textoDeCortesia(ferramentas: string[]): string {
+  if (ferramentas.includes('transferToQueue')) {
+    return (
+      'Vou confirmar essa informação com a equipe pra não te passar nada errado. ' +
+      'Já chamei alguém pra continuar seu atendimento por aqui.'
+    );
+  }
+  if (ferramentas.includes('resolveConversation')) {
+    return 'Atendimento encerrado por aqui. Se precisar de mais alguma coisa, é só chamar!';
+  }
+  return '';
+}
+
 export type ResultadoDaIa =
   | { tipo: 'respondeu'; resposta: AiReply }
   | { tipo: 'indisponivel'; motivo: string }
@@ -157,6 +181,31 @@ export class AiEngineService {
       });
       this.logger.log(`IA respondeu a conversa ${conversationId}.`);
 
+      /*
+       * A IA agiu e não falou. Alguém precisa falar.
+       *
+       * O caso real: o cliente perguntou o endereço, a IA transferiu pro
+       * Jurídico e não escreveu nada. A conversa foi pra fila certa, com o
+       * motivo certo — e o cliente ficou olhando pra tela sem uma palavra,
+       * sem saber que alguém já estava vindo. Do lado dele, o silêncio e
+       * um sistema quebrado são a mesma coisa.
+       *
+       * A frase depende do que foi FEITO, não do que se imagina que o
+       * modelo quis dizer: transferiu, avisa que alguém assume; encerrou,
+       * despede-se. É a mesma ideia das travas — o texto passa a
+       * corresponder ao mundo.
+       */
+      const conteudo = result.content.trim() || textoDeCortesia(usadas);
+      if (!conteudo) {
+        this.logger.warn(
+          `IA não escreveu nada e não executou nada na conversa ${conversationId}.`,
+        );
+        return {
+          tipo: 'indisponivel',
+          motivo: 'O cliente escreveu e não houve resposta automática.',
+        };
+      }
+
       const ultimaDoCliente =
         [...context.history].reverse().find((m) => m.role === 'user')?.content ?? '';
 
@@ -175,7 +224,7 @@ export class AiEngineService {
       ].join('\n');
 
       const verificacao = verificarResposta(
-        result.content,
+        conteudo,
         ultimaDoCliente,
         usadas,
         fontes,
@@ -190,7 +239,7 @@ export class AiEngineService {
       if (verificacao.substituirPor) {
         this.logger.warn(
           `Resposta barrada na conversa ${conversationId} (dado sem lastro). ` +
-            `A IA tinha escrito: ${result.content}`,
+            `A IA tinha escrito: ${conteudo}`,
         );
       }
 
@@ -200,7 +249,7 @@ export class AiEngineService {
           // A resposta barrada nunca chega ao cliente, mas o texto original
           // fica no log acima: é o que permite ao dono ver o que a IA quase
           // mandou e decidir se falta alguma coisa na base.
-          content: verificacao.substituirPor ?? result.content,
+          content: verificacao.substituirPor ?? conteudo,
           verificacao,
         },
       };

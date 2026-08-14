@@ -314,3 +314,123 @@ describe('AiEngineService.generateReply — dado inventado não sai', () => {
     expect(resultado.resposta.content).toBe('Confirmado: (27) 3333-4444.');
   });
 });
+
+describe('a IA agiu e não escreveu nada', () => {
+  /**
+   * O silêncio real: o cliente perguntou o endereço, a IA transferiu pro
+   * setor Jurídico corretamente e não mandou uma palavra. A conversa foi
+   * pra fila certa, com o motivo certo, e do lado do cliente foi uma
+   * pergunta ignorada.
+   */
+  function motorSemTexto(ferramenta: string) {
+    return new AiEngineService(
+      {
+        build: jest.fn().mockResolvedValue({
+          systemPrompt: 'Você é a assistente.',
+          history: [{ role: 'user', content: 'Onde fica o escritório?' }],
+        }),
+      } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+      } as never,
+      {
+        getEnabledDeclarations: jest
+          .fn()
+          .mockResolvedValue([
+            { name: ferramenta, description: '', parametersSchema: {} },
+          ]),
+        execute: jest.fn().mockResolvedValue({ output: { status: 'ok' } }),
+      } as never,
+      {
+        generateReply: jest.fn(
+          async (input: { executeTool?: AiToolExecutor }) => {
+            await input.executeTool?.(ferramenta, {});
+            return { content: '' };
+          },
+        ),
+      },
+    );
+  }
+
+  it('avisa o cliente de que alguém assume, quando transferiu', async () => {
+    const resultado = await motorSemTexto('transferToQueue').generateReply(
+      'conversa-1',
+    );
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    expect(resultado.resposta.content).toContain('equipe');
+  });
+
+  it('se despede, quando encerrou', async () => {
+    const resultado = await motorSemTexto('resolveConversation').generateReply(
+      'conversa-1',
+    );
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    expect(resultado.resposta.content).toContain('encerrado');
+  });
+
+  it('sem texto E sem ação, aí sim é a IA indisponível', async () => {
+    // Nada a anunciar: inventar uma cortesia genérica só empurraria o
+    // problema pro cliente em vez de chamar alguém.
+    const service = new AiEngineService(
+      {
+        build: jest.fn().mockResolvedValue({
+          systemPrompt: 'Você é a assistente.',
+          history: [{ role: 'user', content: 'oi' }],
+        }),
+      } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+      } as never,
+      { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      { generateReply: jest.fn().mockResolvedValue({ content: '  ' }) },
+    );
+
+    const resultado = await service.generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('indisponivel');
+  });
+});
+
+describe('resposta meio certa não é jogada fora', () => {
+  it('manda o que tem lastro e avisa que o resto vem de uma pessoa', async () => {
+    const service = new AiEngineService(
+      {
+        build: jest.fn().mockResolvedValue({
+          systemPrompt: '[Instruções] Horário: segunda a sexta, das 08h às 17h.',
+          history: [{ role: 'user', content: 'Qual horário vocês atendem?' }],
+        }),
+      } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+      } as never,
+      { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      {
+        generateReply: jest.fn().mockResolvedValue({
+          content:
+            'Atendemos de segunda a sexta, das 08h às 17h. A consulta custa R$ 350,00.',
+        }),
+      },
+    );
+
+    const resultado = await service.generateReply('conversa-1');
+
+    expect(resultado.tipo).toBe('respondeu');
+    if (resultado.tipo !== 'respondeu') return;
+    // O que a empresa sabe responder chega ao cliente...
+    expect(resultado.resposta.content).toContain('08h às 17h');
+    // ...o que ela não sabe, não chega...
+    expect(resultado.resposta.content).not.toContain('350');
+    // ...e alguém é chamado pro que ficou faltando.
+    expect(resultado.resposta.verificacao.precisaHandoff).toBe(true);
+  });
+});
