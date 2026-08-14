@@ -66,6 +66,67 @@ export const STATUS_GROUPS = {
 
 export type StatusGroup = keyof typeof STATUS_GROUPS;
 
+/**
+ * O recorte que a pessoa escolheu na barra do Inbox.
+ *
+ * O MESMO objeto alimenta a lista e os contadores — e isso é o ponto. Com
+ * dois filtros escritos em lugares separados, os números do cabeçalho
+ * passam a discordar da lista embaixo: "12 pendentes" com cinco conversas
+ * na tela. Quem trabalha ali não tem como saber se as outras sete são de
+ * outro setor ou se a página parou de carregar, e a dúvida contamina a
+ * confiança na tela inteira.
+ */
+/**
+ * Como a lista é ordenada.
+ *
+ * RECENTE é o padrão e a leitura de mensageiro: quem falou por último em
+ * cima, que é o que a memória muscular espera.
+ *
+ * ESPERA é a fila de atendimento: quem está esperando resposta há mais
+ * tempo primeiro. Existe porque as duas ordens discordam justamente onde
+ * dói — o cliente que escreveu de manhã e não insistiu mais afunda na
+ * ordem por recência, e é ele que está sem atendimento há mais tempo.
+ */
+export type OrdemDoInbox = 'RECENTE' | 'ESPERA';
+
+export interface FiltroDoInbox {
+  status?: ConversationStatus;
+  /** Grupo de trabalho (ver STATUS_GROUPS). Ignorado se `status` vier. */
+  statusGroup?: StatusGroup;
+  assignedUserId?: string;
+  queueId?: string;
+  customerId?: string;
+  priority?: ConversationPriority;
+  unreadOnly?: boolean;
+  unassignedOnly?: boolean;
+  search?: string;
+  ordem?: OrdemDoInbox;
+  /** Só as que estão esperando resposta da empresa. */
+  waitingOnly?: boolean;
+  /** Só o que a IA está conduzindo agora. */
+  comIa?: boolean;
+  /** Quem está olhando — define o que ela pode enxergar. */
+  viewer?: { userId: string; role: UserRole };
+}
+
+/**
+ * As facetas da barra, na forma que o contador entende.
+ *
+ * Um contador responde sempre a mesma pergunta: "se eu ligar ISTO, mantendo
+ * o resto como está, quantas vou ver?". Pra responder, ele monta o filtro
+ * atual SEM a própria faceta — senão "Minhas" contaria só o que já está
+ * filtrado por "Minhas", e o número seria o tamanho da lista, não uma
+ * informação nova.
+ */
+type Faceta =
+  | 'situacao'
+  | 'priority'
+  | 'mine'
+  | 'unread'
+  | 'unassigned'
+  | 'waiting'
+  | 'comIa';
+
 const OPEN_STATUSES: ConversationStatus[] = [
   'OPEN',
   'WAITING_CUSTOMER',
@@ -133,6 +194,23 @@ const conversationInclude = {
  * `{...detalhe, ...resumo}` ao receber um evento, e o array de um item
  * sobrescreveria o histórico inteiro. Por isso vira `lastMessage`.
  */
+/**
+ * Tira o id da mídia de dentro do metadata pra gravar na coluna própria.
+ *
+ * A coluna é espelho, não substituta: o metadata continua carregando mime,
+ * nome do arquivo e chave do bucket, e é de lá que este valor sai. Ter o
+ * espelho num único lugar evita o defeito silencioso de um caminho de
+ * criação preencher a coluna e outro não — o anexo gravado pelo caminho
+ * esquecido simplesmente não abriria.
+ */
+export function mediaIdDe(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const valor = (metadata as { mediaId?: unknown }).mediaId;
+  return typeof valor === 'string' && valor ? valor : undefined;
+}
+
 function toSummary<T extends { messages: unknown[] }>(conversation: T) {
   const { messages, ...rest } = conversation;
   return { ...rest, lastMessage: messages[0] ?? null };
@@ -178,76 +256,20 @@ export class ConversationsService {
    * usuário o tempo todo: com offset, uma conversa que sobe pro topo faria
    * a página seguinte repetir ou pular itens.
    */
-  async list(filter: {
-    status?: ConversationStatus;
-    /** Grupo de trabalho (ver STATUS_GROUPS). Ignorado se `status` vier. */
-    statusGroup?: StatusGroup;
-    assignedUserId?: string;
-    queueId?: string;
-    customerId?: string;
-    priority?: ConversationPriority;
-    unreadOnly?: boolean;
-    unassignedOnly?: boolean;
-    /** Só o que a IA está conduzindo agora. */
-    comIa?: boolean;
-    search?: string;
-    cursor?: string;
-    limit?: number;
-    /** Quem está olhando — define o que ela pode enxergar. */
-    viewer?: { userId: string; role: UserRole };
-  }) {
+  async list(filter: FiltroDoInbox & { cursor?: string; limit?: number }) {
     const take = Math.min(Math.max(filter.limit ?? 30, 1), 100);
-    const search = filter.search?.trim();
     const recorte = await this.recorteDeVisibilidade(filter.viewer);
 
     const items = await this.prisma.db.conversation.findMany({
-      where: {
-        ...recorte,
-        // Status exato ganha do grupo: se alguém pediu "só as fechadas",
-        // não faz sentido devolver também as resolvidas.
-        ...(filter.status
-          ? { status: filter.status }
-          : filter.statusGroup
-            ? { status: { in: [...STATUS_GROUPS[filter.statusGroup]] } }
-            : {}),
-        // "Pendente" quer dizer "precisa de uma pessoa".
-        //
-        // Conversa que a IA está conduzindo não está esperando ninguém da
-        // equipe: ela já foi respondida e segue em andamento. Deixá-la na
-        // mesma lista fazia o atendente abrir uma por uma pra descobrir que
-        // não havia nada a fazer — e, num dia movimentado, era o suficiente
-        // pra enterrar a conversa que realmente precisava dele.
-        //
-        // O filtro "Com a IA" mostra justamente essas, pra o dono conseguir
-        // auditar o que ela anda respondendo.
-        ...(filter.comIa
-          ? { aiMode: 'AI_ACTIVE' as const }
-          : filter.statusGroup === 'PENDING'
-            ? { aiMode: { not: 'AI_ACTIVE' as const } }
-            : {}),
-        ...(filter.assignedUserId
-          ? { assignedUserId: filter.assignedUserId }
-          : {}),
-        ...(filter.queueId ? { queueId: filter.queueId } : {}),
-        ...(filter.customerId ? { customerId: filter.customerId } : {}),
-        ...(filter.priority ? { priority: filter.priority } : {}),
-        ...(filter.unreadOnly ? { unreadCount: { gt: 0 } } : {}),
-        ...(filter.unassignedOnly ? { assignedUserId: null } : {}),
-        ...(search
-          ? {
-              customer: {
-                is: {
-                  OR: [
-                    { name: { contains: search, mode: 'insensitive' } },
-                    { phone: { contains: search } },
-                  ],
-                },
-              },
-            }
-          : {}),
-      },
+      where: this.montarWhere(filter, recorte),
       include: conversationInclude,
-      orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
+      // Na fila, quem espera há MAIS tempo primeiro; `nulls: 'last'` joga
+      // pro fim quem não está esperando ninguém — sem isso o Postgres põe
+      // os nulos na frente e a fila abre com quem já foi respondido.
+      orderBy:
+        filter.ordem === 'ESPERA'
+          ? [{ waitingSince: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }]
+          : [{ lastMessageAt: 'desc' }, { id: 'desc' }],
       take: take + 1,
       ...(filter.cursor ? { cursor: { id: filter.cursor }, skip: 1 } : {}),
     });
@@ -260,6 +282,95 @@ export class ConversationsService {
     return {
       items: page.map(toSummary),
       nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+    };
+  }
+
+  /**
+   * Traduz o recorte da barra num `where` do Prisma.
+   *
+   * `exceto` é o que faz os contadores serem úteis: pra saber quantas
+   * conversas "Minhas" existem dentro do que já está filtrado, o filtro é
+   * montado sem a própria opção "Minhas".
+   *
+   * `situacao` cobre grupo e status exato juntos porque são o MESMO eixo —
+   * "Pendentes" e "Aguard. cliente" respondem a mesma pergunta em duas
+   * granularidades. Separá-los deixaria contar um recorte impossível
+   * (grupo Resolvidas com status Aberta), e nenhum número desses ajudaria
+   * ninguém.
+   */
+  private montarWhere(
+    filtro: FiltroDoInbox,
+    recorte: Prisma.ConversationWhereInput,
+    exceto: Faceta[] = [],
+  ): Prisma.ConversationWhereInput {
+    const fora = new Set(exceto);
+    const search = filtro.search?.trim();
+
+    /**
+     * "Pendente" quer dizer "precisa de uma pessoa".
+     *
+     * Conversa que a IA está conduzindo não está esperando ninguém da
+     * equipe: ela já foi respondida e segue em andamento. Deixá-la na mesma
+     * lista fazia o atendente abrir uma por uma pra descobrir que não havia
+     * nada a fazer — e, num dia movimentado, era o suficiente pra enterrar
+     * a conversa que realmente precisava dele.
+     *
+     * Ligar "Com a IA" pede exatamente o contrário, então ele MANDA na
+     * exclusão: sem isso, "Pendentes + Com a IA" seria vazio sempre, um
+     * recorte impossível de dois botões que a tela deixa clicar juntos.
+     */
+    const comIa = !fora.has('comIa') && filtro.comIa === true;
+    const soDeGente =
+      !fora.has('comIa') &&
+      !fora.has('situacao') &&
+      !filtro.status &&
+      filtro.statusGroup === 'PENDING';
+
+    return {
+      ...recorte,
+      // Status exato ganha do grupo: se alguém pediu "só as fechadas",
+      // não faz sentido devolver também as resolvidas.
+      ...(fora.has('situacao')
+        ? {}
+        : filtro.status
+          ? { status: filtro.status }
+          : filtro.statusGroup
+            ? { status: { in: [...STATUS_GROUPS[filtro.statusGroup]] } }
+            : {}),
+      ...(comIa
+        ? { aiMode: 'AI_ACTIVE' as const }
+        : soDeGente
+          ? { aiMode: { not: 'AI_ACTIVE' as const } }
+          : {}),
+      ...(filtro.assignedUserId && !fora.has('mine')
+        ? { assignedUserId: filtro.assignedUserId }
+        : {}),
+      ...(filtro.queueId ? { queueId: filtro.queueId } : {}),
+      ...(filtro.customerId ? { customerId: filtro.customerId } : {}),
+      ...(filtro.priority && !fora.has('priority')
+        ? { priority: filtro.priority }
+        : {}),
+      ...(filtro.unreadOnly && !fora.has('unread')
+        ? { unreadCount: { gt: 0 } }
+        : {}),
+      ...(filtro.unassignedOnly && !fora.has('unassigned')
+        ? { assignedUserId: null }
+        : {}),
+      ...(filtro.waitingOnly && !fora.has('waiting')
+        ? { waitingSince: { not: null } }
+        : {}),
+      ...(search
+        ? {
+            customer: {
+              is: {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { phone: { contains: search } },
+                ],
+              },
+            },
+          }
+        : {}),
     };
   }
 
@@ -299,13 +410,43 @@ export class ConversationsService {
     } satisfies Prisma.ConversationWhereInput;
   }
 
-  /** Contadores de cada filtro, calculados no banco pra não depender da página carregada. */
-  async counts(userId: string) {
+  /**
+   * Contadores da barra de filtros.
+   *
+   * Duas regras, e as duas vieram de a tela se contradizer na frente de
+   * quem usa:
+   *
+   * 1. Passam pelo MESMO recorte de visibilidade da lista. Sem isso, quem
+   *    trabalha no modo restrito via "12 pendentes" no cabeçalho e cinco
+   *    conversas embaixo.
+   *
+   * 2. Cada número já considera os OUTROS filtros ligados. Filtrar por
+   *    Pendentes e ver "Minhas 5" quando a lista mostra uma só é a mesma
+   *    contradição de outra forma — o contador estava respondendo sobre a
+   *    empresa inteira enquanto a lista respondia sobre o recorte.
+   *
+   * O que cada um responde agora: "se eu ligar isto, mantendo o resto,
+   * quantas vou ver?". Por isso a própria faceta sai do filtro antes de
+   * contar (ver `montarWhere`).
+   */
+  async counts(filtro: FiltroDoInbox & { viewer: { userId: string; role: UserRole } }) {
+    const recorte = await this.recorteDeVisibilidade(filtro.viewer);
+    const onde = (exceto: Faceta[], extra: Prisma.ConversationWhereInput = {}) => ({
+      where: { ...this.montarWhere(filtro, recorte, exceto), ...extra },
+    });
+
+    // Os quatro botões de situação são um eixo só: contar cada um exige
+    // tirar a situação atual do filtro, senão "Resolvidas" contaria dentro
+    // de "Pendentes" e daria zero sempre.
+    const semSituacao = (extra: Prisma.ConversationWhereInput = {}) =>
+      onde(['situacao'], extra);
+
     const [
       total,
       unread,
       mine,
       unassigned,
+      esperando,
       pendentes,
       aguardando,
       resolvidas,
@@ -313,39 +454,51 @@ export class ConversationsService {
       byStatus,
       byPriority,
     ] = await Promise.all([
-        this.prisma.db.conversation.count(),
-        this.prisma.db.conversation.count({ where: { unreadCount: { gt: 0 } } }),
-        this.prisma.db.conversation.count({ where: { assignedUserId: userId } }),
-        this.prisma.db.conversation.count({ where: { assignedUserId: null } }),
-        // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
-        // quem atende faz de manhã — o que é minha vez, o que está com o
-        // cliente, o que já acabou.
-        // Mesma regra da lista: pendente é o que precisa de gente, então a
-        // conta não inclui o que a IA está conduzindo. Contador e lista têm
-        // que bater — número que não corresponde ao que a tela mostra é pior
-        // que nenhum número.
-        this.prisma.db.conversation.count({
-          where: {
-            status: { in: [...STATUS_GROUPS.PENDING] },
-            aiMode: { not: 'AI_ACTIVE' },
-          },
+      this.prisma.db.conversation.count(semSituacao()),
+      this.prisma.db.conversation.count(onde(['unread'], { unreadCount: { gt: 0 } })),
+      this.prisma.db.conversation.count(
+        onde(['mine'], { assignedUserId: filtro.viewer.userId }),
+      ),
+      this.prisma.db.conversation.count(
+        onde(['unassigned'], { assignedUserId: null }),
+      ),
+      this.prisma.db.conversation.count(
+        onde(['waiting'], { waitingSince: { not: null } }),
+      ),
+      // Os três grupos de trabalho (ver STATUS_GROUPS): é a pergunta que
+      // quem atende faz de manhã - o que é minha vez, o que está com o
+      // cliente, o que já acabou.
+      //
+      // Pendentes repete aqui a exclusão da IA que `montarWhere` aplica na
+      // lista: tirar a situação do filtro tira junto a regra que depende
+      // dela, e um contador que não bate com a lista embaixo é pior que
+      // contador nenhum.
+      this.prisma.db.conversation.count(
+        semSituacao({
+          status: { in: [...STATUS_GROUPS.PENDING] },
+          ...(filtro.comIa ? {} : { aiMode: { not: 'AI_ACTIVE' as const } }),
         }),
-        this.prisma.db.conversation.count({
-          where: { status: { in: [...STATUS_GROUPS.WAITING] } },
-        }),
-        this.prisma.db.conversation.count({
-          where: { status: { in: [...STATUS_GROUPS.DONE] } },
-        }),
-        this.prisma.db.conversation.count({ where: { aiMode: 'AI_ACTIVE' } }),
-        this.prisma.db.conversation.groupBy({
-          by: ['status'],
-          _count: { _all: true },
-        }),
-        this.prisma.db.conversation.groupBy({
-          by: ['priority'],
-          _count: { _all: true },
-        }),
-      ]);
+      ),
+      this.prisma.db.conversation.count(
+        semSituacao({ status: { in: [...STATUS_GROUPS.WAITING] } }),
+      ),
+      this.prisma.db.conversation.count(
+        semSituacao({ status: { in: [...STATUS_GROUPS.DONE] } }),
+      ),
+      this.prisma.db.conversation.count(
+        onde(['comIa'], { aiMode: 'AI_ACTIVE' }),
+      ),
+      this.prisma.db.conversation.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        ...semSituacao(),
+      }),
+      this.prisma.db.conversation.groupBy({
+        by: ['priority'],
+        _count: { _all: true },
+        ...onde(['priority']),
+      }),
+    ]);
 
     return {
       total,
@@ -353,6 +506,7 @@ export class ConversationsService {
       comIa,
       mine,
       unassigned,
+      esperando,
       pendentes,
       aguardando,
       resolvidas,
@@ -460,6 +614,25 @@ export class ConversationsService {
       ...m,
       senderName: m.senderId ? (porId.get(m.senderId) ?? null) : null,
     }));
+  }
+
+  /**
+   * Anuncia uma mensagem nova pro painel, sempre com `senderName`.
+   *
+   * Existe pra os caminhos que não passam por `persistMessage` (anexo,
+   * encaminhamento, início por template) não emitirem um balão anônimo: a
+   * mensagem chegava sem assinatura e só ganhava o nome de quem respondeu
+   * quando alguém recarregava a conversa.
+   */
+  private async emitirMensagemCriada(
+    conversationId: string,
+    mensagem: { senderType: string; senderId: string | null },
+  ) {
+    const [comNome] = await this.comNomeDeQuemEnviou([mensagem]);
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+      conversationId,
+      message: comNome,
+    });
   }
 
   private async requireConversationExists(id: string) {
@@ -609,15 +782,32 @@ export class ConversationsService {
       replyToId?: string;
       /** Só pra mensagem que já saiu por fora (eco do celular). */
       status?: MessageStatus;
+      /**
+       * A mensagem JÁ chegou no cliente por outro caminho — não reenviar.
+       *
+       * Existe por causa do eco da coexistência: o que a empresa digita no
+       * celular volta pra cá pelo webhook como mensagem de atendente. Sem
+       * esta trava, gravar o eco disparava um envio novo pro mesmo cliente:
+       * ele recebia tudo duas vezes, e o externalId da Meta era
+       * sobrescrito pelo do reenvio — o que estragava a idempotência e
+       * fazia cada reentrega do webhook duplicar de novo.
+       */
+      jaEntregue?: boolean;
     },
   ) {
+    const { jaEntregue = false, ...dadosDaMensagem } = data;
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
-      select: { status: true, aiMode: true },
+      select: { status: true, aiMode: true, waitingSince: true },
     });
 
     const message = await this.prisma.db.message.create({
-      data: { tenantId: this.prisma.tenantId, conversationId, ...data },
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId,
+        ...dadosDaMensagem,
+        mediaId: mediaIdDe(data.metadata),
+      },
       include: messageInclude,
     });
 
@@ -653,6 +843,26 @@ export class ConversationsService {
           : isSystemNote
             ? {}
             : { unreadCount: 0 }),
+        /**
+         * O relógio da espera.
+         *
+         * Começa a contar na PRIMEIRA mensagem sem resposta e não é
+         * reiniciado pelas seguintes: quem escreveu às 9h e cobrou às 11h
+         * espera desde as 9h, não desde as 11h. Reiniciar seria premiar
+         * quem insiste — exatamente o que a ordem por recência já fazia.
+         *
+         * Zera quando a empresa responde, por gente ou pela IA. Nota do
+         * sistema não conta: transferir de setor não é responder ao
+         * cliente, e deixar que zerasse esconderia a espera bem no
+         * momento em que ela mais importa.
+         */
+        ...(fromCustomer
+          ? before?.waitingSince
+            ? {}
+            : { waitingSince: message.createdAt }
+          : isSystemNote
+            ? {}
+            : { waitingSince: null }),
       },
       include: conversationInclude,
     });
@@ -677,6 +887,7 @@ export class ConversationsService {
     // transferência de fila) são notas internas pro time, não pro cliente.
     if (
       conversation.channel === 'WHATSAPP' &&
+      !jaEntregue &&
       (data.senderType === 'AI' || data.senderType === 'AGENT')
     ) {
       const quoted = data.replyToId
@@ -1105,6 +1316,14 @@ export class ConversationsService {
     if (!source) {
       throw new NotFoundException('Mensagem não encontrada.');
     }
+    // Apagar e continuar podendo encaminhar não é apagar: o conteúdo já
+    // não aparece no painel, mas sairia inteiro pro cliente de outra
+    // conversa.
+    if (source.deletedAt) {
+      throw new BadRequestException(
+        'Esta mensagem foi apagada e não pode ser encaminhada.',
+      );
+    }
 
     const target = await this.requireConversation(toConversationId);
 
@@ -1141,6 +1360,9 @@ export class ConversationsService {
         content: source.content,
         messageType: source.messageType,
         externalId,
+        // Encaminhar reaproveita o id de mídia da Meta em vez de baixar e
+        // subir de novo — então a mensagem nova aponta pro MESMO arquivo.
+        mediaId: metadata.mediaId,
         metadata: metadata as Prisma.InputJsonValue,
       },
     });
@@ -1151,14 +1373,17 @@ export class ConversationsService {
         lastMessageAt: message.createdAt,
         status: 'WAITING_CUSTOMER',
         unreadCount: 0,
+        // Anexo e encaminhamento são resposta como qualquer outra: param o
+        // relógio da espera. Estes dois caminhos não passam por
+        // `persistMessage` (sobem arquivo antes), então precisam dizer
+        // isso explicitamente — esquecer aqui deixaria a conversa
+        // eternamente no topo da fila depois de uma foto respondida.
+        waitingSince: null,
       },
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId: toConversationId,
-      message,
-    });
+    await this.emitirMensagemCriada(toConversationId, message);
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
@@ -1225,6 +1450,7 @@ export class ConversationsService {
         content: caption ?? '',
         messageType: MEDIA_MESSAGE_TYPE[kind],
         externalId,
+        mediaId,
         // Sem id da Meta o anexo NÃO saiu. Marcar como falha é o que faz o
         // triângulo vermelho aparecer no balão: antes ela era gravada como
         // qualquer outra e ficava indistinguível de uma mensagem entregue,
@@ -1254,14 +1480,17 @@ export class ConversationsService {
         lastMessageAt: message.createdAt,
         status: 'WAITING_CUSTOMER',
         unreadCount: 0,
+        // Anexo e encaminhamento são resposta como qualquer outra: param o
+        // relógio da espera. Estes dois caminhos não passam por
+        // `persistMessage` (sobem arquivo antes), então precisam dizer
+        // isso explicitamente — esquecer aqui deixaria a conversa
+        // eternamente no topo da fila depois de uma foto respondida.
+        waitingSince: null,
       },
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId,
-      message,
-    });
+    await this.emitirMensagemCriada(conversationId, message);
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
@@ -1448,14 +1677,15 @@ export class ConversationsService {
 
     const updated = await this.prisma.db.conversation.update({
       where: { id: conversation.id },
-      data: { lastMessageAt: message.createdAt, status: 'WAITING_CUSTOMER' },
+      data: {
+        lastMessageAt: message.createdAt,
+        status: 'WAITING_CUSTOMER',
+        waitingSince: null,
+      },
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId: conversation.id,
-      message,
-    });
+    await this.emitirMensagemCriada(conversation.id, message);
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
@@ -1719,7 +1949,7 @@ export class ConversationsService {
    * amanhã não sabe como chegou ali.
    */
   private async registrarNota(conversationId: string, texto: string) {
-    await this.prisma.db.message.create({
+    const nota = await this.prisma.db.message.create({
       data: {
         tenantId: this.prisma.tenantId,
         conversationId,
@@ -1728,6 +1958,12 @@ export class ConversationsService {
         messageType: 'TEXT',
       },
     });
+
+    // A nota também é anunciada. Antes ela só aparecia depois de alguém
+    // recarregar: respondendo numa conversa encerrada, a resposta surgia
+    // na hora e a tarja "o atendimento foi reaberto" — que é a explicação
+    // do que acabou de acontecer — chegava atrasada, ou nunca.
+    await this.emitirMensagemCriada(conversationId, nota);
   }
 
   /** Quem foi indicado confirma que vai atender. */
@@ -1896,6 +2132,35 @@ export class ConversationsService {
     externalId?: string;
     replyToExternalId?: string;
   }) {
+    /**
+     * A mesma entrega, de novo.
+     *
+     * A Meta reenvia o webhook quando não recebe 2xx a tempo — e "a tempo"
+     * inclui o tempo que a IA leva pra responder, porque a resposta dela
+     * acontece dentro desta chamada. Sem esta conferência, uma reentrega
+     * gravava a mensagem do cliente duas vezes e fazia a IA responder duas
+     * vezes à mesma pergunta, do mesmo número.
+     *
+     * O eco do celular e a importação de histórico já se protegiam assim;
+     * o caminho principal, que é o mais movimentado, não.
+     */
+    if (input.externalId) {
+      const jaRecebida = await this.prisma.db.message.findFirst({
+        where: { externalId: input.externalId },
+        select: { id: true, conversationId: true },
+      });
+      if (jaRecebida) {
+        this.logger.log(
+          `Entrega repetida ignorada: ${input.externalId} já estava gravada.`,
+        );
+        const conversa = await this.prisma.db.conversation.findFirst({
+          where: { id: jaRecebida.conversationId },
+          include: conversationInclude,
+        });
+        return { conversation: conversa, message: null };
+      }
+    }
+
     const customer = await this.customers.findOrCreateByPhone({
       phone: input.customerPhone,
       name: input.customerName,
@@ -2168,6 +2433,7 @@ export class ConversationsService {
         content: m.content,
         messageType: m.messageType ?? 'TEXT',
         metadata: m.metadata,
+        mediaId: mediaIdDe(m.metadata),
         externalId: m.externalId,
         // Já entregue: quem entregou foi o WhatsApp do celular, semanas atrás.
         status: 'SENT' as const,
@@ -2227,6 +2493,9 @@ export class ConversationsService {
       metadata: input.metadata,
       externalId: input.externalId,
       status: 'SENT',
+      // Quem entregou foi o WhatsApp do celular. Reenviar daqui faria o
+      // cliente receber a mesma resposta duas vezes.
+      jaEntregue: true,
     });
 
     if (conversation.aiMode === 'AI_ACTIVE') {

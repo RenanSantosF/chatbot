@@ -32,12 +32,22 @@ interface Page<T> {
   nextCursor: string | null;
 }
 
+/**
+ * Prefixo do id do balão que ainda não existe no servidor.
+ *
+ * É por ele que o evento de tempo real reconhece "esta é a versão real
+ * daquela que acabei de pintar" e troca no lugar, em vez de somar uma
+ * linha e deixar a outra sumir depois.
+ */
+const ID_OTIMISTA = "pending-";
+
 const EMPTY_COUNTS: FilterCounts = {
   total: 0,
   unread: 0,
   mine: 0,
   unassigned: 0,
   comIa: 0,
+  esperando: 0,
   pendentes: 0,
   aguardando: 0,
   resolvidas: 0,
@@ -45,7 +55,18 @@ const EMPTY_COUNTS: FilterCounts = {
   priority: {},
 };
 
-function buildQuery(filters: InboxFilters, cursor?: string | null): string {
+/**
+ * O MESMO recorte alimenta a lista e os contadores.
+ *
+ * Montar a consulta em dois lugares foi o que fez os números do cabeçalho
+ * discordarem da lista embaixo: "Pendentes 1" com "Minhas 5". Uma função
+ * só, dois destinos.
+ */
+function buildQuery(
+  filters: InboxFilters,
+  cursor?: string | null,
+  caminho = "/conversations",
+): string {
   const params = new URLSearchParams();
   if (filters.grupo !== "ALL") params.set("statusGroup", filters.grupo);
   if (filters.status !== "ALL") params.set("status", filters.status);
@@ -56,10 +77,12 @@ function buildQuery(filters: InboxFilters, cursor?: string | null): string {
   if (filters.unread) params.set("unread", "true");
   if (filters.unassigned) params.set("unassigned", "true");
   if (filters.comIa) params.set("comIa", "true");
+  if (filters.waiting) params.set("waiting", "true");
+  if (filters.ordem !== "RECENTE") params.set("ordem", filters.ordem);
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (cursor) params.set("cursor", cursor);
   const query = params.toString();
-  return query ? `/conversations?${query}` : "/conversations";
+  return query ? `${caminho}?${query}` : caminho;
 }
 
 export default function InboxPage() {
@@ -96,12 +119,64 @@ export default function InboxPage() {
     return () => setActiveConversationId(null);
   }, [selectedId, setActiveConversationId]);
 
-  const loadCounts = useCallback(() => {
-    apiFetch<FilterCounts>("/conversations/counts").then(setCounts).catch(() => {});
+  /**
+   * Os filtros num ref, além do estado.
+   *
+   * O socket precisa deles pra recarregar depois de um evento, mas assinar
+   * o socket de novo a cada mudança de filtro é caro: desliga e religa
+   * cinco ouvintes, e o Inbox fica lento justamente quando a pessoa está
+   * mexendo na barra. Com o ref, o efeito do socket é montado uma vez só.
+   */
+  const filtersRef = useRef(filters);
+  // Atualizado num efeito, não durante a renderização: escrever em ref no
+  // corpo do componente é o tipo de coisa que funciona até o React
+  // renderizar duas vezes.
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
+  const loadCounts = useCallback((current: InboxFilters = filtersRef.current) => {
+    apiFetch<FilterCounts>(buildQuery(current, null, "/conversations/counts"))
+      .then(setCounts)
+      .catch(() => {});
   }, []);
 
+  /**
+   * Recontagem agrupada.
+   *
+   * Cada `conversation.updated` pedia os contadores de novo, e cada pedido
+   * são nove consultas no banco. Numa conversa movimentada — ou logo depois
+   * de responder, quando chegam eventos em rajada — a tela disparava
+   * dezenas de recontagens em segundos, e era isso que deixava o Inbox
+   * pesado conforme se trabalha nele. Uma no fim da rajada diz a mesma
+   * coisa.
+   */
+  const contagemAgendada = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const agendarContagem = useCallback(() => {
+    if (contagemAgendada.current) clearTimeout(contagemAgendada.current);
+    contagemAgendada.current = setTimeout(() => loadCounts(), 400);
+  }, [loadCounts]);
+
+  useEffect(
+    () => () => {
+      if (contagemAgendada.current) clearTimeout(contagemAgendada.current);
+    },
+    [],
+  );
+
+  /**
+   * Só a resposta do pedido MAIS RECENTE vale.
+   *
+   * Trocando de filtro rápido, o servidor responde fora de ordem e a lista
+   * assentava no resultado do filtro anterior — a tela mostrava um recorte
+   * que já não era o selecionado, e parecia que o clique não pegou.
+   */
+  const pedidoDaLista = useRef(0);
+
   const loadConversations = useCallback(async (current: InboxFilters) => {
+    const meu = ++pedidoDaLista.current;
     const page = await apiFetch<Page<ConversationSummary>>(buildQuery(current));
+    if (meu !== pedidoDaLista.current) return;
     setConversations(page.items);
     setCursor(page.nextCursor);
   }, []);
@@ -159,11 +234,11 @@ export default function InboxPage() {
           setConversations((prev) =>
             prev.map((item) => (item.id === id ? { ...item, unreadCount: 0 } : item)),
           );
-          loadCounts();
+          agendarContagem();
         })
         .catch(() => {});
     },
-    [clearUnread, loadCounts],
+    [clearUnread, agendarContagem],
   );
 
   const loadOlderMessages = useCallback(async () => {
@@ -180,16 +255,16 @@ export default function InboxPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingList(true);
     const timer = setTimeout(() => {
+      // Lista e contadores saem juntos, do mesmo recorte: é o que garante
+      // que o número no botão e o que aparece embaixo dele falem da mesma
+      // coisa.
+      loadCounts(filters);
       loadConversations(filters)
         .catch(() => toast.error("Não deu pra carregar as conversas."))
         .finally(() => setLoadingList(false));
     }, filters.search ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [filters, filtersReady, loadConversations]);
-
-  useEffect(() => {
-    loadCounts();
-  }, [loadCounts]);
+  }, [filters, filtersReady, loadConversations, loadCounts]);
 
   useEffect(() => {
     // Atendente não tem permissão de LER as configurações de atendimento, e
@@ -225,7 +300,7 @@ export default function InboxPage() {
     if (!socket) return;
 
     const onConnect = () => {
-      loadConversations(filters).catch(() => {});
+      loadConversations(filtersRef.current).catch(() => {});
       if (selectedIdRef.current) loadDetail(selectedIdRef.current).catch(() => {});
     };
 
@@ -238,6 +313,17 @@ export default function InboxPage() {
       const reorder = () =>
         setConversations((prev) => {
           const rest = prev.filter((item) => item.id !== updated.id);
+          // Na fila quem manda é o tempo de espera, e ele NÃO sobe com
+          // mensagem nova — pelo contrário: quem acabou de cobrar continua
+          // esperando desde a primeira vez. Reordenar por recência aqui
+          // desfaria a fila a cada evento.
+          if (filtersRef.current.ordem === "ESPERA") {
+            return [updated, ...rest].sort((a, b) => {
+              const esperaA = a.waitingSince ? new Date(a.waitingSince).getTime() : Infinity;
+              const esperaB = b.waitingSince ? new Date(b.waitingSince).getTime() : Infinity;
+              return esperaA - esperaB;
+            });
+          }
           return [updated, ...rest].sort(
             (a, b) =>
               new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
@@ -252,7 +338,7 @@ export default function InboxPage() {
       if (selectedIdRef.current === updated.id) {
         setDetail((prev) => (prev ? { ...prev, ...updated } : prev));
       }
-      loadCounts();
+      agendarContagem();
     };
 
     const onMessageCreated = ({
@@ -268,7 +354,30 @@ export default function InboxPage() {
         // O socket entrega a mesma mensagem que já pode ter entrado pela
         // resposta do POST; a checagem de id evita duplicar.
         if (prev.messages.some((m) => m.id === message.id)) return prev;
-        const messages = [...prev.messages, message];
+
+        // Se esta é a versão real de uma mensagem que acabamos de mandar,
+        // ela SUBSTITUI o balão otimista em vez de entrar depois dele.
+        //
+        // Anexar criava uma linha a mais por um instante — a otimista
+        // continuava lá até a resposta do POST chegar e removê-la. Era a
+        // piscada de "aparece uma segunda e some": o balão certo já estava
+        // na tela, só que acompanhado.
+        const otimista = prev.messages.findIndex(
+          (m) =>
+            m.id.startsWith(ID_OTIMISTA) &&
+            m.senderType === message.senderType &&
+            m.content === message.content,
+        );
+
+        const messages =
+          otimista >= 0
+            ? prev.messages.map((m, i) =>
+                i === otimista
+                  ? { ...message, clientKey: prev.messages[otimista].clientKey }
+                  : m,
+              )
+            : [...prev.messages, message];
+
         conversationCache.patchMessages(conversationId, messages);
         return { ...prev, messages };
       });
@@ -319,7 +428,10 @@ export default function InboxPage() {
       socket.off("message.updated", onMessageUpdated);
       socket.off("message.status", onMessageStatus);
     };
-  }, [socket, loadConversations, loadDetail, loadCounts, filters]);
+    // Sem `filters` nas dependências: os ouvintes leem o recorte atual
+    // pelo ref, e assim o efeito é montado uma vez só em vez de desligar e
+    // religar cinco ouvintes a cada clique na barra de filtros.
+  }, [socket, loadConversations, loadDetail, agendarContagem]);
 
   async function handleSend(content: string) {
     if (!selectedId) return;
@@ -327,7 +439,7 @@ export default function InboxPage() {
     // Envio otimista: a mensagem aparece na hora com um tique vazio, do
     // jeito que o WhatsApp faz. Se o servidor confirmar, o evento de tempo
     // real substitui pela versão real; se falhar, ela some e avisamos.
-    const optimisticId = `pending-${Date.now()}`;
+    const optimisticId = `${ID_OTIMISTA}${Date.now()}`;
 
     // A empresa mostra o nome de quem respondeu no balão? Em vez de buscar
     // a configuração (que atendente não tem permissão de ler), a resposta
@@ -341,6 +453,10 @@ export default function InboxPage() {
 
     const optimistic: ConversationMessage = {
       id: optimisticId,
+      // A chave de tela nasce aqui e acompanha a mensagem até o fim: é ela
+      // que impede o balão de ser remontado (e reanimado) quando o id
+      // provisório der lugar ao do servidor.
+      clientKey: optimisticId,
       conversationId: selectedId,
       senderType: "AGENT",
       senderId: null,
@@ -377,17 +493,28 @@ export default function InboxPage() {
       // separadas, e entre elas a mensagem sumia da tela. Era isso o
       // "pisca duas vezes": o balão aparecia, sumia, e voltava com o nome
       // de quem respondeu em cima (que só a versão do servidor tem).
-      //
-      // O evento do socket chega em seguida com a mesma mensagem e é
-      // descartado pela checagem de id que já existe lá.
-      setDetail((prev) =>
-        prev
-          ? {
-              ...prev,
-              messages: prev.messages.map((m) => (m.id === optimisticId ? salva : m)),
-            }
-          : prev,
-      );
+      setDetail((prev) => {
+        if (!prev) return prev;
+
+        // O socket pode ter chegado ANTES desta resposta — e chega mesmo,
+        // sempre que o envio demora um pouco a mais, que é justamente o
+        // caso de responder numa conversa encerrada (o servidor ainda
+        // reabre o atendimento e registra a nota antes de devolver).
+        //
+        // Quando isso acontece, a mensagem de verdade já está na lista.
+        // Trocar a otimista por ela criaria DUAS linhas com o mesmo id:
+        // a do socket, com o nome de quem respondeu, e esta, sem. Era a
+        // duplicata que aparecia no painel enquanto o cliente recebia uma
+        // mensagem só. Aqui a otimista é só descartada.
+        const jaChegouPeloSocket = prev.messages.some((m) => m.id === salva.id);
+        const messages = jaChegouPeloSocket
+          ? prev.messages.filter((m) => m.id !== optimisticId)
+          : prev.messages.map((m) =>
+              m.id === optimisticId ? { ...salva, clientKey: optimisticId } : m,
+            );
+
+        return { ...prev, messages };
+      });
     } catch {
       setDetail((prev) =>
         prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev,
@@ -532,6 +659,7 @@ export default function InboxPage() {
         onRead={() => selectedId && marcarLida(selectedId)}
         onDelete={handleDelete}
         podeEnviarEncerrada={podeEnviarEncerrada}
+        onClose={() => setSelectedId(null)}
         onSend={handleSend}
         onSendFile={handleSendFile}
         onRefresh={refreshCurrent}

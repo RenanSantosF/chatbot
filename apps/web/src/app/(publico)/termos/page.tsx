@@ -7,7 +7,14 @@ import {
 } from "@/components/publico/documento-legal";
 
 export const metadata: Metadata = {
-  title: "Termos de uso — Clara",
+  // Sem "— Clara" no fim: o layout raiz já acrescenta a marca pelo
+  // template de título, e repetir aqui produziria "Termos de uso — Clara ·
+  // Clara" na aba e no resultado de busca.
+  title: "Termos de uso",
+  alternates: { canonical: "/termos" },
+  // Card próprio: sem isto o link destes documentos compartilhado
+  // num grupo aparecia com a chamada de venda da home.
+  openGraph: { type: "article", locale: "pt_BR", url: "/termos", title: "Termos de uso — Clara" },
   description:
     "Condições de uso da Clara, incluindo os custos cobrados por terceiros (Meta e provedor de IA) que não passam por nós.",
 };

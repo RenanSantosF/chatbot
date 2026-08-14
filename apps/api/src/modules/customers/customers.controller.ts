@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
+import { RequiresPermission } from '../../common/auth/permission.decorator';
 import type { RequestUser } from '../auth/auth.types';
 import { parseContactsCsv } from './contact-import';
 import { CustomerNotesService } from './customer-notes.service';
@@ -25,6 +26,7 @@ import {
 /** Planilha de contatos é texto; 5 MB já cobre dezenas de milhares de linhas. */
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
+@RequiresPermission('customers.view')
 @Controller('customers')
 export class CustomersController {
   constructor(

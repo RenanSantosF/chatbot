@@ -96,8 +96,15 @@ repositório. O que muda é o arquivo de configuração que ele obedece.
    |---|---|
    | `API_INTERNAL_URL` | a URL pública da API (ex: `https://sua-api.up.railway.app`) |
    | `NEXT_PUBLIC_SOCKET_URL` | a mesma URL pública da API |
+   | `NEXT_PUBLIC_SITE_URL` | o endereço público **deste site** (ex: `https://clara.com.br`) — de onde saem `canonical`, sitemap, robots e a imagem que aparece ao colar o link no WhatsApp |
 
-   As duas precisam existir **antes do build**, não só no deploy:
+   Sobre a última: sem ela o site sobe funcionando, mas com as tags de SEO
+   apontando pro `localhost` de quem gerou o build — o Google indexaria um
+   endereço que não existe e o card de compartilhamento viria sem imagem.
+   Ponha o domínio final (com `https://`, sem barra no fim) antes de
+   divulgar o link.
+
+   As três precisam existir **antes do build**, não só no deploy:
    `NEXT_PUBLIC_*` é embutida no JavaScript durante o `next build`, e o
    rewrite de `/api/*` é resolvido no mesmo momento. Se você criar a
    variável depois, force um redeploy.

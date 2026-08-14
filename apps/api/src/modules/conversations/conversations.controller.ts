@@ -21,7 +21,11 @@ import type {
   ConversationStatus,
 } from '../../../generated/prisma/client';
 import type { RequestUser } from '../auth/auth.types';
-import { ConversationsService, type StatusGroup } from './conversations.service';
+import {
+  ConversationsService,
+  type OrdemDoInbox,
+  type StatusGroup,
+} from './conversations.service';
 import { StartConversationDto } from './dto/start-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetPriorityDto } from './dto/set-priority.dto';
@@ -43,6 +47,8 @@ export class ConversationsController {
     @Query('unassigned') unassigned: string | undefined,
     @Query('comIa') comIa: string | undefined,
     @Query('search') search: string | undefined,
+    @Query('ordem') ordem: OrdemDoInbox | undefined,
+    @Query('waiting') waiting: string | undefined,
     @Query('cursor') cursor: string | undefined,
     @Query('limit') limit: string | undefined,
     @CurrentUser() user: RequestUser,
@@ -57,16 +63,51 @@ export class ConversationsController {
       customerId,
       priority,
       unreadOnly: unread === 'true',
+      waitingOnly: waiting === 'true',
       search,
+      ordem: ordem === 'ESPERA' ? 'ESPERA' : 'RECENTE',
       cursor,
       limit: limit ? Number(limit) : undefined,
       viewer: { userId: user.userId, role: user.role },
     });
   }
 
+  /**
+   * Os mesmos parâmetros da listagem, de propósito.
+   *
+   * A barra manda o recorte que está na tela, e cada contador responde
+   * "quantas eu veria se ligasse isto, mantendo o resto". Sem receber os
+   * filtros, o cabeçalho contava a empresa inteira enquanto a lista
+   * mostrava um recorte — e os dois números na mesma tela se
+   * contradiziam.
+   */
   @Get('counts')
-  counts(@CurrentUser() user: RequestUser) {
-    return this.conversationsService.counts(user.userId);
+  counts(
+    @Query('status') status: ConversationStatus | undefined,
+    @Query('statusGroup') statusGroup: StatusGroup | undefined,
+    @Query('mine') mine: string | undefined,
+    @Query('queueId') queueId: string | undefined,
+    @Query('priority') priority: ConversationPriority | undefined,
+    @Query('unread') unread: string | undefined,
+    @Query('unassigned') unassigned: string | undefined,
+    @Query('waiting') waiting: string | undefined,
+    @Query('comIa') comIa: string | undefined,
+    @Query('search') search: string | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.counts({
+      status,
+      statusGroup,
+      assignedUserId: mine === 'true' ? user.userId : undefined,
+      queueId,
+      priority,
+      unreadOnly: unread === 'true',
+      unassignedOnly: unassigned === 'true',
+      waitingOnly: waiting === 'true',
+      comIa: comIa === 'true',
+      search,
+      viewer: { userId: user.userId, role: user.role },
+    });
   }
 
   // Estas rotas ficam ANTES de ':id' de propósito: o Nest casa na ordem
@@ -78,6 +119,7 @@ export class ConversationsController {
   }
 
   @Post('start')
+  @RequiresPermission('conversations.send')
   start(
     @Body() dto: StartConversationDto,
     @CurrentUser() user: RequestUser,
@@ -130,6 +172,7 @@ export class ConversationsController {
   }
 
   @Post(':id/messages/:messageId/forward')
+  @RequiresPermission('conversations.send')
   forward(
     @Param('messageId') messageId: string,
     @Body('toConversationId') toConversationId: string,
@@ -143,6 +186,7 @@ export class ConversationsController {
   }
 
   @Post(':id/messages')
+  @RequiresPermission('conversations.send')
   sendMessage(
     @Param('id') id: string,
     @Body() dto: SendMessageDto,
@@ -162,6 +206,7 @@ export class ConversationsController {
    * atendendo, e a tela transforma isso na pergunta.
    */
   @Post(':id/assign')
+  @RequiresPermission('conversations.assign')
   assign(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
@@ -174,6 +219,7 @@ export class ConversationsController {
   }
 
   @Post(':id/transfer')
+  @RequiresPermission('conversations.assign')
   transfer(
     @Param('id') id: string,
     @Body('toUserId') toUserId: string,
@@ -184,6 +230,7 @@ export class ConversationsController {
 
   /** Encaminha pro setor, sem nomear pessoa — quem estiver livre pega. */
   @Post(':id/transfer-queue')
+  @RequiresPermission('conversations.assign')
   transferQueue(
     @Param('id') id: string,
     @Body('queueId') queueId: string,
@@ -218,11 +265,13 @@ export class ConversationsController {
   }
 
   @Post(':id/reopen')
+  @RequiresPermission('conversations.resolve')
   reopen(@Param('id') id: string) {
     return this.conversationsService.reopen(id);
   }
 
   @Post(':id/resolve')
+  @RequiresPermission('conversations.resolve')
   resolve(@Param('id') id: string) {
     return this.conversationsService.resolve(id);
   }
@@ -236,6 +285,7 @@ export class ConversationsController {
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 16 * 1024 * 1024 } }),
   )
+  @RequiresPermission('conversations.attachments')
   sendAttachment(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
@@ -254,6 +304,7 @@ export class ConversationsController {
   }
 
   @Post(':id/priority')
+  @RequiresPermission('conversations.priority')
   setPriority(@Param('id') id: string, @Body() dto: SetPriorityDto) {
     return this.conversationsService.setPriority(id, dto.priority);
   }

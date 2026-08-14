@@ -4,6 +4,7 @@ import { AiCredentialsResolver } from './providers/ai-credentials.resolver';
 import {
   AI_PROVIDER,
   type AiProvider,
+  type AiToolCallResult,
   type AiToolExecutor,
 } from './providers/ai-provider.interface';
 import { verificarResposta, type VerificacaoDaResposta } from './ai-guardrails';
@@ -27,6 +28,27 @@ export interface AiReply {
  * precisa de um humano. `semPergunta` é normal — a última mensagem já era da
  * casa, não há nada a responder — e não deve acordar ninguém.
  */
+/**
+ * A chamada de ferramenta produziu efeito no mundo?
+ *
+ * Duas formas de "não": o executor recusou (sem permissão, ferramenta
+ * desconhecida, exceção) e devolveu `error`; ou a ferramenta rodou mas se
+ * recusou a agir e disse isso no `output` — é o caso da barreira de coleta
+ * em transferToQueue, que responde `status: 'blocked'` justamente pra a IA
+ * voltar e perguntar o que falta.
+ */
+export function executouDeVerdade(resultado: AiToolCallResult): boolean {
+  if (resultado.error) return false;
+
+  const saida = resultado.output;
+  if (saida && typeof saida === 'object' && 'status' in saida) {
+    const status = (saida as { status?: unknown }).status;
+    if (status === 'blocked' || status === 'nothing_to_save') return false;
+  }
+
+  return true;
+}
+
 export type ResultadoDaIa =
   | { tipo: 'respondeu'; resposta: AiReply }
   | { tipo: 'indisponivel'; motivo: string }
@@ -63,14 +85,21 @@ export class AiEngineService {
       );
       return {
         tipo: 'indisponivel',
-        motivo: 'A IA está desligada nas configurações.',
+        // O motivo aparece no painel em "por que veio pra equipe", e é a
+        // primeira coisa que quem vai atender lê. Descreve o CASO, não o
+        // estado interno do sistema: "A IA falhou (erro no provedor)"
+        // soava alarme de incidente numa conversa que era só um "oi" sem
+        // resposta — e, numa demonstração pra cliente, deprecia o produto
+        // sem necessidade. O detalhe técnico continua no log, que é onde
+        // ele serve pra alguma coisa.
+        motivo: 'O atendimento automático está desligado e o cliente está esperando.',
       };
     }
     if (!credentials) {
       this.logger.warn('Sem API key de IA configurada.');
       return {
         tipo: 'indisponivel',
-        motivo: 'A IA está sem chave de API configurada.',
+        motivo: 'O atendimento automático ainda não foi configurado e o cliente está esperando.',
       };
     }
 
@@ -95,12 +124,27 @@ export class AiEngineService {
     // Guardamos o que a IA de fato executou. É o que permite comparar a
     // promessa do texto com a ação — sem isso, "vou transferir" e uma
     // transferência real são indistinguíveis pro sistema.
+    //
+    // "De fato" é literal: só entra aqui a chamada que TERMINOU valendo.
+    // Antes o nome era registrado antes de executar, e isso abria o buraco
+    // exato que as travas existem pra fechar — uma transferência barrada
+    // (sem permissão, ou sem os dados obrigatórios coletados) contava como
+    // transferência feita, a trava se dava por satisfeita, e a conversa
+    // ficava sem IA e sem gente, com o cliente já avisado de que alguém
+    // assumiria.
     const usadas: string[] = [];
     const executeTool: AiToolExecutor | undefined =
       toolDeclarations.length > 0
-        ? (name, args) => {
-            usadas.push(name);
-            return this.tools.execute(name, args, conversationId);
+        ? async (name, args) => {
+            const resultado = await this.tools.execute(
+              name,
+              args,
+              conversationId,
+            );
+            if (executouDeVerdade(resultado)) {
+              usadas.push(name);
+            }
+            return resultado;
           }
         : undefined;
 
@@ -130,7 +174,7 @@ export class AiEngineService {
       );
       return {
         tipo: 'indisponivel',
-        motivo: 'A IA falhou ao responder (erro no provedor).',
+        motivo: 'O cliente escreveu e não houve resposta automática.',
       };
     }
   }

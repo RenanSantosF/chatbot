@@ -1,6 +1,14 @@
 "use client";
 
-import { CheckCheck, Clock3, Inbox, Search, SlidersHorizontal, X } from "lucide-react";
+import {
+  ArrowDownWideNarrow,
+  CheckCheck,
+  Clock3,
+  Inbox,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
@@ -9,6 +17,18 @@ import type { ConversationPriority, ConversationStatus } from "@/lib/types";
 
 /** Os três grupos de trabalho vindos da API (ver STATUS_GROUPS no backend). */
 export type StatusGroup = "PENDING" | "WAITING" | "DONE";
+
+/**
+ * Duas leituras da mesma caixa.
+ *
+ * RECENTE é a de mensageiro — quem falou por último em cima — e continua
+ * sendo o padrão, porque é o que a memória muscular espera.
+ *
+ * ESPERA é a fila de atendimento. As duas discordam justamente onde dói: o
+ * cliente que escreveu de manhã e não insistiu mais afunda na ordem por
+ * recência, e é ele quem está sem resposta há mais tempo.
+ */
+export type OrdemDoInbox = "RECENTE" | "ESPERA";
 
 export interface InboxFilters {
   /** Grupo de trabalho. "ALL" = não filtra. */
@@ -20,6 +40,9 @@ export interface InboxFilters {
   unassigned: boolean;
   /** Só o que a IA está conduzindo agora. */
   comIa: boolean;
+  /** Só quem está esperando resposta da empresa. */
+  waiting: boolean;
+  ordem: OrdemDoInbox;
   search: string;
 }
 
@@ -38,6 +61,8 @@ export const DEFAULT_FILTERS: InboxFilters = {
   unread: false,
   unassigned: false,
   comIa: false,
+  waiting: false,
+  ordem: "RECENTE",
   search: "",
 };
 
@@ -48,6 +73,7 @@ export interface FilterCounts {
   mine: number;
   unassigned: number;
   comIa: number;
+  esperando: number;
   pendentes: number;
   aguardando: number;
   resolvidas: number;
@@ -117,6 +143,22 @@ export function InboxFilterBar({
   const set = <K extends keyof InboxFilters>(key: K, next: InboxFilters[K]) =>
     onChange({ ...value, [key]: next });
 
+  /**
+   * Grupo e "situação exata" são o MESMO eixo, em duas granularidades:
+   * "Pendentes" e "Aguard. cliente" respondem a mesma pergunta. Escolher um
+   * limpa o outro.
+   *
+   * Sem isso dava pra montar um recorte impossível — grupo Resolvidas com
+   * situação Aberta — em que a lista mostrava uma coisa (o backend faz a
+   * situação exata ganhar do grupo) e os botões diziam outra. Ninguém
+   * escolhe isso de propósito; dá pra chegar lá clicando duas vezes.
+   */
+  const escolherGrupo = (grupo: InboxFilters["grupo"]) =>
+    onChange({ ...value, grupo, status: "ALL" });
+
+  const escolherStatus = (status: InboxFilters["status"]) =>
+    onChange({ ...value, status, grupo: "ALL" });
+
   const contagemDoGrupo: Record<StatusGroup | "ALL", number> = {
     PENDING: counts.pendentes,
     WAITING: counts.aguardando,
@@ -130,7 +172,11 @@ export function InboxFilterBar({
     value.mine ||
     value.unread ||
     value.unassigned ||
-    value.comIa;
+    value.comIa ||
+    value.waiting ||
+    value.ordem !== "RECENTE";
+
+  const naFila = value.ordem === "ESPERA";
 
   return (
     <div className="flex flex-col gap-2.5 p-3">
@@ -162,7 +208,7 @@ export function InboxFilterBar({
               role="radio"
               aria-checked={ativo}
               title={grupo.ajuda}
-              onClick={() => set("grupo", grupo.value)}
+              onClick={() => escolherGrupo(grupo.value)}
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors",
                 ativo
@@ -180,6 +226,33 @@ export function InboxFilterBar({
             </button>
           );
         })}
+      </div>
+
+      {/* Como a lista é ordenada.
+          
+          Um botão só, que alternava e mostrava o estado atual, era ambíguo:
+          lendo "Fila" não dá pra saber se é onde estou ou pra onde vou. Duas
+          opções lado a lado com a atual acesa respondem isso sem legenda —
+          é a mesma leitura de um interruptor de duas posições. */}
+      <div
+        role="radiogroup"
+        aria-label="Ordem da lista"
+        className="flex items-center gap-1 rounded-lg bg-muted p-0.5"
+      >
+        <OpcaoDeOrdem
+          ativa={!naFila}
+          onClick={() => set("ordem", "RECENTE")}
+          icone={Clock3}
+          rotulo="Mais recentes"
+          ajuda="Quem falou por último em cima, como num mensageiro."
+        />
+        <OpcaoDeOrdem
+          ativa={naFila}
+          onClick={() => set("ordem", "ESPERA")}
+          icone={ArrowDownWideNarrow}
+          rotulo="Fila de espera"
+          ajuda="Quem está sem resposta há mais tempo primeiro."
+        />
       </div>
 
       {/* Recortes que se somam ao grupo, como interruptores. Antes eram
@@ -203,6 +276,12 @@ export function InboxFilterBar({
           onToggle={() => set("unassigned", !value.unassigned)}
           rotulo="Sem dono"
           quantos={counts.unassigned}
+        />
+        <Interruptor
+          ligado={value.waiting}
+          onToggle={() => set("waiting", !value.waiting)}
+          rotulo="Esperando"
+          quantos={counts.esperando}
         />
         {/* Fora de "Pendentes" por padrão: conversa que a IA conduz não
             espera ninguém da equipe. Este interruptor é o caminho de quem
@@ -243,7 +322,7 @@ export function InboxFilterBar({
           <Grupo
             titulo="Situação exata"
             value={value.status}
-            onChange={(next) => set("status", next as InboxFilters["status"])}
+            onChange={(next) => escolherStatus(next as InboxFilters["status"])}
             options={[
               { value: "ALL", label: "Todas" },
               ...STATUS_ORDER.map((status) => ({
@@ -270,6 +349,46 @@ export function InboxFilterBar({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Uma das duas posições do seletor de ordem.
+ *
+ * A acesa fica com fundo claro e sombra, do jeito que um controle
+ * segmentado se comporta em qualquer sistema: a posição levantada é onde
+ * você está, a rebaixada é pra onde dá pra ir.
+ */
+function OpcaoDeOrdem({
+  ativa,
+  onClick,
+  icone: Icone,
+  rotulo,
+  ajuda,
+}: {
+  ativa: boolean;
+  onClick: () => void;
+  icone: typeof Inbox;
+  rotulo: string;
+  ajuda: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={ativa}
+      onClick={onClick}
+      title={ajuda}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+        ativa
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icone className="size-3.5 shrink-0" />
+      {rotulo}
+    </button>
   );
 }
 

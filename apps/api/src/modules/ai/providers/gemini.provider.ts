@@ -17,6 +17,82 @@ export const EMBEDDING_DIMENSIONS = 768;
 /** Limite de idas-e-voltas de ferramenta numa única resposta — evita loop infinito se o modelo insistir em chamar ferramentas. */
 const MAX_TOOL_TURNS = 4;
 
+/**
+ * Quanto o modelo pode "pensar" antes de escrever.
+ *
+ * O gemini-2.5-flash raciocina por padrão, e esse raciocínio é cobrado
+ * como saída em TODO turno — inclusive num "bom dia". São tokens que o
+ * cliente nunca lê e que, num atendimento, quase não mudam a resposta:
+ * responder o horário de funcionamento a partir de um trecho de documento
+ * não é um problema que precise de rascunho.
+ *
+ * Zero desliga. A escolha é consciente e tem uma rede embaixo: a decisão
+ * mais delicada que o modelo toma aqui é quando transferir pra um humano,
+ * e essa decisão NÃO depende só dele — as travas conferem a resposta e
+ * escalam por conta própria quando ele promete gente e não chama a
+ * ferramenta (ver ai-guardrails.ts).
+ *
+ * Se um dia a operação exigir raciocínio (respostas que dependem de
+ * calcular prazo, comparar tabela de preço), é este número que sobe.
+ */
+const ORCAMENTO_DE_RACIOCINIO = 0;
+
+/**
+ * Teto da resposta.
+ *
+ * É WhatsApp: quatro linhas cabem na tela do celular, e um texto de vinte
+ * o cliente não lê. O teto é generoso em relação a isso de propósito —
+ * ele não existe pra encurtar a resposta boa (disso cuida a instrução no
+ * prompt), e sim pra impedir que um modelo em laço escreva mil linhas e
+ * cobre por todas.
+ */
+const MAXIMO_DE_SAIDA = 700;
+
+/**
+ * Baixa, e não zero.
+ *
+ * Atendimento quer consistência: a mesma pergunta merece a mesma resposta
+ * hoje e amanhã, e criatividade aqui é sinônimo de inventar política da
+ * empresa. Zero deixaria o texto repetitivo a ponto de soar automático,
+ * que é justamente o que a tela toda tenta evitar.
+ */
+const TEMPERATURA = 0.4;
+
+/**
+ * Até quando esperar o Google responder.
+ *
+ * Não é conforto: a resposta da IA acontece DENTRO do processamento do
+ * webhook, então uma chamada pendurada segura a entrega da Meta até ela
+ * desistir e reenviar. Vinte e cinco segundos é folgado pra um modelo
+ * rápido e curto o bastante pra caber na paciência dela.
+ *
+ * Sem isto, "a IA travou" não tinha fim: a requisição ficava viva
+ * segurando uma conexão, e quem descobria era o cliente, pelo silêncio.
+ */
+const TEMPO_LIMITE_MS = 25_000;
+const TEMPO_LIMITE_EMBEDDING_MS = 15_000;
+
+/**
+ * Traduz o cancelamento por tempo numa frase que diz o que aconteceu.
+ *
+ * O erro cru de um `AbortSignal` é "This operation was aborted", que no
+ * simulador aparece pro dono da empresa como se o sistema tivesse
+ * quebrado. Ele não quebrou — o provedor não respondeu.
+ */
+function comoErroDeTempo(error: unknown, oQue: string): Error {
+  const abortou =
+    error instanceof Error &&
+    (error.name === 'AbortError' || error.name === 'TimeoutError');
+
+  return abortou
+    ? new Error(
+        `O provedor de IA não respondeu em ${TEMPO_LIMITE_MS / 1000} segundos (${oQue}). Tente de novo; se persistir, confira a chave e o modelo em Configurações > IA.`,
+      )
+    : error instanceof Error
+      ? error
+      : new Error(String(error));
+}
+
 function toGeminiRole(role: AiMessage['role']): 'user' | 'model' {
   return role === 'assistant' ? 'model' : 'user';
 }
@@ -53,13 +129,31 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
         ]
       : undefined;
 
+    // Somado ao longo das idas-e-voltas de ferramenta: uma resposta que
+    // chama transferToQueue custa duas chamadas ao modelo, e o número que
+    // interessa pra conta do fim do mês é o total da resposta, não o de
+    // cada pedaço.
+    const consumo = { entrada: 0, saida: 0, raciocinio: 0 };
+
     try {
       for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
         const response = await client.models.generateContent({
           model: resolvedModel,
           contents,
-          config: { systemInstruction: systemPrompt, tools: geminiTools },
+          config: {
+            systemInstruction: systemPrompt,
+            tools: geminiTools,
+            temperature: TEMPERATURA,
+            maxOutputTokens: MAXIMO_DE_SAIDA,
+            thinkingConfig: { thinkingBudget: ORCAMENTO_DE_RACIOCINIO },
+            abortSignal: AbortSignal.timeout(TEMPO_LIMITE_MS),
+          },
         });
+
+        const uso = response.usageMetadata;
+        consumo.entrada += uso?.promptTokenCount ?? 0;
+        consumo.saida += uso?.candidatesTokenCount ?? 0;
+        consumo.raciocinio += uso?.thoughtsTokenCount ?? 0;
 
         const calls = response.functionCalls;
 
@@ -68,6 +162,14 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
           if (!text) {
             throw new Error('A IA retornou uma resposta vazia.');
           }
+          // O custo real de cada resposta vai pro log. Sem isto, "a conta
+          // da IA veio alta" é uma frase sem investigação possível: não dá
+          // pra saber se o caro é o prompt (base de conhecimento grande
+          // demais), a resposta, ou o raciocínio invisível do modelo.
+          this.logger.log(
+            `Resposta gerada (${resolvedModel}): ${consumo.entrada} tokens de entrada, ` +
+              `${consumo.saida} de saída, ${consumo.raciocinio} de raciocínio.`,
+          );
           return { content: text };
         }
 
@@ -107,7 +209,7 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
         `Falha ao chamar o Gemini (${resolvedModel})`,
         error instanceof Error ? error.stack : error,
       );
-      throw error;
+      throw comoErroDeTempo(error, 'gerar a resposta');
     }
   }
 
@@ -118,7 +220,11 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
       const response = await client.models.embedContent({
         model: EMBEDDING_MODEL,
         contents: texts,
-        config: { taskType, outputDimensionality: EMBEDDING_DIMENSIONS },
+        config: {
+          taskType,
+          outputDimensionality: EMBEDDING_DIMENSIONS,
+          abortSignal: AbortSignal.timeout(TEMPO_LIMITE_EMBEDDING_MS),
+        },
       });
 
       const embeddings = response.embeddings ?? [];
@@ -134,7 +240,7 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
         `Falha ao gerar embeddings (${EMBEDDING_MODEL})`,
         error instanceof Error ? error.stack : error,
       );
-      throw error;
+      throw comoErroDeTempo(error, 'consultar a base de conhecimento');
     }
   }
 }

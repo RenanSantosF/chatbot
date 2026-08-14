@@ -78,9 +78,13 @@ export function applyTenantScope(client: PrismaClient, tenantId: string) {
           }
 
           if (operation === 'createMany' || operation === 'createManyAndReturn') {
+            // `data` aceita lista OU objeto único. Sem tratar o segundo
+            // caso, um createMany com um registro só passava sem tenantId
+            // — e o banco recusava a escrita (ou, pior, aceitaria se a
+            // coluna algum dia ganhasse padrão).
             scopedArgs.data = Array.isArray(scopedArgs.data)
               ? scopedArgs.data.map((item: Record<string, any>) => ({ ...item, tenantId }))
-              : scopedArgs.data;
+              : { ...(scopedArgs.data ?? {}), tenantId };
           }
 
           if (operation === 'upsert') {

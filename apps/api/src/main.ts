@@ -11,6 +11,17 @@ async function bootstrap() {
   // webhook do WhatsApp, que é calculada sobre os bytes exatos recebidos.
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
+  /**
+   * Deploy não pode cortar requisição no meio.
+   *
+   * Sem isto, o Railway manda SIGTERM e o processo morre na hora: quem
+   * estava enviando uma mensagem recebe erro de rede, e — pior — uma
+   * entrega da Meta em andamento fica sem 2xx e volta como reentrega. Com
+   * os ganchos ligados, o Nest fecha o servidor, espera o que está em voo
+   * terminar e só então desconecta o banco (ver PrismaService).
+   */
+  app.enableShutdownHooks();
+
   app.use(cookieParser());
   app.enableCors({
     origin: process.env.WEB_APP_URL ?? 'http://localhost:3000',

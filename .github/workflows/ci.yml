@@ -1,0 +1,77 @@
+name: CI
+
+# Em todo push e em toda proposta de mudança. O ponto de ter testes é
+# alguém além de quem escreveu descobrir que quebrou — e isso só acontece
+# se rodarem sozinhos.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Push seguido cancela a execução anterior do mesmo ramo: o resultado do
+# commit velho não interessa mais e só ocupa fila.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API — testes e tipos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: pnpm
+
+      - name: Instalar dependências
+        # --frozen-lockfile: se o pnpm-lock.yaml não bate com os
+        # package.json, é pra falhar aqui e não instalar uma árvore
+        # diferente da que roda em produção.
+        run: pnpm install --frozen-lockfile
+
+      - name: Gerar o Prisma Client
+        # Os testes importam tipos e enums de `generated/prisma`, que não é
+        # versionado. Sem esta etapa nada compila. Não precisa de banco:
+        # `generate` lê só o schema.
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
+      - name: Conferir tipos
+        working-directory: apps/api
+        run: pnpm exec tsc --noEmit
+
+      - name: Rodar os testes
+        working-directory: apps/api
+        run: pnpm exec jest --ci
+
+  web:
+    name: Painel — build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Compilar o painel
+        # O build do Next é o teste de tipos do frontend: ele roda o
+        # TypeScript sobre as rotas com os tipos que ele mesmo gera
+        # (LayoutProps e afins não existem antes disso).
+        working-directory: apps/web
+        env:
+          # Só pra o build ter uma origem absoluta pros metadados; o valor
+          # real entra no build de produção do provedor de hospedagem.
+          NEXT_PUBLIC_SITE_URL: https://exemplo.invalid
+        run: pnpm exec next build

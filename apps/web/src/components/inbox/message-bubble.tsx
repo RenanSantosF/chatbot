@@ -1,4 +1,14 @@
-import { Ban, Check, CheckCheck, Forward, Reply, Trash2, TriangleAlert } from "lucide-react";
+import {
+  Ban,
+  Check,
+  CheckCheck,
+  Forward,
+  Reply,
+  SmilePlus,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
@@ -51,6 +61,113 @@ function DeliveryTicks({ status, motivo }: { status: MessageStatus; motivo?: str
 }
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏"];
+
+/**
+ * O visual dos botões da barra que flutua sobre o balão.
+ *
+ * Alvo de 28px com ícone de 16 dentro: dá pra acertar com o mouse sem que
+ * quatro botões coloridos disputem atenção com a conversa. A cor é apagada
+ * em repouso e só firma no hover — em repouso eles são atalhos, não parte
+ * da mensagem.
+ */
+const ACAO_DA_BARRA =
+  "flex size-7 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground";
+
+/**
+ * O botão de reagir, e as carinhas atrás dele.
+ *
+ * Antes os cinco emojis coloridos apareciam de uma vez ao passar o mouse.
+ * Cinco figuras coloridas pulando em cima de cada balão viram festa visual
+ * numa tela que a pessoa encara o dia inteiro, e o alvo real — responder,
+ * encaminhar, apagar — ficava espremido do lado delas.
+ *
+ * Agora é o caminho do WhatsApp Web: passa o mouse e aparece uma carinha
+ * discreta; quem quer reagir clica nela e escolhe. Um passo a mais para
+ * quem reage, silêncio para quem não vai reagir — que é a maioria das
+ * vezes que o mouse passa por cima de um balão.
+ */
+function BotaoDeReagir({
+  onPick,
+  alinharADireita,
+}: {
+  onPick: (emoji: string) => void;
+  alinharADireita: boolean;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+
+    const foraDaqui = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setAberto(false);
+    };
+    const noEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAberto(false);
+    };
+
+    document.addEventListener("mousedown", foraDaqui);
+    document.addEventListener("keydown", noEsc);
+    return () => {
+      document.removeEventListener("mousedown", foraDaqui);
+      document.removeEventListener("keydown", noEsc);
+    };
+  }, [aberto]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        title="Reagir"
+        aria-label="Reagir a esta mensagem"
+        aria-expanded={aberto}
+        onClick={() => setAberto((estava) => !estava)}
+        className={cn(
+          "flex size-7 items-center justify-center rounded-full transition-colors",
+          aberto
+            ? "bg-muted text-foreground"
+            : "text-muted-foreground/70 hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <SmilePlus className="size-4" />
+      </button>
+
+      {aberto ? (
+        <div
+          className={cn(
+            "reacoes-abrindo absolute bottom-full z-20 mb-2 flex items-center gap-0.5 rounded-full border bg-popover p-1 shadow-[0_4px_16px_oklch(0_0_0/20%)]",
+            alinharADireita ? "right-0" : "left-0",
+          )}
+        >
+          {QUICK_REACTIONS.map((emoji, indice) => (
+            <button
+              key={emoji}
+              type="button"
+              title={`Reagir com ${emoji}`}
+              onClick={() => {
+                onPick(emoji);
+                setAberto(false);
+              }}
+              // O escalonamento da entrada é dado aqui, e não no CSS: são
+              // cinco itens fixos, e uma variável por índice seria mais
+              // código que o próprio atraso.
+              style={{ animationDelay: `${indice * 22}ms` }}
+              className="emoji-entrando group/emoji flex size-8 items-center justify-center rounded-full transition-colors hover:bg-muted"
+            >
+              {/* 24px inteiro e SEM escalar no hover: a fonte de emoji do
+                  Windows é bitmap, e qualquer `scale` reescala o desenho —
+                  era daí que vinha o serrilhado. O destaque agora é o
+                  círculo atrás, que é vetor e amplia limpo. */}
+              <span className="emoji text-[24px] transition-transform duration-150 group-hover/emoji:-translate-y-0.5">
+                {emoji}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Pinta os trechos que casam com a busca. Divide pelo termo em vez de usar
@@ -146,7 +263,11 @@ export function MessageBubble({
     <div
       data-message-id={message.id}
       className={cn(
-        "group/msg relative flex max-w-[75%] min-w-0 flex-col",
+        // `select-text` devolve a seleção AQUI dentro: a faixa ao redor tem
+        // `select-none` pra o duplo clique no vazio não selecionar o texto
+        // do balão vizinho (e o navegador não abrir o menu dele por cima).
+        // Dentro da mensagem, copiar continua sendo o gesto normal.
+        "group/msg relative flex max-w-[75%] min-w-0 flex-col select-text",
         fromCustomer ? "self-start" : "self-end",
         isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
       )}
@@ -158,32 +279,28 @@ export function MessageBubble({
             // Sem borda: a sombra já destaca, e o traço em volta de um menu
             // pequeno vira moldura. Emoji em 20px porque abaixo disso o
             // navegador rasteriza a fonte de emoji e ela sai serrilhada.
-            "absolute bottom-full z-10 mb-1.5 flex items-center gap-1 rounded-full bg-popover px-1.5 py-1 opacity-0 shadow-[0_2px_12px_oklch(0_0_0/18%)] transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
+            // `focus-within` também segura a barra visível: sem ele, abrir
+            // o seletor de reação e mover o mouse pra escolher fazia a
+            // barra inteira sumir junto com ele.
+            "absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-full border bg-popover/95 p-0.5 opacity-0 shadow-[0_2px_10px_oklch(0_0_0/14%)] backdrop-blur-sm transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100",
             fromCustomer ? "left-2" : "right-2",
           )}
         >
-          {onReact
-            ? QUICK_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  title={`Reagir com ${emoji}`}
-                  onClick={() => void onReact(message.id, emoji)}
-                  className="rounded-full px-1 text-[20px] leading-none transition-transform hover:scale-125"
-                >
-                  {emoji}
-                </button>
-              ))
-            : null}
+          {onReact ? (
+            <BotaoDeReagir
+              alinharADireita={!fromCustomer}
+              onPick={(emoji) => void onReact(message.id, emoji)}
+            />
+          ) : null}
           {onReply ? (
             <button
               type="button"
               title="Responder"
               aria-label="Responder esta mensagem"
               onClick={() => onReply(message)}
-              className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
+              className={ACAO_DA_BARRA}
             >
-              <Reply className="size-4.5" />
+              <Reply className="size-4" />
             </button>
           ) : null}
           {onForward ? (
@@ -192,9 +309,9 @@ export function MessageBubble({
               title="Encaminhar"
               aria-label="Encaminhar esta mensagem"
               onClick={() => onForward(message)}
-              className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
+              className={ACAO_DA_BARRA}
             >
-              <Forward className="size-4.5" />
+              <Forward className="size-4" />
             </button>
           ) : null}
           {/* Só no que a empresa mandou. Apagar fala do cliente seria
@@ -206,9 +323,9 @@ export function MessageBubble({
               title="Apagar"
               aria-label="Apagar esta mensagem"
               onClick={() => onDelete(message)}
-              className="rounded-full p-1 text-muted-foreground transition-colors hover:text-destructive"
+              className={cn(ACAO_DA_BARRA, "hover:text-destructive")}
             >
-              <Trash2 className="size-4.5" />
+              <Trash2 className="size-4" />
             </button>
           ) : null}
         </div>
@@ -299,7 +416,7 @@ export function MessageBubble({
               key={emoji}
               className="flex items-center gap-0.5 rounded-full border bg-popover px-1.5 py-0.5 text-[11px] shadow-xs"
             >
-              {emoji}
+              <span className="emoji text-[13px]">{emoji}</span>
               {who.length > 1 ? <span className="text-muted-foreground">{who.length}</span> : null}
             </span>
           ))}

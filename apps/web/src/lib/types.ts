@@ -74,6 +74,20 @@ export interface MessageMetadata {
 }
 
 export interface ConversationMessage {
+  /**
+   * Identidade da mensagem PRA TELA, estável desde o balão otimista.
+   *
+   * O `id` muda quando a versão do servidor chega (o provisório dá lugar ao
+   * de verdade), e o React trata mudança de chave como elemento novo:
+   * desmonta o balão e monta outro no lugar, refazendo a animação de
+   * entrada. Era a piscada que aparecia um ou dois segundos depois de
+   * enviar — o tempo que a API leva pra falar com a Meta antes de
+   * responder.
+   *
+   * Ausente em tudo que veio do servidor; nesses casos o `id` serve de
+   * chave, como sempre serviu.
+   */
+  clientKey?: string;
   id: string;
   conversationId: string;
   senderType: MessageSenderType;
@@ -118,6 +132,11 @@ export interface ConversationSummary {
   priority: ConversationPriority;
   unreadCount: number;
   lastMessageAt: string | null;
+  /**
+   * Desde quando o cliente espera resposta. Nulo = a bola não está com a
+   * gente. É o que ordena a fila de atendimento.
+   */
+  waitingSince?: string | null;
   createdAt: string;
   customer: Customer;
   assignedUser: AssignedUser | null;

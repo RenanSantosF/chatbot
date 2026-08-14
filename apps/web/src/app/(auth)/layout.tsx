@@ -1,8 +1,24 @@
+import type { Metadata } from "next";
 import { MessagesSquare, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiFetchServer } from "@/lib/api-server";
 import type { MeResponse } from "@/lib/types";
+
+/**
+ * Entrar e cadastrar dividem este metadado.
+ *
+ * As duas telas são componentes de cliente (têm formulário com estado), e
+ * componente de cliente não exporta `metadata` — então o título vem do
+ * casco, que é servidor. Fica genérico de propósito: forçar um título
+ * específico exigiria partir cada tela em duas só por causa da aba.
+ */
+export const metadata: Metadata = {
+  title: "Entrar ou criar conta",
+  description:
+    "Acesse o painel da Clara ou crie a conta da sua empresa para começar a atender no WhatsApp com inteligência artificial.",
+  alternates: { canonical: "/register" },
+};
 
 /**
  * Entrar e cadastrar dividem esta tela de duas colunas.

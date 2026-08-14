@@ -197,11 +197,29 @@ export class AiToolsService {
             ? await this.queues.findById(routed.queueId)
             : null
           : fallbackQueue;
-        const assignedUserId = routed
-          ? routed.assignedUserId
-          : fallbackQueue
-            ? await this.queues.pickNextMember(fallbackQueue.id)
-            : null;
+
+        /**
+         * Setor não é pessoa.
+         *
+         * Quando a IA escolhe uma FILA (sem regra do dono por trás), ela
+         * está dizendo "isto é do Jurídico" — não "isto é da Ana do
+         * Jurídico". Antes, esse caminho ainda rodava o rodízio da fila e
+         * carimbava um responsável: o cliente pedia "quero falar com um
+         * advogado" e a conversa aparecia com o nome de alguém que nunca
+         * foi consultado, escolhido por ordem alfabética de entrada na
+         * fila.
+         *
+         * É também o que o botão "encaminhar pro setor" do painel já fazia
+         * (ver ConversationsService.transferToQueue): fica sem dono, em
+         * WAITING_AGENT, e quem estiver livre pega. Os dois caminhos
+         * levavam ao mesmo lugar por estradas diferentes, e só um deles
+         * estava certo.
+         *
+         * O rodízio continua valendo quando é uma REGRA que aponta pra
+         * fila — ali o dono configurou "este assunto vai pra este setor" e
+         * a distribuição é escolha dele, não palpite do modelo.
+         */
+        const assignedUserId = routed ? routed.assignedUserId : null;
         const collectedData =
           args.collectedData && typeof args.collectedData === 'object'
             ? (args.collectedData as Prisma.InputJsonValue)
@@ -212,10 +230,13 @@ export class AiToolsService {
             tenantId: this.prisma.tenantId,
             conversationId: ctx.conversationId,
             senderType: 'SYSTEM',
-            content: routed
-              ? `IA direcionou pela regra "${routed.ruleName}": ${reason}`
+            // A nota diz o que de fato acontece a seguir: sem isso, "IA
+            // transferiu para a fila Jurídico" ao lado de um responsável
+            // carimbado deixava quem lia sem saber se já tinha dono.
+            content: assignedUserId
+              ? `IA direcionou pela regra "${routed?.ruleName ?? 'automática'}": ${reason}. Aguardando aceite.`
               : queue
-                ? `IA transferiu para a fila "${queue.name}": ${reason}`
+                ? `IA encaminhou para o setor "${queue.name}": ${reason}. Aguardando alguém do setor assumir.`
                 : `IA solicitou atendimento humano: ${reason}`,
           },
         });
@@ -227,7 +248,21 @@ export class AiToolsService {
             status: 'WAITING_AGENT',
             priority,
             queueId: queue?.id,
-            assignedUserId: assignedUserId ?? undefined,
+            /**
+             * Nomear pessoa é INDICAÇÃO, nunca decisão.
+             *
+             * `assignmentAccepted` ficava no padrão do banco (verdadeiro),
+             * então quem a máquina escolhia virava responsável sem nunca
+             * ter concordado — e sem os botões de aceitar/recusar
+             * aparecerem, porque pra tela o caso já estava aceito. É a
+             * mesma regra que as travas automáticas já seguiam (ver
+             * aplicarTravasDaIa); aqui ela tinha ficado de fora.
+             *
+             * Sem ninguém nomeado não há nada a aceitar: a conversa fica
+             * do setor, e o "aceito" é verdadeiro por vacuidade.
+             */
+            assignedUserId: assignedUserId ?? null,
+            assignmentAccepted: !assignedUserId,
             escalationReason: reason,
             escalationSummary: summary,
             collectedData,

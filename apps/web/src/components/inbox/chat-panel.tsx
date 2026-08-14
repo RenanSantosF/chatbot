@@ -10,7 +10,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,6 +166,7 @@ export function ChatPanel({
   onReact,
   onRead,
   onDelete,
+  onClose,
   podeEnviarEncerrada,
 }: {
   conversation: ConversationDetail | null;
@@ -188,6 +189,8 @@ export function ChatPanel({
   /** Chamada quando o fim da conversa aparece na tela. */
   onRead: () => void;
   onDelete: (messageId: string) => Promise<void>;
+  /** Fecha a conversa e volta pro estado vazio (Esc). */
+  onClose?: () => void;
   /** A empresa deixa responder em conversa encerrada (reabrindo)? */
   podeEnviarEncerrada: boolean;
 }) {
@@ -222,6 +225,147 @@ export function ChatPanel({
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * A linha que acabou de ser citada, acendendo.
+   *
+   * Dura meio segundo: o suficiente pra o olho registrar que o gesto pegou
+   * naquela mensagem, curto o bastante pra não virar destaque permanente
+   * numa conversa que a pessoa continua lendo.
+   */
+  const [linhaPiscando, setLinhaPiscando] = useState<string | null>(null);
+  const piscadaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function piscarLinha(messageId: string) {
+    if (piscadaRef.current) clearTimeout(piscadaRef.current);
+    setLinhaPiscando(messageId);
+    piscadaRef.current = setTimeout(() => setLinhaPiscando(null), 500);
+  }
+
+  useEffect(
+    () => () => {
+      if (piscadaRef.current) clearTimeout(piscadaRef.current);
+    },
+    [],
+  );
+
+  /**
+   * O cursor já no campo quando a conversa abre.
+   *
+   * Abrir uma conversa é sempre o começo de "vou responder isto". Obrigar
+   * um clique no campo antes de digitar é um passo que existe em todo
+   * atendimento, o dia inteiro — e ninguém abre uma conversa pra olhar.
+   *
+   * Roda quando o COMPOSITOR aparece, não na montagem do painel. A
+   * diferença decidia se funcionava: abrindo uma conversa a partir do
+   * estado vazio, o painel monta mostrando o carregamento e o campo ainda
+   * não existe — o foco caía no nada. Trocando de uma conversa pra outra
+   * ele funcionava por acaso, porque o cache pinta a conversa no mesmo
+   * quadro da montagem.
+   *
+   * O painel é remontado a cada troca (key={selectedId} no Inbox), então o
+   * `jaFocou` reinicia sozinho a cada conversa aberta.
+   */
+  const jaFocou = useRef(false);
+  useEffect(() => {
+    if (jaFocou.current || !conversation) return;
+    // No celular o foco automático abre o teclado por cima da conversa,
+    // tapando justamente o que a pessoa acabou de abrir pra ler.
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+
+    const campo = composerRef.current;
+    if (!campo || campo.disabled) return;
+
+    jaFocou.current = true;
+    campo.focus();
+  }, [conversation]);
+
+  /**
+   * Onde a leitura estava quando o "carregar mensagens anteriores" foi
+   * clicado.
+   *
+   * Carregar histórico é a única operação que faz o conteúdo crescer PRA
+   * CIMA. O navegador mantém o `scrollTop` numérico, mas tudo o que estava
+   * naquela altura desceu quarenta mensagens — o efeito é a tela saltar
+   * sozinha. Guardando a altura de antes dá pra somar a diferença e deixar
+   * a mensagem que a pessoa estava lendo exatamente onde ela estava.
+   */
+  const ancoraRef = useRef<{ altura: number; topo: number } | null>(null);
+  /**
+   * Avisa o efeito de rolagem que esta atualização foi histórico antigo
+   * entrando, não mensagem nova chegando.
+   *
+   * Era o defeito: aquele efeito reage ao TAMANHO da lista, e uma das
+   * condições pra descer é "a última mensagem é nossa". Como quase toda
+   * conversa termina com uma resposta da empresa, clicar em "carregar
+   * anteriores" caía nessa condição e jogava a tela lá pro fim — o oposto
+   * exato do que o botão pede.
+   */
+  const pularIdaAoFimRef = useRef(false);
+  const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
+
+  /**
+   * Esc fecha o que estiver aberto, um de cada vez.
+   *
+   * A ordem é a de "quanto isso está no meu caminho agora": primeiro a
+   * confirmação de apagar e o encaminhamento, que são janelas por cima de
+   * tudo; depois a busca dentro da conversa; por último a citação presa no
+   * compositor.
+   *
+   * De propósito NÃO fecha a conversa: Esc é o gesto de desfazer o último
+   * passo, e perder a conversa aberta (e o rascunho junto) por uma tecla
+   * seria caro demais pra quem só queria cancelar a resposta citada.
+   */
+  useEffect(() => {
+    const aoTeclar = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+
+      if (apagando) return setApagando(null);
+      if (forwarding) return setForwarding(null);
+      if (pendingFile) return setPendingFile(null);
+      if (searchOpen) {
+        setSearchOpen(false);
+        setNeedle("");
+        return;
+      }
+      if (replyTo) return onCancelReply();
+
+      // Nada aberto por cima: fecha a conversa e volta pro "nenhuma
+      // conversa aberta", igual ao WhatsApp Web. Só quando não há rascunho
+      // — perder o que já foi escrito por uma tecla seria caro, e quem
+      // digitou alguma coisa quase nunca quis sair.
+      if (!draft.trim()) onClose?.();
+    };
+
+    document.addEventListener("keydown", aoTeclar);
+    return () => document.removeEventListener("keydown", aoTeclar);
+  }, [apagando, forwarding, pendingFile, searchOpen, replyTo, onCancelReply, draft, onClose]);
+
+  async function carregarAnteriores() {
+    const area = scrollAreaRef.current;
+    if (!area || carregandoAnteriores) return;
+
+    ancoraRef.current = { altura: area.scrollHeight, topo: area.scrollTop };
+    pularIdaAoFimRef.current = true;
+    setCarregandoAnteriores(true);
+    try {
+      await onLoadOlder();
+    } finally {
+      setCarregandoAnteriores(false);
+    }
+  }
+
+  // useLayoutEffect, não useEffect: a correção precisa acontecer no mesmo
+  // quadro em que os balões antigos entram. Um quadro depois já teria
+  // aparecido como um salto.
+  useLayoutEffect(() => {
+    const ancora = ancoraRef.current;
+    const area = scrollAreaRef.current;
+    if (!ancora || !area) return;
+
+    ancoraRef.current = null;
+    area.scrollTop = ancora.topo + (area.scrollHeight - ancora.altura);
+  }, [conversation?.messages.length]);
 
   // Ids das mensagens que casam com a busca, na ordem da conversa. Roda
   // sobre o que já está carregado — que é o mesmo que o WhatsApp Web faz
@@ -298,10 +442,29 @@ export function ChatPanel({
   useEffect(() => {
     // Não puxa pro fim enquanto a pessoa está navegando pelos resultados.
     if (currentMatchId) return;
+
+    // Nem quando o que cresceu foi o começo da lista: quem pediu histórico
+    // quer ficar onde está, e a âncora acima já recolocou a tela no lugar.
+    if (pularIdaAoFimRef.current) {
+      pularIdaAoFimRef.current = false;
+      return;
+    }
+
     const area = scrollAreaRef.current;
     if (!area) return;
 
-    const primeira = firstPaintRef.current;
+    // "Abrindo" é uma JANELA, não um quadro.
+    //
+    // A conversa é pintada primeiro do cache e reconciliada logo depois com
+    // a resposta do servidor. Quando as duas versões têm contagens
+    // diferentes (chegou mensagem nova enquanto a conversa estava fechada),
+    // o efeito rodava uma segunda vez já fora do "primeiro quadro" e
+    // deslizava — era a rolagem animada que aparecia em ALGUMAS conversas,
+    // justamente as que estavam em cache.
+    //
+    // Abrir uma conversa nunca é animado: a pessoa quer chegar no fim, não
+    // assistir a viagem até lá.
+    const primeira = firstPaintRef.current || Date.now() - abertoEm < 1200;
 
     // Mensagem do CLIENTE só arrasta a tela se quem está lendo já estava no
     // fim — ler o histórico com a conversa ativa era impossível quando toda
@@ -412,7 +575,17 @@ export function ChatPanel({
     event?.preventDefault();
     const content = draft.trim();
     if (!content) return;
+
     setDraft("");
+    // O foco volta ANTES do envio terminar, não depois.
+    //
+    // O envio é otimista: o balão já apareceu na conversa e a viagem até o
+    // servidor não interessa a quem está digitando. Esperar o `await` pra
+    // devolver o cursor obrigava a clicar no campo de novo pra mandar a
+    // segunda mensagem — e conversa de atendimento é feita de mensagens
+    // curtas em sequência, não de um parágrafo só.
+    composerRef.current?.focus();
+
     await onSend(content);
   }
 
@@ -574,8 +747,16 @@ export function ChatPanel({
         ) : null}
         {hasOlder ? (
           <div className="flex justify-center pb-2">
-            <Button size="sm" variant="secondary" onClick={() => void onLoadOlder()}>
-              Carregar mensagens anteriores
+            <Button
+              size="sm"
+              variant="secondary"
+              // Desabilitado enquanto busca: dois cliques seguidos pediam
+              // duas páginas com o mesmo cursor e traziam o mesmo trecho
+              // do histórico duas vezes.
+              disabled={carregandoAnteriores}
+              onClick={() => void carregarAnteriores()}
+            >
+              {carregandoAnteriores ? "Carregando…" : "Carregar mensagens anteriores"}
             </Button>
           </div>
         ) : null}
@@ -583,7 +764,10 @@ export function ChatPanel({
           const previous = conversation.messages[index - 1];
           const startsNewDay = !previous || !sameDay(previous.createdAt, message.createdAt);
           return (
-            <div key={message.id} className="contents">
+            // `clientKey` antes do `id`: é o que mantém o MESMO elemento
+            // quando o balão otimista vira a versão do servidor, em vez de
+            // desmontar e remontar (e reanimar) no lugar.
+            <div key={message.clientKey ?? message.id} className="contents">
               {startsNewDay ? <DaySeparator label={dayLabel(message.createdAt)} /> : null}
               {message.id === primeiraNaoLida ? (
                 <UnreadDivider count={naoLidasAoAbrir} />
@@ -596,16 +780,29 @@ export function ChatPanel({
                 onDoubleClick={(event) => {
                   // Só o vazio: dentro do balão o gesto atrapalharia
                   // selecionar e copiar o texto.
-                  if (event.target === event.currentTarget) onReply(message);
+                  if (event.target !== event.currentTarget) return;
+                  onReply(message);
+                  piscarLinha(message.id);
                 }}
                 title={message.senderType === "SYSTEM" ? undefined : "Clique duas vezes para responder"}
                 className={cn(
                   // cursor-pointer só na faixa vazia: o balão volta pro
                   // cursor de texto (abaixo, no próprio balão) pra não
                   // atrapalhar quem quer selecionar e copiar.
-                  "flex w-full min-w-0 cursor-pointer",
+                  //
+                  // `select-none` na FAIXA, e não no balão: o duplo clique
+                  // no vazio ao lado da mensagem selecionava o texto do
+                  // balão vizinho, e a seleção fazia o navegador abrir o
+                  // menu de atalho dele por cima da conversa. Selecionar
+                  // continua funcionando dentro do balão, que é onde faz
+                  // sentido (ver `select-text` no MessageBubble).
+                  "flex w-full min-w-0 cursor-pointer rounded-lg transition-colors select-none",
                   message.senderType === "CUSTOMER" ? "justify-start" : "justify-end",
                   message.senderType === "SYSTEM" && "cursor-default justify-center",
+                  // O eco do gesto: a linha inteira acende por um instante
+                  // e apaga. Sem ele, o duplo clique só enche a barrinha de
+                  // citação lá embaixo — longe de onde o olho estava.
+                  linhaPiscando === message.id && "bg-primary/10",
                 )}
               >
               <MessageBubble
@@ -795,7 +992,14 @@ export function ChatPanel({
                 ? "Responder reabre o atendimento"
                 : "Escreva uma mensagem..."
           }
-          disabled={composicaoTravada || sending}
+          // Desabilitado SÓ quando a conversa está travada de verdade.
+          //
+          // `sending` também travava, e travar o campo é o que impedia
+          // mandar duas mensagens seguidas: o campo apagava, ficava cinza
+          // por uns instantes e ainda perdia o foco (o navegador tira o
+          // foco de campo desabilitado). O envio é otimista — não há por
+          // que esperar por ele pra continuar escrevendo.
+          disabled={composicaoTravada}
           // Foco sem o anel verde. Num campo que fica selecionado o dia
           // inteiro, o realce da cor da marca vira um brilho constante no
           // canto da tela; a borda um pouco mais firme já diz onde o cursor

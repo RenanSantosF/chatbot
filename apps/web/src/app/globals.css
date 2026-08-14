@@ -374,12 +374,76 @@ button:disabled,
   animation: bolha-entrando 180ms ease-out;
 }
 
+/**
+ * Emoji desenhado pela fonte de emoji do sistema, não pela fonte do texto.
+ *
+ * Sem isto o navegador tenta o Geist primeiro; ele não tem os glifos, cai
+ * num substituto qualquer, e o resultado é o emoji chapado e serrilhado.
+ * A lista cobre os três sistemas em que o painel roda, e o `sans-serif` no
+ * fim é só rede de segurança.
+ *
+ * `font-variant-emoji: emoji` pede a versão colorida mesmo pros caracteres
+ * que têm forma de texto (o ❤ é o caso clássico: sem isso vira um coração
+ * preto de tipografia).
+ */
+.emoji {
+  font-family:
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
+    "Twemoji Mozilla", "Android Emoji", sans-serif;
+  font-variant-emoji: emoji;
+  /* A fonte de emoji do Windows é bitmap: em tamanho quebrado ela é
+     reescalada e sai borrada. Um tamanho inteiro e sem transformação de
+     escala mantém o desenho nítido. */
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/**
+ * O contêiner de reações nascendo do botão.
+ *
+ * Sobe um pouco e cresce a partir da base, que é de onde ele saiu — o
+ * movimento diz de onde veio. Rápido de propósito: é um menu que a pessoa
+ * abre dezenas de vezes por dia, e qualquer coisa acima de ~150ms começa a
+ * parecer que a tela está pensando.
+ */
+@keyframes reacoes-abrindo {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.92);
+  }
+}
+
+.reacoes-abrindo {
+  animation: reacoes-abrindo 140ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  transform-origin: bottom center;
+}
+
+/**
+ * Cada carinha entrando em sequência, da esquerda pra direita.
+ *
+ * O atraso é dado inline pelo componente. Sem ele as cinco aparecem no
+ * mesmo instante e o conjunto parece uma imagem só piscando; escalonado,
+ * lê-se como um menu se abrindo.
+ */
+@keyframes emoji-entrando {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+.emoji-entrando {
+  animation: emoji-entrando 160ms ease-out backwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer::after {
     animation: none;
   }
 
   .bolha-nova,
+  .reacoes-abrindo,
+  .emoji-entrando,
   ::view-transition-group(*) {
     animation: none;
   }
