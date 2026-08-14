@@ -137,6 +137,7 @@ function montar(estado: Estado = {}) {
     inboxSettings as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   return { service, prisma, whatsapp, realtime, criadas, atualizacoes };

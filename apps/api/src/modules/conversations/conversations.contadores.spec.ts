@@ -49,6 +49,7 @@ function montar() {
     { get: jest.fn().mockResolvedValue({ queueVisibility: 'ALL' }) } as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   return { service, consultas };
@@ -221,6 +222,7 @@ describe('o recorte por setor continua valendo', () => {
       {
         get: jest.fn().mockResolvedValue({ queueVisibility: 'OWN_QUEUES' }),
       } as never,
+      {} as never,
       {} as never,
       {} as never,
     );

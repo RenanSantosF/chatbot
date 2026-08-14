@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/empty-state";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META } from "@/lib/priority";
 import { cn } from "@/lib/utils";
+import { TagChip } from "./tag-picker";
 import type { ConversationStatus, ConversationSummary } from "@/lib/types";
 
 /** Prévia de mídia na lista, no espírito do "📷 Foto" do WhatsApp. */
@@ -248,6 +249,14 @@ export function ConversationList({
                     {conversation.assignedUser.name.split(" ")[0]}
                   </Badge>
                 ) : null}
+                {/* Só a primeira etiqueta, e só quando existe. É a linha
+                    mais disputada da tela: a prévia da mensagem é o que
+                    manda ali, e uma fileira de pastilhas comeria o texto
+                    que faz a lista parecer um mensageiro. As demais
+                    aparecem ao abrir a conversa. */}
+                {(conversation.tags ?? []).slice(0, 1).map((tag) => (
+                  <TagChip key={tag.id} tag={tag} className="shrink-0" />
+                ))}
               </div>
             </div>
           </button>

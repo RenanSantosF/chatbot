@@ -9,11 +9,13 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
+import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import type { ConversationPriority, ConversationStatus } from "@/lib/types";
+import { TagChip } from "./tag-picker";
+import type { ConversationPriority, ConversationStatus, Tag } from "@/lib/types";
 
 /** Os três grupos de trabalho vindos da API (ver STATUS_GROUPS no backend). */
 export type StatusGroup = "PENDING" | "WAITING" | "DONE";
@@ -43,6 +45,8 @@ export interface InboxFilters {
   /** Só quem está esperando resposta da empresa. */
   waiting: boolean;
   ordem: OrdemDoInbox;
+  /** Só as conversas com esta etiqueta. Vazio = todas. */
+  tagId: string;
   search: string;
 }
 
@@ -63,6 +67,7 @@ export const DEFAULT_FILTERS: InboxFilters = {
   comIa: false,
   waiting: false,
   ordem: "RECENTE",
+  tagId: "",
   search: "",
 };
 
@@ -254,6 +259,11 @@ export function InboxFilterBar({
           ajuda="Quem está sem resposta há mais tempo primeiro."
         />
       </div>
+
+      <EtiquetasDoFiltro
+        escolhida={value.tagId}
+        onEscolher={(tagId) => set("tagId", tagId)}
+      />
 
       {/* Recortes que se somam ao grupo, como interruptores. Antes eram
           opções exclusivas na mesma fila do grupo, então não dava pra ver
@@ -471,6 +481,63 @@ function Grupo({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Fileira de etiquetas, e nada quando não há etiqueta nenhuma.
+ *
+ * Discreta por padrão: numa empresa que não usa etiquetas, esta linha
+ * simplesmente não existe — nenhum espaço ocupado, nenhuma opção vazia
+ * convidando a clicar. Quem começa a etiquetar vê a fileira aparecer
+ * sozinha.
+ *
+ * Uma por vez, e não várias somadas: "orçamento E reclamação" é uma
+ * pergunta que quase ninguém faz, e a barra que deixasse combinar viraria o
+ * formulário que o Inbox passou o tempo todo evitando.
+ */
+function EtiquetasDoFiltro({
+  escolhida,
+  onEscolher,
+}: {
+  escolhida: string;
+  onEscolher: (tagId: string) => void;
+}) {
+  const [tags, setTags] = useState<Tag[]>([]);
+
+  useEffect(() => {
+    apiFetch<Tag[]>("/tags")
+      .then(setTags)
+      .catch(() => setTags([]));
+  }, []);
+
+  if (tags.length === 0) return null;
+
+  return (
+    <div role="radiogroup" aria-label="Filtrar por etiqueta" className="flex flex-wrap gap-1">
+      {tags.map((tag) => {
+        const ativa = escolhida === tag.id;
+        return (
+          <button
+            key={tag.id}
+            type="button"
+            role="radio"
+            aria-checked={ativa}
+            // Clicar na que já está ligada desliga: é a saída óbvia, e
+            // evita um botão "todas" só pra limpar um filtro.
+            onClick={() => onEscolher(ativa ? "" : tag.id)}
+            className={cn(
+              "rounded-full transition-opacity",
+              ativa
+                ? "ring-2 ring-primary/50"
+                : "opacity-70 hover:opacity-100",
+            )}
+          >
+            <TagChip tag={tag} className="px-2 py-0.5" />
+          </button>
+        );
+      })}
     </div>
   );
 }

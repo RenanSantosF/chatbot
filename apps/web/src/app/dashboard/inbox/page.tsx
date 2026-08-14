@@ -79,6 +79,9 @@ function buildQuery(
   if (filters.comIa) params.set("comIa", "true");
   if (filters.waiting) params.set("waiting", "true");
   if (filters.ordem !== "RECENTE") params.set("ordem", filters.ordem);
+  // A etiqueta é recorte, não faceta: vai junto na contagem também, senão
+  // o cabeçalho contaria fora do que a lista está mostrando.
+  if (filters.tagId) params.set("tagId", filters.tagId);
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (cursor) params.set("cursor", cursor);
   const query = params.toString();

@@ -146,6 +146,8 @@ export interface ConversationSummary {
   escalationReason: string | null;
   escalationSummary: string | null;
   collectedData: Record<string, string> | null;
+  /** Etiquetas da conversa, na ordem em que foram postas. */
+  tags?: Tag[];
   /** Só a mensagem mais recente, pra prévia na lista. */
   lastMessage?: { content: string; senderType: MessageSenderType; messageType: MessageType } | null;
 }
@@ -374,4 +376,18 @@ export interface QuickReply {
   title: string | null;
   content: string;
   usageCount: number;
+}
+
+/**
+ * Etiqueta de conversa ("Orçamento", "Reclamação", "Segunda via").
+ *
+ * A cor vem como NOME do tom, não como hexadecimal: o painel tem tema claro
+ * e escuro, e cada tom precisa de um par de valores diferente nos dois.
+ */
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+  /** Só na tela de configuração — a lista do Inbox não precisa. */
+  conversationCount?: number;
 }

@@ -5,6 +5,7 @@ import { CustomersModule } from '../customers/customers.module';
 import { InboxSettingsModule } from '../inbox-settings/inbox-settings.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { RoutingModule } from '../routing/routing.module';
+import { TagsModule } from '../tags/tags.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
@@ -20,6 +21,7 @@ import { ConversationsService } from './conversations.service';
     // A trava de escalonamento confere o que falta coletar antes de mandar
     // a conversa pra um humano (ver aplicarTravasDaIa).
     CollectionModule,
+    TagsModule,
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService],

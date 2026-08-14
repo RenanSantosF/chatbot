@@ -25,6 +25,7 @@ import { CustomersService } from '../customers/customers.service';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RoutingService } from '../routing/routing.service';
+import { TagsService } from '../tags/tags.service';
 import {
   converterParaOggOpus,
   jaEhOggOpus,
@@ -105,6 +106,14 @@ export interface FiltroDoInbox {
   waitingOnly?: boolean;
   /** Só o que a IA está conduzindo agora. */
   comIa?: boolean;
+  /**
+   * Só as conversas com ESTA etiqueta.
+   *
+   * Uma, e não várias: "orçamento E reclamação" é uma pergunta que quase
+   * ninguém faz, e a barra que deixasse combinar etiquetas viraria o
+   * formulário que o Inbox passou o tempo todo evitando.
+   */
+  tagId?: string;
   /** Quem está olhando — define o que ela pode enxergar. */
   viewer?: { userId: string; role: UserRole };
 }
@@ -179,6 +188,14 @@ const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
   queue: { select: { id: true, key: true, name: true } },
+  // As etiquetas vêm em toda leitura de conversa: elas aparecem na LISTA,
+  // que é onde servem — saber do que se trata antes de abrir. Buscá-las só
+  // no detalhe faria a lista mostrar conversa sem etiqueta e a etiqueta
+  // aparecer depois do clique, que é o oposto do ponto.
+  tags: {
+    select: { tag: { select: { id: true, name: true, color: true } } },
+    orderBy: { createdAt: 'asc' as const },
+  },
   // Prévia da última mensagem — é o que faz a lista parecer um mensageiro
   // em vez de uma tabela de chamados. Uma só, a mais recente.
   messages: {
@@ -211,9 +228,16 @@ export function mediaIdDe(metadata: unknown): string | undefined {
   return typeof valor === 'string' && valor ? valor : undefined;
 }
 
-function toSummary<T extends { messages: unknown[] }>(conversation: T) {
-  const { messages, ...rest } = conversation;
-  return { ...rest, lastMessage: messages[0] ?? null };
+function toSummary<
+  T extends { messages: unknown[]; tags?: { tag: unknown }[] },
+>(conversation: T) {
+  const { messages, tags, ...rest } = conversation;
+  return {
+    ...rest,
+    // A ligação é detalhe do banco; quem desenha quer a etiqueta.
+    tags: (tags ?? []).map((ligacao) => ligacao.tag),
+    lastMessage: messages[0] ?? null,
+  };
 }
 
 // A mensagem citada vem junto, mas só com o essencial pra desenhar a
@@ -244,6 +268,7 @@ export class ConversationsService {
     private readonly inboxSettings: InboxSettingsService,
     private readonly routing: RoutingService,
     private readonly collection: CollectionService,
+    private readonly tags: TagsService,
   ) {}
 
   /**
@@ -346,6 +371,9 @@ export class ConversationsService {
         ? { assignedUserId: filtro.assignedUserId }
         : {}),
       ...(filtro.queueId ? { queueId: filtro.queueId } : {}),
+      // A etiqueta não é faceta contável: ela é outro eixo, e não concorre
+      // com situação/prioridade/espera pelo mesmo espaço da barra.
+      ...(filtro.tagId ? { tags: { some: { tagId: filtro.tagId } } } : {}),
       ...(filtro.customerId ? { customerId: filtro.customerId } : {}),
       ...(filtro.priority && !fora.has('priority')
         ? { priority: filtro.priority }
@@ -1498,6 +1526,39 @@ export class ConversationsService {
     );
 
     return message;
+  }
+
+  /**
+   * Põe uma etiqueta na conversa.
+   *
+   * Emite `conversation.updated` como qualquer outra mudança de estado: a
+   * etiqueta aparece na LISTA, e duas pessoas olhando o mesmo Inbox
+   * precisam ver a mesma classificação sem recarregar a página.
+   */
+  async marcarEtiqueta(conversationId: string, tagId: string) {
+    await this.requireConversationExists(conversationId);
+    await this.tags.marcar(conversationId, tagId);
+    return this.emitirConversaAtualizada(conversationId);
+  }
+
+  async desmarcarEtiqueta(conversationId: string, tagId: string) {
+    await this.requireConversationExists(conversationId);
+    await this.tags.desmarcar(conversationId, tagId);
+    return this.emitirConversaAtualizada(conversationId);
+  }
+
+  private async emitirConversaAtualizada(conversationId: string) {
+    const conversation = await this.prisma.db.conversation.findFirstOrThrow({
+      where: { id: conversationId },
+      include: conversationInclude,
+    });
+    const resumo = toSummary(conversation);
+    this.realtime.emitToTenant(
+      this.prisma.tenantId,
+      'conversation.updated',
+      resumo,
+    );
+    return resumo;
   }
 
   /**

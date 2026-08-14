@@ -30,6 +30,7 @@ export const PERMISSION_CATALOG = [
       { key: 'knowledge.manage', label: 'Gerenciar a base de conhecimento' },
       { key: 'queues.manage', label: 'Gerenciar filas' },
       { key: 'quickReplies.manage', label: 'Gerenciar respostas rápidas' },
+      { key: 'tags.manage', label: 'Renomear e excluir etiquetas' },
       { key: 'routing.manage', label: 'Gerenciar regras de direcionamento' },
       { key: 'whatsapp.manage', label: 'Configurar o WhatsApp' },
       { key: 'team.manage', label: 'Gerenciar a equipe' },
@@ -73,6 +74,10 @@ export const PERMISSION_DEFAULTS: Record<
     // trocado sai assinado pela empresa em toda conversa até alguém notar.
     'quickReplies.manage': false,
     'routing.manage': false,
+    // Criar etiqueta é livre pra quem atende (ver TagsController): o custo
+    // de errar é um clique. Renomear e apagar mexem no trabalho de todo
+    // mundo, e por isso ficam com quem configura.
+    'tags.manage': false,
     'whatsapp.manage': false,
     'team.manage': false,
   },

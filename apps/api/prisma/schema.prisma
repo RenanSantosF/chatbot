@@ -52,6 +52,8 @@ model Tenant {
   tasks              Task[]
   queues             Queue[]
   quickReplies       QuickReply[]
+  tags               Tag[]
+  conversationTags   ConversationTag[]
   queueMembers       QueueMember[]
   routingRules       RoutingRule[]
   rolePermissions    RolePermission[]
@@ -368,6 +370,7 @@ model Conversation {
   queue        Queue?    @relation(fields: [queueId], references: [id], onDelete: SetNull)
   messages     Message[]
   tasks        Task[]
+  tags         ConversationTag[]
 
   @@index([tenantId, status])
   // Ordenação padrão da lista do Inbox (mais recente primeiro) —
@@ -763,6 +766,53 @@ model Queue {
 ///
 /// O `shortcut` é o que se digita depois da barra ("/bomdia"), e por isso é
 /// único por empresa: dois atalhos iguais deixariam a escolha no ar.
+/// Etiqueta de conversa ("Orçamento", "Reclamação", "Segunda via").
+///
+/// Serve pra três coisas ao mesmo tempo: quem atende vê do que se trata
+/// antes de abrir, o filtro separa por assunto, e o relatório passa a ter
+/// uma dimensão que ninguém precisou programar.
+///
+/// A cor é escolhida de uma paleta fechada e guardada pelo NOME do tom
+/// ("ambar"), não pelo código hexadecimal: o painel tem tema claro e
+/// escuro, e um #FFCC00 cravado aqui ficaria ilegível num dos dois.
+model Tag {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  color     String   @default("cinza")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations ConversationTag[]
+
+  /// Dois nomes iguais na mesma empresa viram duas etiquetas que ninguém
+  /// distingue na hora de escolher.
+  @@unique([tenantId, name])
+  @@map("tags")
+}
+
+/// Ligação entre conversa e etiqueta.
+///
+/// Explícita, e não a relação implícita do Prisma: a tabela do meio precisa
+/// do tenantId como as outras, senão ela fica de fora do isolamento por
+/// empresa que o resto do sistema aplica.
+model ConversationTag {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conversationId String
+  tagId          String
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, tagId])
+  @@index([tenantId, tagId])
+  @@map("conversation_tags")
+}
+
 model QuickReply {
   id        String   @id @default(uuid())
   tenantId  String

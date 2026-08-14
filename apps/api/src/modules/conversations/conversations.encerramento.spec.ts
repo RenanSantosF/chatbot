@@ -60,6 +60,7 @@ function montar(
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   const aplicar = (verificacao: VerificacaoDaResposta) =>

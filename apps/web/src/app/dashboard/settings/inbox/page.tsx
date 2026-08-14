@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { BusinessHoursCard } from "@/components/settings/business-hours-card";
 import { QuickRepliesCard } from "@/components/settings/quick-replies-card";
+import { TagsCard } from "@/components/settings/tags-card";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import type { InboxSettings } from "@/lib/types";
@@ -72,6 +73,8 @@ export default function InboxSettingsPage() {
       />
 
       <QuickRepliesCard />
+
+      <TagsCard />
 
       <Card>
         <CardHeader>

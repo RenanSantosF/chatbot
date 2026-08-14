@@ -39,6 +39,7 @@ function servicoCom(conversaAtual: Record<string, unknown>) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   return { service, prisma, realtime };

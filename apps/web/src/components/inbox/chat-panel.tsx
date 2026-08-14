@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { AssignmentActions } from "./assignment-actions";
 import { MessageBubble } from "./message-bubble";
 import { QuickReplyPicker, termoDoAtalho } from "./quick-reply-picker";
+import { TagChip, TagPicker } from "./tag-picker";
 import { AttachmentComposer } from "./attachment-composer";
 import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
@@ -628,6 +629,15 @@ export function ChatPanel({
             <p className="truncate text-sm font-semibold">{conversation.customer.name}</p>
             <p className="truncate text-xs text-muted-foreground">{conversation.customer.phone}</p>
           </div>
+          {/* Discretas e ao lado do nome: dizem do que se trata sem roubar a
+              linha do cliente, que é o que a pessoa procura primeiro. */}
+          {(conversation.tags ?? []).length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {(conversation.tags ?? []).map((tag) => (
+                <TagChip key={tag.id} tag={tag} />
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           <Button
@@ -639,6 +649,21 @@ export function ChatPanel({
           >
             <Search className="size-4" />
           </Button>
+          <TagPicker
+            selecionadas={conversation.tags ?? []}
+            onMarcar={async (tag) => {
+              await apiFetch(`/conversations/${conversation.id}/tags/${tag.id}`, {
+                method: "POST",
+              });
+              onRefresh();
+            }}
+            onDesmarcar={async (tag) => {
+              await apiFetch(`/conversations/${conversation.id}/tags/${tag.id}`, {
+                method: "DELETE",
+              });
+              onRefresh();
+            }}
+          />
           <PriorityPicker value={conversation.priority} onChange={onChangePriority} />
           {!isResolved && (
             <>

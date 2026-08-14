@@ -49,6 +49,7 @@ export class ConversationsController {
     @Query('search') search: string | undefined,
     @Query('ordem') ordem: OrdemDoInbox | undefined,
     @Query('waiting') waiting: string | undefined,
+    @Query('tagId') tagId: string | undefined,
     @Query('cursor') cursor: string | undefined,
     @Query('limit') limit: string | undefined,
     @CurrentUser() user: RequestUser,
@@ -64,6 +65,7 @@ export class ConversationsController {
       priority,
       unreadOnly: unread === 'true',
       waitingOnly: waiting === 'true',
+      tagId,
       search,
       ordem: ordem === 'ESPERA' ? 'ESPERA' : 'RECENTE',
       cursor,
@@ -92,6 +94,7 @@ export class ConversationsController {
     @Query('unassigned') unassigned: string | undefined,
     @Query('waiting') waiting: string | undefined,
     @Query('comIa') comIa: string | undefined,
+    @Query('tagId') tagId: string | undefined,
     @Query('search') search: string | undefined,
     @CurrentUser() user: RequestUser,
   ) {
@@ -105,6 +108,7 @@ export class ConversationsController {
       unassignedOnly: unassigned === 'true',
       waitingOnly: waiting === 'true',
       comIa: comIa === 'true',
+      tagId,
       search,
       viewer: { userId: user.userId, role: user.role },
     });
@@ -237,6 +241,26 @@ export class ConversationsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.transferToQueue(id, queueId, user.userId);
+  }
+
+  /**
+   * Etiquetar é parte de atender, então segue a permissão de responder.
+   *
+   * A etiqueta não fala com o cliente nem muda o estado do atendimento: ela
+   * organiza o que quem atende já está fazendo. Exigir uma permissão
+   * própria pra isso significaria que a pessoa certa pra classificar a
+   * conversa é justamente a que não está com ela na mão.
+   */
+  @Post(':id/tags/:tagId')
+  @RequiresPermission('conversations.send')
+  marcar(@Param('id') id: string, @Param('tagId') tagId: string) {
+    return this.conversationsService.marcarEtiqueta(id, tagId);
+  }
+
+  @Delete(':id/tags/:tagId')
+  @RequiresPermission('conversations.send')
+  desmarcar(@Param('id') id: string, @Param('tagId') tagId: string) {
+    return this.conversationsService.desmarcarEtiqueta(id, tagId);
   }
 
   @Post(':id/accept')
