@@ -18,11 +18,11 @@ import type { AuthenticatedRequest } from '../../../auth/auth.types';
 import { ConversationsService } from '../../../conversations/conversations.service';
 import { empacotarId, telefoneDoJid } from './evolution-id';
 import {
+  chaveDoEvento,
   comoLista,
   horaDaMensagem,
   traduzirMensagem,
   traduzirStatus,
-  type DadosDaMensagem,
   type EventoDaEvolution,
 } from './evolution-mensagem';
 
@@ -130,8 +130,8 @@ export class EvolutionWebhookController {
     config: { tenantId: string; id: string },
   ) {
     for (const dados of comoLista(body.data)) {
-      const chave = dados.key;
-      if (!chave?.id || !chave.remoteJid) continue;
+      const chave = chaveDoEvento(dados);
+      if (!chave) continue;
 
       const telefone = telefoneDoJid(chave.remoteJid);
       if (!telefone) {
@@ -149,11 +149,7 @@ export class EvolutionWebhookController {
         continue;
       }
 
-      const externalId = empacotarId({
-        remoteJid: chave.remoteJid,
-        fromMe: chave.fromMe ?? false,
-        id: chave.id,
-      });
+      const externalId = empacotarId(chave);
 
       // Mensagem escrita pelo celular da própria empresa. Sem tratar isto,
       // o painel mostraria a pergunta e nunca a resposta — e a IA
@@ -197,20 +193,16 @@ export class EvolutionWebhookController {
 
   private async statusDeEntrega(body: EventoDaEvolution) {
     for (const dados of comoLista(body.data)) {
-      const chave = dados.key;
-      if (!chave?.id || !chave.remoteJid) continue;
+      // A chave chega achatada neste evento — ver `chaveDoEvento`. Ler
+      // `data.key` aqui faria todo tique de entrega ser descartado em
+      // silêncio, com o envio funcionando normalmente.
+      const chave = chaveDoEvento(dados);
+      if (!chave) continue;
 
       const estado = traduzirStatus(dados.status);
       if (!estado) continue;
 
-      await this.conversations.applyDeliveryStatus(
-        empacotarId({
-          remoteJid: chave.remoteJid,
-          fromMe: chave.fromMe ?? true,
-          id: chave.id,
-        }),
-        estado,
-      );
+      await this.conversations.applyDeliveryStatus(empacotarId(chave), estado);
     }
   }
 

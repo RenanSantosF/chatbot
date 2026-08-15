@@ -1,0 +1,135 @@
+# O servidor Evolution: WhatsApp por aparelho vinculado, sem a Meta.
+#
+# Sobe três coisas: a Evolution, um Postgres só dela e um Redis. Os dois
+# últimos não são opcionais na versão 2 — sem Postgres ela não guarda a
+# sessão (toda reinicialização pediria o QR code de novo), e sem Redis a
+# reconexão fica lenta e instável.
+#
+# O banco é SEPARADO do banco do sistema de propósito: são ciclos de vida
+# diferentes. A Evolution guarda credencial de sessão do WhatsApp e um
+# histórico próprio que cresce rápido, e um `docker compose down -v` aqui
+# não pode levar junto as conversas dos clientes.
+#
+# Subir:      docker compose up -d
+# Ver o log:  docker compose logs -f evolution
+# Atualizar:  docker compose pull && docker compose up -d
+
+services:
+  evolution:
+    # Imagem do repositório mantido pelo projeto (evoapicloud). O antigo
+    # `atendai/evolution-api` parou na v2.2.3, de fevereiro de 2025.
+    #
+    # A versão fica FIXA, e não em `latest`: a Evolution muda o formato dos
+    # eventos entre versões maiores, e o sistema traduz esse formato. Subir
+    # sozinha de madrugada é como as mensagens param de chegar sem ninguém
+    # ter tocado em nada.
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # --- Identidade e acesso ------------------------------------------
+      # A chave que você vai colar na tela do Inteliwa. Troque por algo
+      # aleatório de verdade:
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      AUTHENTICATION_API_KEY: "TROQUE-ESTA-CHAVE"
+      # O endereço público desta Evolution. Ela usa isto pra montar links
+      # próprios; deixar errado não impede de conectar, mas atrapalha a
+      # depuração porque os logs apontam pro lugar errado.
+      SERVER_URL: "http://localhost:8080"
+
+      # --- Banco --------------------------------------------------------
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: "postgresql"
+      DATABASE_CONNECTION_URI: "postgresql://evolution:evolution@postgres:5432/evolution"
+      DATABASE_CONNECTION_CLIENT_NAME: "evolution"
+      # O que ela guarda no banco dela. Mensagem e contato ficam ligados
+      # porque a reconexão depende deles; o resto é peso morto pra nós — o
+      # histórico que vale é o do Inteliwa, e duplicá-lo aqui só faz o
+      # disco encher.
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+
+      # --- Cache --------------------------------------------------------
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: "redis://redis:6379/6"
+      CACHE_REDIS_PREFIX_KEY: "evolution"
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+
+      # --- Sessão -------------------------------------------------------
+      # A versão do WhatsApp Web que a Evolution finge ser.
+      #
+      # É a causa número um de "o QR code aparece, some e nunca conecta":
+      # o WhatsApp recusa versões velhas. Se acontecer, confira a versão
+      # atual em https://github.com/EvolutionAPI/evolution-api (a
+      # documentação traz o valor recomendado) e ajuste aqui.
+      CONFIG_SESSION_PHONE_VERSION: "2.3000.1023204200"
+      CONFIG_SESSION_PHONE_CLIENT: "Inteliwa"
+      CONFIG_SESSION_PHONE_NAME: "Chrome"
+      # Quantas vezes o mesmo QR code é regerado antes de ela desistir.
+      QRCODE_LIMIT: "10"
+      # Não apagar a sessão sozinha ao desconectar: quem manda apagar é o
+      # Inteliwa, na tela de desconectar. Apagar por conta própria faria a
+      # empresa perder a sessão numa oscilação de rede.
+      DEL_INSTANCE: "false"
+
+      # --- Log ----------------------------------------------------------
+      # Sem WEBHOOKS na lista: o log de webhook despeja a mensagem inteira
+      # do cliente no stdout, e isso é dado pessoal indo parar num arquivo
+      # que ninguém trata como sigiloso.
+      LOG_LEVEL: "ERROR,WARN,INFO"
+      LOG_COLOR: "true"
+      LOG_BAILEYS: "error"
+
+      # --- Integrações que NÃO usamos -----------------------------------
+      # Desligadas por escolha: cada uma que fica de pé é uma porta a mais
+      # e um processo a mais consumindo memória num servidor que só
+      # precisa entregar mensagem.
+      TYPEBOT_ENABLED: "false"
+      CHATWOOT_ENABLED: "false"
+      OPENAI_ENABLED: "false"
+      DIFY_ENABLED: "false"
+      S3_ENABLED: "false"
+      RABBITMQ_ENABLED: "false"
+      WEBSOCKET_ENABLED: "false"
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    # A Evolution quebra no start se o banco ainda não aceita conexão, e
+    # o `restart` mascararia isso como um reinício em laço.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - evolution_redis:/data
+
+volumes:
+  evolution_instances:
+  evolution_postgres:
+  evolution_redis:

@@ -6,6 +6,7 @@ import {
 } from './evolution-id';
 import { motivoDaEvolution } from './evolution.client';
 import {
+  chaveDoEvento,
   comoLista,
   horaDaMensagem,
   traduzirMensagem,
@@ -65,6 +66,18 @@ describe('tradução da mensagem', () => {
     expect(
       traduzirMensagem({ message: { conversation: 'bom dia' } }),
     ).toMatchObject({ content: 'bom dia', messageType: 'TEXT' });
+  });
+
+  it('acha a citação na raiz, que é onde a Evolution a deixa', () => {
+    // Ela reescreve `extendedTextMessage` como `conversation` antes de
+    // mandar, e o contexto sobe pra raiz do evento. Procurar só dentro da
+    // mensagem perde TODA resposta a mensagem anterior.
+    expect(
+      traduzirMensagem({
+        message: { conversation: 'é sobre isso' },
+        contextInfo: { stanzaId: '3EB0ANTERIOR' },
+      }),
+    ).toMatchObject({ content: 'é sobre isso', citando: '3EB0ANTERIOR' });
   });
 
   it('lê o texto que veio citando outra mensagem', () => {
@@ -145,6 +158,51 @@ describe('tradução da mensagem', () => {
     // uma mensagem em branco e não teria como saber que chegou algo.
     expect(traduzirMensagem({ message: { pollCreationMessage: {} } })).toBeNull();
     expect(traduzirMensagem({ message: null })).toBeNull();
+  });
+});
+
+describe('chave do evento', () => {
+  it('lê a chave aninhada de messages.upsert', () => {
+    expect(
+      chaveDoEvento({
+        key: { remoteJid: '5511999@s.whatsapp.net', fromMe: false, id: '3EB0' },
+      }),
+    ).toEqual({ remoteJid: '5511999@s.whatsapp.net', fromMe: false, id: '3EB0' });
+  });
+
+  it('lê a chave achatada de messages.update', () => {
+    // O formato é outro no mesmo webhook: aqui vêm `keyId`, `remoteJid` e
+    // `fromMe` soltos na raiz. Sem isto, o envio funciona e o tique de
+    // entregue nunca vira — falha que não aparece em log nenhum.
+    expect(
+      chaveDoEvento({
+        keyId: '3EB0',
+        remoteJid: '5511999@s.whatsapp.net',
+        fromMe: true,
+        status: 'DELIVERY_ACK',
+      }),
+    ).toEqual({ remoteJid: '5511999@s.whatsapp.net', fromMe: true, id: '3EB0' });
+  });
+
+  it('troca o identificador opaco pelo JID de verdade', () => {
+    // O WhatsApp passou a esconder o telefone atrás de `@lid` em algumas
+    // conversas. Sem olhar o campo ao lado, essas mensagens seriam
+    // descartadas como se fossem de grupo.
+    expect(
+      chaveDoEvento({
+        key: {
+          remoteJid: '123456@lid',
+          remoteJidAlt: '5511999@s.whatsapp.net',
+          fromMe: false,
+          id: '3EB0',
+        },
+      }),
+    ).toMatchObject({ remoteJid: '5511999@s.whatsapp.net' });
+  });
+
+  it('devolve nulo quando falta id ou conversa', () => {
+    expect(chaveDoEvento({ remoteJid: '5511999@s.whatsapp.net' })).toBeNull();
+    expect(chaveDoEvento({ keyId: '3EB0' })).toBeNull();
   });
 });
 

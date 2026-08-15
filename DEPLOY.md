@@ -135,6 +135,98 @@ Isso é por empresa/tenant — cada cliente da plataforma faz esse passo uma vez
 
 ---
 
+## 5. WhatsApp por QR code (Evolution) — alternativa à Meta
+
+Este é o **outro** caminho: em vez de conta comercial aprovada, o número
+conecta como um aparelho vinculado, igual ao WhatsApp Web. Vale a pena
+saber o que muda antes de subir qualquer coisa:
+
+| | Meta (oficial) | Evolution |
+|---|---|---|
+| Aprovação | Verificação de negócio + App Review | Nenhuma |
+| Custo | Por conversa | Só o servidor |
+| Tempo pra conectar | Dias a semanas | Minutos |
+| Iniciar conversa | Modelo aprovado | **Não dá** — só responder quem falou antes |
+| Anexo | Sim | **Ainda não** neste sistema |
+| Estabilidade | A Meta garante | A sessão cai; relê o QR code |
+| Risco | Nenhum | O número pode ser bloqueado pela Meta |
+
+É uma escolha **por empresa**, e é exclusiva: conectar a Evolution faz
+todas as mensagens daquela empresa saírem por lá.
+
+### 5.1 Subir o servidor
+
+O `deploy/evolution/docker-compose.yml` já está no repositório, com
+Postgres e Redis (a versão 2 exige os dois: sem Postgres a sessão se perde
+a cada reinício, sem Redis a reconexão fica instável).
+
+Numa VPS com Docker:
+
+```bash
+git clone <este-repo> && cd <este-repo>/deploy/evolution
+
+# A chave que você vai colar na tela do sistema:
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Cole o valor em AUTHENTICATION_API_KEY e ajuste SERVER_URL
+# pro endereço público, depois:
+docker compose up -d
+docker compose logs -f evolution
+```
+
+Ponha um proxy reverso com HTTPS na frente (Caddy resolve em três linhas,
+Traefik e nginx também servem). **Não deixe a porta 8080 aberta na
+internet sem TLS**: a chave da API viaja em cabeçalho, e em HTTP puro ela
+vai em texto limpo — quem a pegar manda mensagem pelo WhatsApp do seu
+cliente.
+
+No Railway dá pra fazer sem compose: **New > Docker Image**, imagem
+`evoapicloud/evolution-api:v2.3.7`, mais um Postgres e um Redis do
+catálogo, e as mesmas variáveis do arquivo (trocando os endereços pelos
+que o Railway gerar).
+
+### 5.2 Antes de conectar, confira a API
+
+O servidor Evolution precisa **chamar a API de volta** quando chegar
+mensagem. Duas coisas têm que estar certas:
+
+- `API_PUBLIC_URL` preenchida no serviço da API (é dela que sai a URL do
+  webhook). Sem ela, conectar falha na hora, com recado explícito.
+- A API acessível pela internet. Em desenvolvimento isso quer dizer um
+  túnel (`ngrok`, `cloudflared`) — `localhost` conecta e nunca recebe
+  nada, que é a falha mais difícil de diagnosticar deste caminho.
+
+### 5.3 Conectar
+
+1. Em **Configurações > WhatsApp**, role até *Conectar lendo um QR code*.
+2. Endereço do servidor: `https://evolution.seudominio.com` (com `https://`).
+3. Chave da API: a `AUTHENTICATION_API_KEY` que você gerou.
+4. **Conectar** → o QR code aparece.
+5. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.
+6. A tela vira "Conectado" sozinha em alguns segundos.
+
+O sistema cria a sessão, registra o webhook e troca o canal da empresa
+sozinho. Você não configura webhook em lugar nenhum.
+
+### 5.4 Quando der errado
+
+| Sintoma | Causa quase sempre |
+|---|---|
+| QR code aparece, some e nunca conecta | `CONFIG_SESSION_PHONE_VERSION` desatualizada — o WhatsApp recusa versões velhas |
+| Conecta, mas mensagem não chega no Inbox | `API_PUBLIC_URL` errada, ou a API não é acessível de fora |
+| "a chave da API do servidor foi recusada" | `AUTHENTICATION_API_KEY` diferente da que você colou |
+| "a sessão não existe mais no servidor" | O servidor foi recriado do zero — conecte de novo |
+| Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
+| Anexo não envia | Esperado: mídia pela Evolution ainda não existe |
+
+A versão da imagem está **fixa** no compose de propósito. A Evolution muda
+o formato dos eventos entre versões maiores, e o sistema traduz esse
+formato — deixar em `latest` é como as mensagens param de chegar de
+madrugada sem ninguém ter tocado em nada. Ao atualizar, teste recebendo
+uma mensagem antes de considerar feito.
+
+---
+
 ## Checklist rápido pra saber se está tudo certo
 
 - [ ] `https://sua-api.up.railway.app/api` responde (qualquer rota autenticada deve dar 401, não erro de conexão)

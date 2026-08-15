@@ -171,13 +171,17 @@ describe('mensagem que chega', () => {
 
 describe('status de entrega', () => {
   it('vira o tique na mensagem certa', async () => {
+    // O formato achatado é o que a Evolution manda de verdade neste
+    // evento: `keyId`, `remoteJid` e `fromMe` na raiz, sem `key`.
     const { controller, conversations, req } = montar();
 
     await controller.receber(SEGREDO, req, {
       event: 'messages.update',
       instance: 'inteliwa-1',
       data: {
-        key: { remoteJid: '5511999999999@s.whatsapp.net', fromMe: true, id: 'EVO1' },
+        keyId: 'EVO1',
+        remoteJid: '5511999999999@s.whatsapp.net',
+        fromMe: true,
         status: 'DELIVERY_ACK',
       },
     });
@@ -195,7 +199,9 @@ describe('status de entrega', () => {
       event: 'messages.update',
       instance: 'inteliwa-1',
       data: {
-        key: { remoteJid: '5511999999999@s.whatsapp.net', fromMe: true, id: 'EVO1' },
+        keyId: 'EVO1',
+        remoteJid: '5511999999999@s.whatsapp.net',
+        fromMe: true,
         status: 'ALGO_NOVO',
       },
     });

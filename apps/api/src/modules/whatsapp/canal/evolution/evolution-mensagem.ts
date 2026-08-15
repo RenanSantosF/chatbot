@@ -1,4 +1,5 @@
 import type { MessageStatus, MessageType } from '../../../../../generated/prisma/client';
+import type { ChaveDaMensagem } from './evolution-id';
 
 /**
  * Tradução do vocabulário da Evolution pro nosso.
@@ -23,13 +24,61 @@ export interface EventoDaEvolution {
 export interface DadosDaMensagem {
   key?: {
     remoteJid?: string;
+    /**
+     * O JID de verdade, quando `remoteJid` vem como `@lid`.
+     *
+     * O WhatsApp passou a esconder o telefone atrás de um identificador
+     * opaco em algumas conversas. A Evolution já troca um pelo outro
+     * quando consegue, mas nem sempre consegue — e sem olhar aqui, essas
+     * mensagens seriam descartadas como se fossem de grupo.
+     */
+    remoteJidAlt?: string;
     fromMe?: boolean;
     id?: string;
   };
+  /**
+   * A chave achatada do evento de status.
+   *
+   * `messages.update` NÃO manda `key` — manda `keyId`, `remoteJid` e
+   * `fromMe` soltos na raiz. Formatos diferentes pro mesmo conceito no
+   * mesmo webhook, e é o tipo de detalhe que só aparece em produção: o
+   * envio funciona, e o tique de entregue nunca vira.
+   */
+  keyId?: string;
+  remoteJid?: string;
+  fromMe?: boolean;
   pushName?: string;
   messageTimestamp?: number | string;
   message?: Record<string, unknown> | null;
+  /**
+   * A citação, no lugar onde a Evolution realmente a deixa.
+   *
+   * Ela reescreve `extendedTextMessage` como `conversation` antes de
+   * mandar, e o contexto — que inclui o id da mensagem citada — sobe pra
+   * raiz do evento. Procurar só dentro da mensagem perde toda resposta.
+   */
+  contextInfo?: { stanzaId?: string } | null;
   status?: string;
+}
+
+/**
+ * A chave da mensagem, venha ela como vier.
+ *
+ * Os dois formatos existem de verdade no mesmo webhook: `messages.upsert`
+ * manda `key` aninhada, `messages.update` manda os campos soltos. Aceitar
+ * os dois num lugar só evita que a próxima mudança de formato precise ser
+ * caçada em dois arquivos.
+ */
+export function chaveDoEvento(dados: DadosDaMensagem): ChaveDaMensagem | null {
+  const id = dados.key?.id ?? dados.keyId;
+  const bruto = dados.key?.remoteJid ?? dados.remoteJid;
+  if (!id || !bruto) return null;
+
+  // `@lid` é o identificador opaco que o WhatsApp usa pra esconder o
+  // telefone. Quando ele vem, o número de verdade está no campo ao lado.
+  const remoteJid = bruto.includes('@lid') ? (dados.key?.remoteJidAlt ?? bruto) : bruto;
+
+  return { remoteJid, fromMe: dados.key?.fromMe ?? dados.fromMe ?? false, id };
 }
 
 export interface MensagemTraduzida {
@@ -88,6 +137,10 @@ export function traduzirMensagem(
   if (!bruto) return null;
 
   const message = conteudo(bruto);
+  // A Evolution reescreve `extendedTextMessage` como `conversation` e sobe
+  // o contexto pra raiz do evento. O texto continua chegando; a citação só
+  // chega se for procurada aqui.
+  const citadoNaRaiz = dados.contextInfo?.stanzaId;
 
   const texto =
     (message.conversation as string | undefined) ??
@@ -96,7 +149,7 @@ export function traduzirMensagem(
     return {
       content: texto,
       messageType: 'TEXT',
-      citando: citacao(message.extendedTextMessage as ContextoDaCitacao),
+      citando: citacao(message.extendedTextMessage as ContextoDaCitacao) ?? citadoNaRaiz,
     };
   }
 
@@ -151,7 +204,7 @@ export function traduzirMensagem(
         // que o anexo não está disponível — o que é a verdade.
         evolutionPendente: true,
       },
-      citando: citacao(midia as unknown as ContextoDaCitacao),
+      citando: citacao(midia as unknown as ContextoDaCitacao) ?? citadoNaRaiz,
     };
   }
 
