@@ -212,14 +212,19 @@ sozinho. Você não configura webhook em lugar nenhum.
 
 | Sintoma | Causa quase sempre |
 |---|---|
-| QR code aparece, some e nunca conecta | `CONFIG_SESSION_PHONE_VERSION` desatualizada — o WhatsApp recusa versões velhas |
+| QR code aparece, some e nunca conecta | O contêiner não alcança `web.whatsapp.com` (é de lá que ele lê a versão do WhatsApp Web a cada conexão) — confira a saída de rede dele |
 | Conecta, mas mensagem não chega no Inbox | `API_PUBLIC_URL` errada, ou a API não é acessível de fora |
 | "a chave da API do servidor foi recusada" | `AUTHENTICATION_API_KEY` diferente da que você colou |
 | "a sessão não existe mais no servidor" | O servidor foi recriado do zero — conecte de novo |
 | Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
 | Anexo não envia | Esperado: mídia pela Evolution ainda não existe |
 
-A versão da imagem está **fixa** no compose de propósito. A Evolution muda
+Não fixe a versão do WhatsApp Web à mão: da 2.3 em diante a Evolution a
+busca sozinha, e a variável antiga (`CONFIG_SESSION_PHONE_VERSION`) não é
+mais lida. Se você encontrar um tutorial mandando defini-la, ele é de uma
+versão anterior.
+
+A versão da **imagem**, essa sim, está fixa no compose de propósito. A Evolution muda
 o formato dos eventos entre versões maiores, e o sistema traduz esse
 formato — deixar em `latest` é como as mensagens param de chegar de
 madrugada sem ninguém ter tocado em nada. Ao atualizar, teste recebendo

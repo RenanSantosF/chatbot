@@ -63,13 +63,18 @@ services:
       CACHE_LOCAL_ENABLED: "false"
 
       # --- Sessão -------------------------------------------------------
-      # A versão do WhatsApp Web que a Evolution finge ser.
+      # NÃO existe mais um `CONFIG_SESSION_PHONE_VERSION` aqui, e a
+      # ausência é a configuração certa: a partir da 2.3 a Evolution busca
+      # a versão do WhatsApp Web sozinha, direto de web.whatsapp.com, a
+      # cada conexão. Fixar uma versão à mão era a causa número um de "o
+      # QR code aparece, some e nunca conecta" — e hoje a variável
+      # simplesmente não é lida.
       #
-      # É a causa número um de "o QR code aparece, some e nunca conecta":
-      # o WhatsApp recusa versões velhas. Se acontecer, confira a versão
-      # atual em https://github.com/EvolutionAPI/evolution-api (a
-      # documentação traz o valor recomendado) e ajuste aqui.
-      CONFIG_SESSION_PHONE_VERSION: "2.3000.1023204200"
+      # A consequência prática: este contêiner precisa de saída pra
+      # internet além do WhatsApp em si. Bloqueado, ele cai numa versão
+      # embutida que envelhece.
+      #
+      # O nome que a empresa vê em "Aparelhos conectados" no celular.
       CONFIG_SESSION_PHONE_CLIENT: "Inteliwa"
       CONFIG_SESSION_PHONE_NAME: "Chrome"
       # Quantas vezes o mesmo QR code é regerado antes de ela desistir.
