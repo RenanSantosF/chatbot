@@ -130,6 +130,38 @@ function conteudo(message: Record<string, unknown>): Record<string, unknown> {
   return message;
 }
 
+/**
+ * A reação a uma mensagem, quando o evento for isso.
+ *
+ * Reação NÃO é mensagem nova: ela modifica a mensagem reagida. Sai antes
+ * da tradução porque, se caísse lá, o emoji viraria uma linha no
+ * histórico — ou, do jeito que estava, seria descartado como "tipo não
+ * suportado" e o cliente reagiria no vazio.
+ *
+ * A chave que vem aqui dentro é a da mensagem REAGIDA, não a da reação.
+ * Emoji vazio significa que a pessoa desfez a reação.
+ */
+export function reacaoDaMensagem(
+  dados: DadosDaMensagem,
+): { alvo: ChaveDaMensagem; emoji: string } | null {
+  const bruto = dados.message;
+  if (!bruto) return null;
+
+  const reacao = conteudo(bruto).reactionMessage as
+    | { key?: { remoteJid?: string; fromMe?: boolean; id?: string }; text?: string }
+    | undefined;
+  if (!reacao?.key?.id || !reacao.key.remoteJid) return null;
+
+  return {
+    alvo: {
+      remoteJid: reacao.key.remoteJid,
+      fromMe: reacao.key.fromMe ?? false,
+      id: reacao.key.id,
+    },
+    emoji: reacao.text ?? '',
+  };
+}
+
 export function traduzirMensagem(
   dados: DadosDaMensagem,
 ): MensagemTraduzida | null {

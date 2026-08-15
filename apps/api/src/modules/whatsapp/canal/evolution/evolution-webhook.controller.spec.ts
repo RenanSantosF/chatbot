@@ -11,6 +11,7 @@ function montar() {
     receiveInbound: jest.fn().mockResolvedValue({}),
     recordOutboundEcho: jest.fn().mockResolvedValue({}),
     applyDeliveryStatus: jest.fn().mockResolvedValue({}),
+    applyReaction: jest.fn().mockResolvedValue({}),
   };
 
   const config = {
@@ -166,6 +167,95 @@ describe('mensagem que chega', () => {
     });
 
     expect(conversations.receiveInbound).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('reação', () => {
+  it('modifica a mensagem reagida em vez de virar linha nova', async () => {
+    // Sem isto a reação cairia na tradução, seria descartada como "tipo
+    // não suportado", e o cliente reagiria no vazio.
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        message: {
+          reactionMessage: {
+            key: {
+              remoteJid: '5511999999999@s.whatsapp.net',
+              fromMe: true,
+              id: '3EB0ALVO',
+            },
+            text: '❤️',
+          },
+        },
+      }),
+    );
+
+    expect(conversations.applyReaction).toHaveBeenCalledWith(
+      '5511999999999@s.whatsapp.net|1|3EB0ALVO',
+      '❤️',
+      '5511999999999',
+    );
+    expect(conversations.receiveInbound).not.toHaveBeenCalled();
+  });
+
+  it('credita à empresa a reação feita pelo celular dela', async () => {
+    // Creditar ao cliente colocaria o emoji do lado errado do balão.
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        key: {
+          remoteJid: '5511999999999@s.whatsapp.net',
+          fromMe: true,
+          id: '3EB0REACAO',
+        },
+        message: {
+          reactionMessage: {
+            key: {
+              remoteJid: '5511999999999@s.whatsapp.net',
+              fromMe: false,
+              id: '3EB0ALVO',
+            },
+            text: '👍',
+          },
+        },
+      }),
+    );
+
+    expect(conversations.applyReaction).toHaveBeenCalledWith(
+      '5511999999999@s.whatsapp.net|0|3EB0ALVO',
+      '👍',
+      'agent',
+    );
+    expect(conversations.recordOutboundEcho).not.toHaveBeenCalled();
+  });
+
+  it('aceita o emoji vazio, que é desfazer a reação', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        message: {
+          reactionMessage: {
+            key: { remoteJid: '5511999999999@s.whatsapp.net', fromMe: true, id: 'A' },
+            text: '',
+          },
+        },
+      }),
+    );
+
+    expect(conversations.applyReaction).toHaveBeenCalledWith(
+      expect.any(String),
+      '',
+      '5511999999999',
+    );
   });
 });
 

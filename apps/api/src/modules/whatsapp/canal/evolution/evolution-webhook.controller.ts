@@ -20,6 +20,7 @@ import { empacotarId, telefoneDoJid } from './evolution-id';
 import {
   chaveDoEvento,
   comoLista,
+  reacaoDaMensagem,
   horaDaMensagem,
   traduzirMensagem,
   traduzirStatus,
@@ -138,6 +139,21 @@ export class EvolutionWebhookController {
         // Grupo, lista de transmissão, status. Nenhum deles é atendimento
         // individual, e tratar como se fosse criaria um "cliente" com o id
         // do grupo misturando o que várias pessoas escreveram.
+        continue;
+      }
+
+      // Reação modifica a mensagem reagida em vez de virar linha nova no
+      // histórico — mesmo tratamento do caminho oficial. Sem isto, o
+      // cliente reage e o emoji simplesmente some.
+      const reacao = reacaoDaMensagem(dados);
+      if (reacao) {
+        await this.conversations.applyReaction(
+          empacotarId(reacao.alvo),
+          reacao.emoji,
+          // Quem reagiu pelo celular da empresa é a empresa, não o
+          // cliente: creditar ao cliente colocaria o emoji do lado errado.
+          chave.fromMe ? 'agent' : telefone,
+        );
         continue;
       }
 
