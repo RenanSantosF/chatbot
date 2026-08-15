@@ -10,6 +10,12 @@ import { DateRangePicker, rangeForDays, type DateRange } from "@/components/char
 import { LineChart } from "@/components/charts/line-chart";
 import { StatTile } from "@/components/charts/stat-tile";
 import { PageHeader } from "@/components/page-header";
+import { BoasVindas } from "@/components/onboarding/boas-vindas";
+import {
+  PrimeirosPassos,
+  type PassoDeAtivacao,
+} from "@/components/onboarding/primeiros-passos";
+import { useSession } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
 import type { ConversationStatus, MetricsOverview } from "@/lib/types";
 
@@ -40,7 +46,16 @@ function shortDay(iso: string): string {
   return `${day}/${month}`;
 }
 
+interface Ativacao {
+  passos: PassoDeAtivacao[];
+  concluidos: number;
+  total: number;
+  precisaDeBoasVindas: boolean;
+}
+
 export default function DashboardOverviewPage() {
+  const { user } = useSession();
+  const [ativacao, setAtivacao] = useState<Ativacao | null>(null);
   const [range, setRange] = useState<DateRange>(() => rangeForDays(30));
   const [metrics, setMetrics] = useState<MetricsOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,17 +79,43 @@ export default function DashboardOverviewPage() {
     };
   }, [range]);
 
+  // Buscado uma vez: o estado de ativação muda por ação da pessoa, e ela
+  // volta a esta tela depois de agir — o que já recarrega o componente.
+  useEffect(() => {
+    apiFetch<Ativacao>("/onboarding")
+      .then(setAtivacao)
+      .catch(() => setAtivacao(null));
+  }, []);
+
   const totals = metrics?.totals;
   const resolvedTotal = (totals?.resolvedByAi ?? 0) + (totals?.resolvedByHuman ?? 0);
   const aiShare = resolvedTotal > 0 ? Math.round(((totals?.resolvedByAi ?? 0) / resolvedTotal) * 100) : 0;
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Visão geral"
-        description="Como anda o atendimento no período escolhido."
-        action={<DateRangePicker value={range} onChange={setRange} />}
-      />
+      {/* A chegada vem ANTES de tudo, e no lugar do cabeçalho: quem entrou
+          agora não tem indicador nenhum pra ver, e um painel de gráficos
+          zerados é a pior primeira impressão possível. */}
+      {ativacao?.precisaDeBoasVindas ? (
+        <BoasVindas
+          primeiroNome={user.name.split(" ")[0]}
+          onConcluir={() =>
+            setAtivacao((atual) =>
+              atual ? { ...atual, precisaDeBoasVindas: false } : atual,
+            )
+          }
+        />
+      ) : (
+        <PageHeader
+          title="Visão geral"
+          description="Como anda o atendimento no período escolhido."
+          action={<DateRangePicker value={range} onChange={setRange} />}
+        />
+      )}
+
+      {ativacao && !ativacao.precisaDeBoasVindas ? (
+        <PrimeirosPassos passos={ativacao.passos} concluidos={ativacao.concluidos} />
+      ) : null}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile

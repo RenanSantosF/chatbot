@@ -37,6 +37,24 @@ model Tenant {
   timezone  String       @default("America/Sao_Paulo")
   language  String       @default("pt-BR")
   status    TenantStatus @default(TRIAL)
+  /// O que a empresa contou sobre si na primeira entrada.
+  ///
+  /// Fora do formulário de cadastro de propósito. Cada campo a mais na
+  /// tela de criar conta derruba a conversão, e perguntar faturamento
+  /// antes de a pessoa ver o produto funcionando soa como qualificação
+  /// pra ligação de vendas — que é exatamente a impressão que faz alguém
+  /// fechar a aba.
+  ///
+  /// Perguntado DEPOIS, com a conta já criada, o mesmo dado custa zero em
+  /// conversão e ainda vira personalização: quem diz ter oito atendentes
+  /// recebe o convite pra montar a equipe; quem atende plantão recebe a
+  /// sugestão de expediente.
+  ///
+  /// Json porque a lista de perguntas vai mudar — e mudar pergunta de
+  /// pesquisa não deveria custar migração de banco.
+  profile   Json?
+  /// Quando a primeira configuração foi concluída (ou dispensada).
+  onboardedAt DateTime?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
