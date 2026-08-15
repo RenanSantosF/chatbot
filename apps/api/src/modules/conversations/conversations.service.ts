@@ -821,6 +821,16 @@ export class ConversationsService {
        * fazia cada reentrega do webhook duplicar de novo.
        */
       jaEntregue?: boolean;
+      /**
+       * Quando a mensagem foi ESCRITA, quando isso não é agora.
+       *
+       * A conexão por aparelho vinculado entrega tudo o que chegou
+       * enquanto a sessão estava fora no instante em que ela volta. Sem
+       * isto, uma conversa parada desde as 9h apareceria inteira com a
+       * hora da reconexão — e o alarme de espera mostraria zero minuto
+       * pra quem esperou a manhã toda.
+       */
+      createdAt?: Date;
     },
   ) {
     const { jaEntregue = false, ...dadosDaMensagem } = data;
@@ -2315,6 +2325,8 @@ export class ConversationsService {
     metadata?: Prisma.InputJsonValue;
     externalId?: string;
     replyToExternalId?: string;
+    /** A hora em que o cliente escreveu, quando ela não é agora. */
+    createdAt?: Date;
   }) {
     /**
      * A mesma entrega, de novo.
@@ -2388,6 +2400,7 @@ export class ConversationsService {
       metadata: input.metadata,
       externalId: input.externalId,
       replyToId: replyTo?.id,
+      createdAt: input.createdAt,
     });
 
     let latestConversation = inbound.conversation;

@@ -1,5 +1,7 @@
 import { CanalService } from './canal.service';
+import type { EvolutionCanal } from './evolution/evolution.canal';
 import type { WhatsappSenderService } from '../whatsapp-sender.service';
+import type { PrismaService } from '../../../common/prisma/prisma.service';
 import type { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
 
 /**
@@ -25,21 +27,34 @@ function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
     motivoDaUltimaFalha: null as string | null,
   };
 
-  const prisma = {
-    tenantId: 'tenant-1',
-    db: {
-      whatsAppSettings: {
-        findFirst: jest.fn().mockResolvedValue(provider ? { provider } : null),
+  const evolution = {
+    enviarTexto: jest.fn().mockResolvedValue('jid|1|EVO'),
+    enviarReacao: jest.fn().mockResolvedValue(undefined),
+    marcarComoLida: jest.fn().mockResolvedValue(undefined),
+    listarModelos: jest.fn().mockResolvedValue([]),
+    enviarModelo: jest.fn().mockRejectedValue(new Error('sem modelo aqui')),
+    motivoDaUltimaFalha: null as string | null,
+  };
+
+  const prisma = { tenantId: 'tenant-1', db: {} };
+  const global = {
+    client: {
+      tenant: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(provider ? { canal: provider } : null),
       },
     },
   };
 
   const service = new CanalService(
     prisma as unknown as TenantPrismaService,
+    global as unknown as PrismaService,
     meta as unknown as WhatsappSenderService,
+    evolution as unknown as EvolutionCanal,
   );
 
-  return { service, meta, prisma };
+  return { service, meta, evolution, global };
 }
 
 describe('escolha do provedor', () => {
@@ -62,37 +77,54 @@ describe('escolha do provedor', () => {
     expect(meta.enviarTexto).toHaveBeenCalled();
   });
 
-  it('não cai na Meta quando a empresa escolheu um provedor indisponível', async () => {
-    // O caso perigoso: silenciosamente entregar pelo canal errado gastaria
+  it('não encosta na Meta quando a empresa está na Evolution', async () => {
+    // O caso perigoso: entregar em silêncio pelo canal errado gastaria
     // conversa paga da Meta numa empresa que pediu outro caminho.
-    const { service, meta } = montar('EVOLUTION');
+    const { service, meta, evolution } = montar('EVOLUTION');
 
     const id = await service.enviarTexto('5511999', 'oi');
 
-    expect(id).toBeNull();
+    expect(id).toBe('jid|1|EVO');
+    expect(evolution.enviarTexto).toHaveBeenCalled();
     expect(meta.enviarTexto).not.toHaveBeenCalled();
   });
 
   it('lê o provedor a cada envio, e não uma vez só', async () => {
     // A empresa pode trocar de provedor sem ninguém reiniciar o servidor.
-    const { service, prisma } = montar('META_CLOUD');
+    const { service, global } = montar('META_CLOUD');
 
     await service.enviarTexto('5511999', 'a');
     await service.enviarTexto('5511999', 'b');
 
-    expect(prisma.db.whatsAppSettings.findFirst).toHaveBeenCalledTimes(2);
+    expect(global.client.tenant.findUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('anexo', () => {
+  it('recusa em vez de mandar pela conta oficial que a empresa não tem', async () => {
+    // Sem esta conferência, a empresa na Evolution receberia um erro de
+    // credencial ausente da Meta — que não diz nada a quem só tentou
+    // mandar uma foto.
+    const { service, meta } = montar('EVOLUTION');
+
+    const id = await service.enviarMidia('5511999', 'image', 'media-1');
+
+    expect(id).toBeNull();
+    expect(meta.sendMedia).not.toHaveBeenCalled();
+    expect(service.motivoDaUltimaFalha).toContain('anexo');
+  });
+
+  it('deixa passar quando a empresa está no oficial', async () => {
+    const { service, meta } = montar('META_CLOUD');
+
+    await expect(service.enviarMidia('5511999', 'image', 'media-1')).resolves.toBe(
+      'wamid.MIDIA',
+    );
+    expect(meta.sendMedia).toHaveBeenCalled();
   });
 });
 
 describe('motivo da falha', () => {
-  it('explica quando o provedor escolhido não está de pé', async () => {
-    const { service } = montar('EVOLUTION');
-
-    await service.enviarTexto('5511999', 'oi');
-
-    expect(service.motivoDaUltimaFalha).toContain('ainda não está disponível');
-  });
-
   it('repassa o motivo de quem tentou entregar', async () => {
     const { service, meta } = montar('META_CLOUD');
     meta.enviarTexto.mockResolvedValue(null);
@@ -109,17 +141,20 @@ describe('motivo da falha', () => {
     // Sem o controle de "quem foi usado por último", uma empresa na
     // Evolution veria no balão um erro guardado por um serviço que nem
     // chegou a ser chamado.
-    const { service, meta } = montar('EVOLUTION');
+    const { service, meta, evolution } = montar('EVOLUTION');
     meta.motivoDaUltimaFalha = 'a Meta recusou o envio';
+    evolution.motivoDaUltimaFalha = 'o WhatsApp desta empresa está desconectado';
 
     await service.enviarTexto('5511999', 'oi');
 
-    expect(service.motivoDaUltimaFalha).not.toBe('a Meta recusou o envio');
+    expect(service.motivoDaUltimaFalha).toBe(
+      'o WhatsApp desta empresa está desconectado',
+    );
   });
 });
 
 describe('modelo aprovado', () => {
-  it('propaga o erro quando o provedor não tem modelos', async () => {
+  it('propaga o erro quando o provedor não tem modelo', async () => {
     // Diferente do texto, iniciar conversa precisa falhar na cara de quem
     // clicou: ficar olhando pra uma conversa vazia é pior que ver o erro.
     const { service } = montar('EVOLUTION');

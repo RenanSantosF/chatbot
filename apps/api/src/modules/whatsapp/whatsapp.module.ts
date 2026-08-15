@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { CanalService } from './canal/canal.service';
+import { EvolutionCanal } from './canal/evolution/evolution.canal';
+import { EvolutionController } from './canal/evolution/evolution.controller';
+import { EvolutionService } from './canal/evolution/evolution.service';
 import { EmbeddedSignupController } from './embedded-signup.controller';
 import { EmbeddedSignupService } from './embedded-signup.service';
 import { WhatsappMediaController } from './whatsapp-media.controller';
@@ -13,6 +16,7 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
     WhatsappSettingsController,
     WhatsappMediaController,
     EmbeddedSignupController,
+    EvolutionController,
   ],
   providers: [
     WhatsappSettingsService,
@@ -20,6 +24,8 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
     WhatsappMediaService,
     EmbeddedSignupService,
     CanalService,
+    EvolutionCanal,
+    EvolutionService,
   ],
   // O `WhatsappSenderService` continua exportado porque a mídia ainda passa
   // por ele. Quem só manda texto, reação ou modelo deve pedir o

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
 import { WhatsappSenderService } from '../whatsapp-sender.service';
+import { EvolutionCanal } from './evolution/evolution.canal';
 import type {
   CanalDeMensagem,
   IdExterno,
@@ -29,36 +31,30 @@ export class CanalService {
 
   constructor(
     private readonly prisma: TenantPrismaService,
+    private readonly global: PrismaService,
     private readonly meta: WhatsappSenderService,
+    private readonly evolution: EvolutionCanal,
   ) {}
 
   /**
    * Quem atende esta empresa.
    *
-   * Sem configuração de WhatsApp, cai no oficial — que é o que já
-   * acontecia antes de existir escolha, e é o que devolve a mensagem de
-   * "não conectado" que o painel sabe mostrar.
+   * A escolha vem do Tenant, e não da configuração do WhatsApp oficial:
+   * quem está na Evolution nunca cria aquela linha, então perguntar lá
+   * responderia "oficial" pra todo mundo.
+   *
+   * Empresa que não existe mais (apagada no meio de uma requisição em
+   * andamento) cai no oficial, que é o que devolve a mensagem de "não
+   * conectado" que o painel sabe mostrar.
    */
   private async provedor(): Promise<CanalDeMensagem> {
-    const config = await this.prisma.db.whatsAppSettings.findFirst({
-      select: { provider: true },
+    const tenant = await this.global.client.tenant.findUnique({
+      where: { id: this.prisma.tenantId },
+      select: { canal: true },
     });
 
-    if (config?.provider === 'EVOLUTION') {
-      // A implementação entra aqui na etapa seguinte. Até lá, dizer a
-      // verdade é melhor que fingir que enviou: cair no provedor errado
-      // mandaria a mensagem por um canal que a empresa não escolheu.
-      this.logger.error(
-        `Tenant ${this.prisma.tenantId} está marcado como EVOLUTION, mas o provedor ainda não foi implementado.`,
-      );
-      this.ultimoUsado = new CanalIndisponivel(
-        'o provedor de mensagens desta empresa ainda não está disponível',
-      );
-      return this.ultimoUsado;
-    }
-
-    this.ultimoUsado = this.meta;
-    return this.meta;
+    this.ultimoUsado = tenant?.canal === 'EVOLUTION' ? this.evolution : this.meta;
+    return this.ultimoUsado;
   }
 
   async enviarTexto(
@@ -109,7 +105,17 @@ export class CanalService {
     mediaId: string,
     opcoes: { caption?: string; filename?: string } = {},
   ): Promise<IdExterno | null> {
-    this.ultimoUsado = this.meta;
+    // O provedor é conferido mesmo o destino sendo sempre a Meta hoje. Sem
+    // isto, uma empresa na Evolution mandaria o anexo pela conta oficial —
+    // que ela não tem — e receberia um erro de credencial ausente no lugar
+    // de "anexo ainda não está disponível nesta conexão".
+    if ((await this.provedor()) !== this.meta) {
+      this.ultimoUsado = new CanalIndisponivel(
+        'o envio de anexo ainda não está disponível nesta conexão',
+      );
+      return null;
+    }
+
     return this.meta.sendMedia(para, tipo, mediaId, opcoes);
   }
 

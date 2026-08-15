@@ -55,6 +55,13 @@ model Tenant {
   profile   Json?
   /// Quando a primeira configuração foi concluída (ou dispensada).
   onboardedAt DateTime?
+  /// Quem entrega as mensagens desta empresa (ver CanalProvedor).
+  ///
+  /// Mora aqui, e não na configuração do WhatsApp oficial, porque quem
+  /// escolhe a Evolution nunca cria aquela linha — não tem token da Meta,
+  /// nem número na Cloud API. Guardar a escolha lá seria guardá-la num
+  /// lugar que, justamente pra metade dos casos, não existe.
+  canal       CanalProvedor @default(META_CLOUD)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -81,6 +88,7 @@ model Tenant {
   billing            BillingAccount?
   inboxSettings      InboxSettings?
   whatsappSettings   WhatsAppSettings?
+  evolutionSettings  EvolutionSettings?
 
   @@map("tenants")
 }
@@ -133,8 +141,6 @@ model WhatsAppSettings {
   // próprio no Meta Developers.
   appSecretEncrypted   String?
   onboarding           WhatsAppOnboarding @default(MANUAL)
-  /// Qual implementação entrega as mensagens desta empresa (ver CanalProvedor).
-  provider             CanalProvedor @default(META_CLOUD)
   /** Business portfolio do cliente, devolvido pelo Embedded Signup. */
   businessId           String?
   /** PIN da verificação em duas etapas, definido por nós ao registrar. */
@@ -165,6 +171,72 @@ model WhatsAppSettings {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("whatsapp_settings")
+}
+
+/// Em que pé está a ligação com o aparelho.
+///
+/// Não é enfeite de tela: na Evolution a conexão CAI sozinha — o celular
+/// ficou sem bateria, o WhatsApp desvinculou o aparelho, o servidor
+/// reiniciou. Enquanto a Meta ou avisa por webhook ou simplesmente
+/// funciona, aqui a empresa precisa ver que parou antes de descobrir pelo
+/// cliente reclamando que ninguém respondeu.
+enum EvolutionEstado {
+  DESCONECTADO
+  AGUARDANDO_QRCODE
+  CONECTADO
+}
+
+/// A ligação com um servidor Evolution.
+///
+/// A Evolution fala com o WhatsApp pelo protocolo de aparelho vinculado —
+/// o mesmo do WhatsApp Web. Não custa por mensagem, não passa por análise
+/// da Meta e conecta lendo um QR code. Em troca não tem modelo aprovado,
+/// não tem janela de 24h e o número corre risco de bloqueio; a escolha
+/// entre isso e a plataforma oficial é comercial, e vive em Tenant.canal.
+model EvolutionSettings {
+  id       String @id @default(uuid())
+  tenantId String @unique
+
+  /// Endereço do servidor Evolution (ex.: https://evo.exemplo.com).
+  ///
+  /// Por empresa, e não fixo no ambiente, porque uma empresa grande pode
+  /// exigir o servidor dela — e porque um servidor só, com todas as
+  /// sessões juntas, transforma qualquer reinício num apagão geral.
+  baseUrl         String
+  /// A chave da API do servidor. Guardada cifrada, como todo segredo aqui.
+  apiKeyEncrypted String
+
+  /// O nome da sessão dentro do servidor Evolution.
+  ///
+  /// Único globalmente porque o webhook chega com ele e é assim que
+  /// descobrimos de qual empresa é a mensagem — mesmo papel do
+  /// phone_number_id no caminho oficial.
+  instance String @unique
+
+  /// O segredo que a URL de webhook carrega.
+  ///
+  /// A Evolution não assina as entregas como a Meta faz. Sem nada no
+  /// lugar, quem descobrisse o endereço poderia inventar mensagem de
+  /// cliente no painel de outra empresa. O segredo vai no caminho da URL e
+  /// é conferido em tempo constante.
+  webhookSecret String
+
+  estado         EvolutionEstado @default(DESCONECTADO)
+  /// O último QR code gerado, em data URI. Vale poucos segundos.
+  qrCode         String?
+  /// O número que atendeu ao QR code, do jeito que o WhatsApp informou.
+  connectedPhone String?
+  /// Quando o servidor confirmou a sessão de pé pela última vez.
+  lastSeenAt     DateTime?
+  /// O motivo da última queda, pra tela dizer o que aconteceu.
+  lastError      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("evolution_settings")
 }
 
 model User {

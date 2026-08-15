@@ -4,6 +4,7 @@ import { Check, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConectarEvolution } from "@/components/settings/conectar-evolution";
 import { WhatsAppSettingsCard } from "@/components/settings/whatsapp-settings-card";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
@@ -28,6 +29,9 @@ export default function WhatsappSettingsPage() {
     <div className="flex flex-col gap-4">
       <WhatsAppSettingsCard settings={whatsapp} onUpdated={setWhatsapp} />
       {whatsapp.connected ? <PainelDeCoexistencia settings={whatsapp} /> : null}
+      {/* Depois do caminho oficial, e não antes: a ordem da tela é a
+          recomendação. Quem rolar até aqui já viu qual é o padrão. */}
+      <ConectarEvolution />
     </div>
   );
 }
