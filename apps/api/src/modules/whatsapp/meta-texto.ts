@@ -4,6 +4,41 @@ const GRAPH_API_VERSION = 'v21.0';
 // automatizado. Em produção fica no padrão.
 const GRAPH_BASE = process.env.META_GRAPH_URL ?? 'https://graph.facebook.com';
 
+/**
+ * Até quando esperar a Meta responder.
+ *
+ * Não é conforto: o envio acontece DENTRO do processamento do webhook, e
+ * uma chamada pendurada segura a entrega da Meta até ela desistir e
+ * reenviar — o que produz mensagem repetida no painel. Vinte segundos é
+ * folgado pra uma chamada que normalmente leva menos de um.
+ */
+const TEMPO_LIMITE_MS = 20_000;
+
+/**
+ * O que o Node esconde atrás de "fetch failed".
+ *
+ * Essa string é tudo que a exceção do `fetch` mostra por fora, e ela não
+ * diz nada: DNS que não resolveu, conexão derrubada no meio, TLS recusado
+ * e tempo esgotado produzem exatamente o mesmo texto. O motivo de verdade
+ * vive em `cause`, às vezes aninhado mais de um nível.
+ *
+ * Sem isto, "fetch failed" no log é um beco sem saída — e ele aparece
+ * justamente quando uma mensagem de cliente não saiu.
+ */
+export function detalharErroDeRede(error: unknown): string {
+  const partes: string[] = [];
+  let atual: unknown = error;
+
+  for (let nivel = 0; nivel < 4 && atual instanceof Error; nivel += 1) {
+    const codigo = (atual as { code?: string }).code;
+    partes.push(codigo ? `${atual.message} (${codigo})` : atual.message);
+    atual = (atual as { cause?: unknown }).cause;
+  }
+
+  if (partes.length === 0) return String(error);
+  return partes.join(' <- ');
+}
+
 export interface EnvioDeTexto {
   phoneNumberId: string;
   accessToken: string;
@@ -69,6 +104,7 @@ export async function postarTexto({
           ? { context: { message_id: replyToExternalId } }
           : {}),
       }),
+      signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
     });
 
     const corpo = await response.text();
@@ -83,10 +119,7 @@ export async function postarTexto({
 
     return { wamid: extrairWamid(corpo) };
   } catch (error) {
-    return {
-      wamid: null,
-      erro: error instanceof Error ? error.message : String(error),
-    };
+    return { wamid: null, erro: detalharErroDeRede(error) };
   }
 }
 
