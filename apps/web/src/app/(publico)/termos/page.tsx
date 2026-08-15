@@ -4,19 +4,20 @@ import {
   DocumentoLegal,
   Lista,
   Secao,
+  Identificacao,
 } from "@/components/publico/documento-legal";
 
 export const metadata: Metadata = {
-  // Sem "— Clara" no fim: o layout raiz já acrescenta a marca pelo
-  // template de título, e repetir aqui produziria "Termos de uso — Clara ·
-  // Clara" na aba e no resultado de busca.
+  // Sem "— Inteliwa" no fim: o layout raiz já acrescenta a marca pelo
+  // template de título, e repetir aqui produziria "Termos de uso — Inteliwa ·
+  // Inteliwa" na aba e no resultado de busca.
   title: "Termos de uso",
   alternates: { canonical: "/termos" },
   // Card próprio: sem isto o link destes documentos compartilhado
   // num grupo aparecia com a chamada de venda da home.
-  openGraph: { type: "article", locale: "pt_BR", url: "/termos", title: "Termos de uso — Clara" },
+  openGraph: { type: "article", locale: "pt_BR", url: "/termos", title: "Termos de uso — Inteliwa" },
   description:
-    "Condições de uso da Clara, incluindo os custos cobrados por terceiros (Meta e provedor de IA) que não passam por nós.",
+    "Condições de uso da Inteliwa, incluindo os custos cobrados por terceiros (Meta e provedor de IA) que não passam por nós.",
 };
 
 export default function TermosPage() {
@@ -24,17 +25,17 @@ export default function TermosPage() {
     <DocumentoLegal
       titulo="Termos de uso"
       atualizadoEm="14 de agosto de 2026"
-      resumo="Clara é um painel de atendimento que conecta o WhatsApp da sua empresa a uma inteligência artificial. Este documento diz o que fazemos, o que não fazemos, e quanto custa o que não é cobrado por nós."
+      resumo="Inteliwa é um painel de atendimento que conecta o WhatsApp da sua empresa a uma inteligência artificial. Este documento diz o que fazemos, o que não fazemos, e quanto custa o que não é cobrado por nós."
     >
-      <Secao titulo="O que a Clara é">
+      <Secao titulo="O que a Inteliwa é">
         <p>
-          A Clara recebe as mensagens que chegam no WhatsApp da sua empresa, deixa uma
+          A Inteliwa recebe as mensagens que chegam no WhatsApp da sua empresa, deixa uma
           inteligência artificial responder o que ela conseguir, e passa para uma pessoa da
           sua equipe quando o assunto exigir. Tudo isso acontece num painel único, com
           histórico, filas de atendimento e relatórios.
         </p>
         <p>
-          A Clara é uma <strong>ferramenta</strong>. As respostas enviadas ao seu cliente
+          A Inteliwa é uma <strong>ferramenta</strong>. As respostas enviadas ao seu cliente
           saem do número da sua empresa e são de responsabilidade dela — inclusive as que a
           IA escrever. Continue lendo: a seção sobre a IA explica por que isso importa.
         </p>
@@ -42,7 +43,7 @@ export default function TermosPage() {
 
       <Secao titulo="Custos que não são nossos">
         <p>
-          Além do que você paga pela Clara, existem dois custos cobrados{" "}
+          Além do que você paga pela Inteliwa, existem dois custos cobrados{" "}
           <strong>diretamente por terceiros</strong>, na conta que está no seu nome. Nós não
           intermediamos, não marcamos preço e não temos como alterá-los.
         </p>
@@ -87,7 +88,7 @@ export default function TermosPage() {
               pessoa.
             </>,
             <>
-              A Clara não se responsabiliza por compromisso assumido pela IA em nome da sua
+              A Inteliwa não se responsabiliza por compromisso assumido pela IA em nome da sua
               empresa. Quem responde pelo número é quem é dono dele.
             </>,
           ]}
@@ -103,7 +104,7 @@ export default function TermosPage() {
             </>,
             <>
               Não enviar mensagem não solicitada. Denúncia de spam derruba a qualidade do seu
-              número e pode fazer a Meta bloqueá-lo — e esse bloqueio é da conta, não da Clara.
+              número e pode fazer a Meta bloqueá-lo — e esse bloqueio é da conta, não da Inteliwa.
             </>,
             <>
               Manter suas credenciais em segurança, e as de cada pessoa da sua equipe. Cada
@@ -121,7 +122,7 @@ export default function TermosPage() {
         <p>
           Trabalhamos para manter o serviço no ar, mas ele depende de terceiros — a API da
           Meta, o provedor de IA, a infraestrutura de nuvem. Uma instabilidade em qualquer um
-          deles afeta a Clara, e não temos controle sobre isso. Não há garantia contratual de
+          deles afeta a Inteliwa, e não temos controle sobre isso. Não há garantia contratual de
           disponibilidade ininterrupta.
         </p>
         <p>
@@ -149,6 +150,7 @@ export default function TermosPage() {
           alteração passar a valer. A data no topo indica a versão vigente.
         </p>
       </Secao>
+      <Identificacao />
     </DocumentoLegal>
   );
 }

@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { SITE_NAME } from "@/lib/site";
 
 /**
  * O card que aparece quando alguém cola o link no WhatsApp, no LinkedIn ou
@@ -11,7 +12,7 @@ import { ImageResponse } from "next/og";
  * LinkedIn e o X usam.
  */
 export const alt =
-  "Clara — atendimento no WhatsApp com inteligência artificial";
+  `${SITE_NAME} — atendimento no WhatsApp com inteligência artificial`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -61,10 +62,10 @@ export default function OpenGraphImage() {
               fontWeight: 700,
             }}
           >
-            C
+            {SITE_NAME.charAt(0)}
           </div>
           <div style={{ color: "#f2f5f4", fontSize: 34, fontWeight: 600 }}>
-            Clara
+            {SITE_NAME}
           </div>
         </div>
 

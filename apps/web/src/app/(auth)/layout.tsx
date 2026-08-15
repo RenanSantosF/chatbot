@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiFetchServer } from "@/lib/api-server";
 import type { MeResponse } from "@/lib/types";
+import { SITE_NAME } from "@/lib/site";
 
 /**
  * Entrar e cadastrar dividem este metadado.
@@ -16,7 +17,7 @@ import type { MeResponse } from "@/lib/types";
 export const metadata: Metadata = {
   title: "Entrar ou criar conta",
   description:
-    "Acesse o painel da Clara ou crie a conta da sua empresa para começar a atender no WhatsApp com inteligência artificial.",
+    "Acesse o painel da Inteliwa ou crie a conta da sua empresa para começar a atender no WhatsApp com inteligência artificial.",
   alternates: { canonical: "/register" },
 };
 
@@ -65,7 +66,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         />
 
         <Link href="/" className="relative text-lg font-semibold tracking-tight">
-          Clara
+          {SITE_NAME}
         </Link>
 
         <div className="relative flex flex-col gap-8">
@@ -92,9 +93,9 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
       <main className="flex flex-1 flex-col items-center justify-center gap-6 px-5 py-12">
         {/* A marca aparece aqui só quando a coluna da esquerda não existe —
-            repetir nas duas deixaria "Clara" duas vezes na mesma tela. */}
+            repetir nas duas deixaria "Inteliwa" duas vezes na mesma tela. */}
         <Link href="/" className="text-lg font-semibold tracking-tight lg:hidden">
-          Clara
+          {SITE_NAME}
         </Link>
 
         {children}

@@ -6,6 +6,7 @@ import type { Socket } from "socket.io-client";
 import { apiFetch } from "@/lib/api-client";
 import { connectRealtime } from "@/lib/socket";
 import type { ConversationMessage, ConversationSummary } from "@/lib/types";
+import { SITE_NAME } from "@/lib/site";
 
 interface RealtimeContextValue {
   socket: Socket | null;
@@ -129,9 +130,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    document.title = totalUnread > 0 ? `(${totalUnread}) Clara` : "Clara";
+    document.title = totalUnread > 0 ? `(${totalUnread}) ${SITE_NAME}` : SITE_NAME;
     return () => {
-      document.title = "Clara";
+      document.title = SITE_NAME;
     };
   }, [totalUnread]);
 

@@ -17,7 +17,7 @@ import { SITE_DESCRIPTION, SITE_NAME, absoluto } from "@/lib/site";
 import type { MeResponse } from "@/lib/types";
 
 /**
- * O que a Clara faz, dito pelo problema que resolve e não pelo recurso.
+ * O que a Inteliwa faz, dito pelo problema que resolve e não pelo recurso.
  *
  * "Base de conhecimento com RAG" não diz nada pra quem tem um escritório
  * com três atendentes; "ela responde a partir dos seus documentos" diz.
@@ -97,7 +97,7 @@ const PERGUNTAS = [
   {
     pergunta: "Os anexos somem depois de 30 dias, como no WhatsApp?",
     resposta:
-      "Não. A Meta apaga a mídia depois de 30 dias; a Clara guarda uma cópia própria em armazenamento separado. Uma procuração enviada hoje continua abrindo no ano que vem.",
+      "Não. A Meta apaga a mídia depois de 30 dias; a Inteliwa guarda uma cópia própria em armazenamento separado. Uma procuração enviada hoje continua abrindo no ano que vem.",
   },
 ];
 
@@ -122,14 +122,14 @@ const PASSOS = [
 /**
  * A landing fala pelo problema, não pela categoria.
  *
- * O `title` foge do padrão "Clara · Clara" do template porque a home é a
+ * O `title` foge do padrão "Inteliwa · Inteliwa" do template porque a home é a
  * única página em que o nome do produto sozinho não diz nada a quem nunca
  * ouviu falar dele — a promessa precisa caber no próprio resultado de
  * busca.
  */
 export const metadata: Metadata = {
   title: {
-    absolute: "Clara — atendimento no WhatsApp com IA para a sua empresa",
+    absolute: "Inteliwa — atendimento no WhatsApp com IA para a sua empresa",
   },
   description: SITE_DESCRIPTION,
   alternates: { canonical: "/" },
@@ -198,7 +198,7 @@ export default async function Home() {
 
       <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-          <span className="text-base font-semibold tracking-tight">Clara</span>
+          <span className="text-base font-semibold tracking-tight">{SITE_NAME}</span>
           <nav className="flex items-center gap-2">
             <Link
               href="/login"
@@ -232,7 +232,7 @@ export default async function Home() {
             </h1>
 
             <p className="max-w-xl text-lg leading-relaxed text-muted-foreground text-pretty">
-              A Clara atende no WhatsApp da sua empresa, resolve sozinha o que é repetitivo e
+              A Inteliwa atende no WhatsApp da sua empresa, resolve sozinha o que é repetitivo e
               chama a sua equipe quando o assunto pede gente — com o histórico inteiro na
               mesma tela.
             </p>
@@ -359,7 +359,7 @@ export default async function Home() {
 
       <footer className="border-t">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-5 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>Clara — atendimento por WhatsApp com inteligência artificial.</span>
+          <span>{SITE_NAME} — atendimento por WhatsApp com inteligência artificial.</span>
           <nav className="flex items-center gap-4">
             <Link href="/termos" className="transition-colors hover:text-foreground">
               Termos de uso

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SITE_NAME } from "@/lib/site";
 
 /**
  * Casco das páginas que existem sem login: termos, privacidade e o que mais
@@ -15,7 +16,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
       <header className="border-b">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-4">
           <Link href="/" className="text-sm font-semibold tracking-tight">
-            Clara
+            {SITE_NAME}
           </Link>
           <nav className="flex items-center gap-4 text-xs text-muted-foreground">
             <Link href="/termos" className="transition-colors hover:text-foreground">
@@ -34,7 +35,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
 
       <footer className="border-t">
         <div className="mx-auto max-w-3xl px-5 py-6 text-xs text-muted-foreground">
-          Clara — atendimento por WhatsApp com inteligência artificial.
+          {SITE_NAME} — atendimento por WhatsApp com inteligência artificial.
         </div>
       </footer>
     </div>

@@ -4,6 +4,7 @@ import {
   DocumentoLegal,
   Lista,
   Secao,
+  Identificacao,
 } from "@/components/publico/documento-legal";
 
 export const metadata: Metadata = {
@@ -11,9 +12,9 @@ export const metadata: Metadata = {
   alternates: { canonical: "/privacidade" },
   // Card próprio: sem isto o link destes documentos compartilhado
   // num grupo aparecia com a chamada de venda da home.
-  openGraph: { type: "article", locale: "pt_BR", url: "/privacidade", title: "Política de privacidade — Clara" },
+  openGraph: { type: "article", locale: "pt_BR", url: "/privacidade", title: "Política de privacidade — Inteliwa" },
   description:
-    "Que dados a Clara trata, onde eles ficam, por quanto tempo e com quem são compartilhados.",
+    "Que dados a Inteliwa trata, onde eles ficam, por quanto tempo e com quem são compartilhados.",
 };
 
 export default function PrivacidadePage() {
@@ -21,18 +22,18 @@ export default function PrivacidadePage() {
     <DocumentoLegal
       titulo="Política de privacidade"
       atualizadoEm="14 de agosto de 2026"
-      resumo="Que dados a Clara trata, onde eles ficam guardados, por quanto tempo e quem mais tem acesso a eles."
+      resumo="Que dados a Inteliwa trata, onde eles ficam guardados, por quanto tempo e quem mais tem acesso a eles."
     >
       <Secao titulo="Quem é quem, na linguagem da LGPD">
         <p>
-          A <strong>empresa que contrata a Clara é a controladora</strong> dos dados dos
+          A <strong>empresa que contrata a Inteliwa é a controladora</strong> dos dados dos
           próprios clientes: é ela que decide o que coletar e por quê. A{" "}
-          <strong>Clara é operadora</strong>: trata esses dados seguindo a instrução da
+          <strong>Inteliwa é operadora</strong>: trata esses dados seguindo a instrução da
           empresa contratante, e não os usa para finalidade própria.
         </p>
         <p>
           Na prática: se um cliente seu pedir para ser esquecido, o pedido é seu para
-          atender, e a Clara oferece as ferramentas para isso.
+          atender, e a Inteliwa oferece as ferramentas para isso.
         </p>
       </Secao>
 
@@ -134,18 +135,19 @@ export default function PrivacidadePage() {
         <p>
           Quem tem dados tratados aqui pode pedir acesso, correção, exclusão, portabilidade
           e informação sobre compartilhamento. O pedido deve ser feito à{" "}
-          <strong>empresa que atende essa pessoa</strong> — é ela a controladora. A Clara
+          <strong>empresa que atende essa pessoa</strong> — é ela a controladora. A Inteliwa
           oferece as ferramentas de exportação e exclusão para que ela cumpra o prazo legal.
         </p>
       </Secao>
 
       <Secao titulo="Contato">
         <p>
-          Dúvidas sobre esta política, ou sobre tratamento de dados na Clara, podem ser
+          Dúvidas sobre esta política, ou sobre tratamento de dados na Inteliwa, podem ser
           enviadas ao encarregado de dados da empresa contratante. Para questões sobre a
           própria plataforma, fale com quem administra a conta da sua empresa.
         </p>
       </Secao>
+      <Identificacao />
     </DocumentoLegal>
   );
 }

@@ -34,6 +34,7 @@ import { SessionProvider } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { SessionTenant, SessionUser, UserRole } from "@/lib/types";
+import { SITE_NAME } from "@/lib/site";
 
 // `roles` ausente = todo mundo vê. As telas de configuração da empresa
 // ficam só com quem administra — o mesmo recorte que os guards da API já
@@ -172,10 +173,13 @@ function Shell({
         <SidebarHeader>
           <div
             className="flex items-center justify-center py-1.5"
-            title={`${tenant.name} · Clara`}
+            title={`${tenant.name} · ${SITE_NAME}`}
           >
+            {/* Monograma tirado da própria marca: era um "C" cravado, de
+                quando o produto se chamava Clara, e uma troca de nome
+                deixaria a inicial errada no canto de toda tela do painel. */}
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-              C
+              {SITE_NAME.charAt(0)}
             </div>
           </div>
         </SidebarHeader>
