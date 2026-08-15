@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import type { CanalDeMensagem, ModeloAprovado } from './canal/canal.interface';
 import { motivoDaMeta } from './meta-erro';
 import { postarTexto } from './meta-texto';
 
@@ -19,9 +20,16 @@ const GRAPH_BASE = process.env.META_GRAPH_URL ?? 'https://graph.facebook.com';
  * expirado, número sem permissão, etc.) não pode derrubar o fluxo interno
  * de conversa — a mensagem já foi salva e aparece no painel de qualquer
  * jeito, só não chega no telefone do cliente.
+ *
+ * É uma das implementações de `CanalDeMensagem` — a oficial. Os nomes dos
+ * métodos seguem o contrato, e não o vocabulário da Meta, porque quem chama
+ * não deve saber de quem está falando. `sendMedia` fica de fora do contrato
+ * de propósito: o envio de anexo na Meta é em duas etapas e guarda um
+ * `mediaId` na mensagem, coisa que não existe nos outros provedores (o
+ * porquê está por extenso em canal.interface.ts).
  */
 @Injectable()
-export class WhatsappSenderService {
+export class WhatsappSenderService implements CanalDeMensagem {
   private readonly logger = new Logger(WhatsappSenderService.name);
 
   constructor(
@@ -34,7 +42,7 @@ export class WhatsappSenderService {
    * qualquer falha) — é por esse id que os webhooks de status depois
    * encontram a mensagem pra marcar entregue/lida no painel.
    */
-  async sendText(
+  async enviarTexto(
     to: string,
     body: string,
     replyToExternalId?: string | null,
@@ -85,11 +93,6 @@ export class WhatsappSenderService {
   }
 
   /**
-   * Envia uma mídia já hospedada na Meta (ver WhatsappMediaService.upload).
-   * `kind` decide o campo do payload — a Cloud API não aceita um "anexo"
-   * genérico, cada tipo tem o seu, e só `document` aceita filename.
-   */
-  /**
    * Envia um template aprovado. É o único jeito de falar com alguém fora
    * da janela de 24 horas — depois desse prazo a Meta recusa texto livre,
    * então "iniciar conversa" sempre passa por aqui.
@@ -98,7 +101,7 @@ export class WhatsappSenderService {
    * conversa precisa saber na hora que o template foi recusado, senão
    * ficaria olhando pra uma conversa vazia sem entender o motivo.
    */
-  async sendTemplate(
+  async enviarModelo(
     to: string,
     template: { name: string; language: string; bodyParams?: string[] },
   ): Promise<string> {
@@ -155,9 +158,7 @@ export class WhatsappSenderService {
   }
 
   /** Templates aprovados da conta, pra montar a tela de iniciar conversa. */
-  async listTemplates(): Promise<
-    { name: string; language: string; body: string; placeholders: number }[]
-  > {
+  async listarModelos(): Promise<ModeloAprovado[]> {
     const settings = await this.prisma.db.whatsAppSettings.findFirst();
     if (!settings?.wabaId) {
       throw new Error(
@@ -200,6 +201,14 @@ export class WhatsappSenderService {
     });
   }
 
+  /**
+   * Envia uma mídia já hospedada na Meta (ver WhatsappMediaService.upload).
+   * `kind` decide o campo do payload — a Cloud API não aceita um "anexo"
+   * genérico, cada tipo tem o seu, e só `document` aceita filename.
+   *
+   * Fora do contrato `CanalDeMensagem` porque depende do `mediaId` que só a
+   * Meta tem. Quem envia anexo ainda fala com este serviço direto.
+   */
   async sendMedia(
     to: string,
     kind: 'image' | 'document' | 'audio' | 'video' | 'sticker',
@@ -282,7 +291,7 @@ export class WhatsappSenderService {
    * mensagem recebida; não existe "marcar a conversa toda", marcar a mais
    * recente já marca as anteriores.
    */
-  async markAsRead(messageId: string): Promise<void> {
+  async marcarComoLida(messageId: string): Promise<void> {
     const settings = await this.prisma.db.whatsAppSettings.findFirst();
     if (!settings) return;
 
@@ -316,7 +325,7 @@ export class WhatsappSenderService {
   }
 
   /** Reage a uma mensagem do cliente. Emoji vazio remove a reação. */
-  async sendReaction(to: string, messageId: string, emoji: string): Promise<void> {
+  async enviarReacao(to: string, messageId: string, emoji: string): Promise<void> {
     const settings = await this.prisma.db.whatsAppSettings.findFirst();
     if (!settings) return;
 

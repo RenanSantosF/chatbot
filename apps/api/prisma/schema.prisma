@@ -85,6 +85,22 @@ model Tenant {
   @@map("tenants")
 }
 
+/// Quem entrega a mensagem.
+///
+/// META_CLOUD é a plataforma oficial: exige verificação, análise de app e
+/// modelo aprovado pra falar fora da janela de 24h, e cobra por mensagem.
+/// EVOLUTION é um servidor próprio falando pelo protocolo de aparelho
+/// vinculado: conecta por QR code, não custa por mensagem e não passa por
+/// aprovação nenhuma — em troca, a sessão cai de vez em quando e o número
+/// do cliente corre risco de bloqueio.
+///
+/// A escolha é comercial, não técnica, e por isso mora por empresa: dá pra
+/// oferecer os dois num mesmo produto, em planos diferentes.
+enum CanalProvedor {
+  META_CLOUD
+  EVOLUTION
+}
+
 /// Como o número entrou no sistema.
 ///
 /// MANUAL: o cliente criou o próprio app no Meta Developers e colou os
@@ -117,6 +133,8 @@ model WhatsAppSettings {
   // próprio no Meta Developers.
   appSecretEncrypted   String?
   onboarding           WhatsAppOnboarding @default(MANUAL)
+  /// Qual implementação entrega as mensagens desta empresa (ver CanalProvedor).
+  provider             CanalProvedor @default(META_CLOUD)
   /** Business portfolio do cliente, devolvido pelo Embedded Signup. */
   businessId           String?
   /** PIN da verificação em duas etapas, definido por nós ao registrar. */

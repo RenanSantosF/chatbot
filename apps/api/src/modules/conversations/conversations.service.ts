@@ -31,7 +31,7 @@ import {
   jaEhOggOpus,
 } from '../whatsapp/audio-container';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
-import { WhatsappSenderService } from '../whatsapp/whatsapp-sender.service';
+import { CanalService } from '../whatsapp/canal/canal.service';
 
 /**
  * Os três estados que importam pra quem atende, montados a partir dos cinco
@@ -263,7 +263,7 @@ export class ConversationsService {
     private readonly customers: CustomersService,
     private readonly realtime: RealtimeGateway,
     private readonly aiEngine: AiEngineService,
-    private readonly whatsapp: WhatsappSenderService,
+    private readonly whatsapp: CanalService,
     private readonly media: WhatsappMediaService,
     private readonly inboxSettings: InboxSettingsService,
     private readonly routing: RoutingService,
@@ -771,7 +771,7 @@ export class ConversationsService {
       select: { externalId: true },
     });
     if (lastInbound?.externalId) {
-      await this.whatsapp.markAsRead(lastInbound.externalId);
+      await this.whatsapp.marcarComoLida(lastInbound.externalId);
     }
   }
 
@@ -925,7 +925,7 @@ export class ConversationsService {
           })
         : null;
 
-      const externalId = await this.whatsapp.sendText(
+      const externalId = await this.whatsapp.enviarTexto(
         conversation.customer.phone,
         await this.assinar(data.senderType, data.senderId, data.content),
         quoted?.externalId,
@@ -1233,7 +1233,7 @@ export class ConversationsService {
       select: { externalId: true },
     });
     if (message?.externalId && conversation.channel === 'WHATSAPP') {
-      await this.whatsapp.sendReaction(
+      await this.whatsapp.enviarReacao(
         conversation.customer.phone,
         message.externalId,
         emoji,
@@ -1432,7 +1432,7 @@ export class ConversationsService {
     }
 
     const kind = mediaKindFor(metadata.mimeType ?? '');
-    const externalId = await this.whatsapp.sendMedia(
+    const externalId = await this.whatsapp.enviarMidia(
       target.customer.phone,
       kind,
       metadata.mediaId,
@@ -1518,7 +1518,7 @@ export class ConversationsService {
     }
 
     const kind = mediaKindFor(toUpload.mimetype);
-    const externalId = await this.whatsapp.sendMedia(
+    const externalId = await this.whatsapp.enviarMidia(
       conversation.customer.phone,
       kind,
       mediaId,
@@ -1722,7 +1722,7 @@ export class ConversationsService {
   /** Templates aprovados, pra tela de iniciar conversa escolher qual usar. */
   async listTemplates() {
     try {
-      return await this.whatsapp.listTemplates();
+      return await this.whatsapp.listarModelos();
     } catch (error) {
       throw new BadRequestException(
         error instanceof Error ? error.message : 'Não deu pra listar os templates.',
@@ -1754,7 +1754,7 @@ export class ConversationsService {
 
     let externalId: string;
     try {
-      externalId = await this.whatsapp.sendTemplate(phone, {
+      externalId = await this.whatsapp.enviarModelo(phone, {
         name: input.templateName,
         language: input.templateLanguage,
         bodyParams: input.bodyParams,

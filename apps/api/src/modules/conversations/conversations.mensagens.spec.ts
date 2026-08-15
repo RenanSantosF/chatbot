@@ -137,10 +137,10 @@ function montar(estado: Estado = {}) {
   const whatsapp = {
     // `undefined` = envio deu certo; qualquer texto = falhou com aquele
     // motivo, do jeito que o serviço de verdade se comporta.
-    sendText: jest
+    enviarTexto: jest
       .fn()
       .mockResolvedValue(estado.falhaNoEnvio ? null : 'wamid.NOVO'),
-    markAsRead: jest.fn(),
+    marcarComoLida: jest.fn(),
     motivoDaUltimaFalha: estado.falhaNoEnvio ?? null,
   };
   const realtime = { emitToTenant: jest.fn() };
@@ -193,7 +193,7 @@ describe('eco do celular (coexistência)', () => {
       externalId: 'wamid.DO_CELULAR',
     });
 
-    expect(whatsapp.sendText).not.toHaveBeenCalled();
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
   });
 
   it('preserva o externalId do eco, que é o que segura a idempotência', async () => {
@@ -278,7 +278,7 @@ describe('resposta do atendente pelo painel', () => {
       'Claro, já verifico.',
     );
 
-    expect(whatsapp.sendText).toHaveBeenCalledWith(
+    expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
       '5527999998888',
       'Claro, já verifico.',
       undefined,
@@ -372,7 +372,7 @@ describe('de quem é a vez depois de cada mensagem', () => {
       content: 'Indicação recusada. A conversa voltou pra fila.',
     });
 
-    expect(whatsapp.sendText).not.toHaveBeenCalled();
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
   });
 
   it('conversa que não é de WhatsApp não tenta enviar nada', async () => {
@@ -385,7 +385,7 @@ describe('de quem é a vez depois de cada mensagem', () => {
       content: 'Oi',
     });
 
-    expect(whatsapp.sendText).not.toHaveBeenCalled();
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
   });
 });
 
@@ -403,7 +403,7 @@ describe('assinatura do atendente', () => {
 
     await service.sendAgentMessage('conversa-1', 'user-1', 'Já resolvido.');
 
-    expect(whatsapp.sendText).toHaveBeenCalledWith(
+    expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
       '5527999998888',
       '*Renan:*\nJá resolvido.',
       undefined,
@@ -423,7 +423,7 @@ describe('assinatura do atendente', () => {
       content: 'Posso ajudar em mais alguma coisa?',
     });
 
-    expect(whatsapp.sendText).toHaveBeenCalledWith(
+    expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
       '5527999998888',
       'Posso ajudar em mais alguma coisa?',
       undefined,
@@ -532,7 +532,7 @@ describe('relógio da espera (fila de atendimento)', () => {
       upload: jest.fn().mockResolvedValue('media-1'),
     };
     const whatsapp = {
-      sendMedia: jest.fn().mockResolvedValue('wamid.MIDIA'),
+      enviarMidia: jest.fn().mockResolvedValue('wamid.MIDIA'),
       motivoDaUltimaFalha: null,
     };
     Object.assign(service as unknown as Record<string, unknown>, {
