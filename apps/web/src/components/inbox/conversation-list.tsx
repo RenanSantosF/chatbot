@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META } from "@/lib/priority";
+import { descreverEspera, type Relogio } from "@/lib/espera";
 import { cn } from "@/lib/utils";
 import { TagChip } from "./tag-picker";
 import type { ConversationStatus, ConversationSummary } from "@/lib/types";
@@ -44,33 +45,6 @@ function timeLabel(iso: string | null) {
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-/**
- * Há quanto tempo este cliente espera resposta.
- *
- * Só aparece quando passa de uma hora: abaixo disso a informação é ruído —
- * atendimento normal responde em minutos, e uma etiqueta em toda linha
- * deixaria de significar "olha aqui" pra virar parte do desenho.
- *
- * O tom sobe com a espera porque é assim que a pessoa varre a lista: nada
- * até uma hora, âmbar quando começa a incomodar, vermelho quando já é
- * problema.
- */
-function esperaVisivel(waitingSince: string | null | undefined) {
-  if (!waitingSince) return null;
-
-  const minutos = Math.floor((Date.now() - new Date(waitingSince).getTime()) / 60000);
-  if (minutos < 60) return null;
-
-  const horas = Math.floor(minutos / 60);
-  const rotulo = horas < 24 ? `${horas}h` : `${Math.floor(horas / 24)}d`;
-
-  return {
-    rotulo,
-    // Quatro horas é o corte: dentro de um expediente ainda é recuperável,
-    // acima disso o cliente já passou a manhã inteira esperando.
-    grave: horas >= 4,
-  };
-}
 
 export function ConversationList({
   conversations,
@@ -81,8 +55,16 @@ export function ConversationList({
   loadingMore,
   onLoadMore,
   onSelect,
+  relogio,
 }: {
   conversations: ConversationSummary[];
+  /**
+   * Expediente e fuso da empresa, pro selo de espera saber quando calar.
+   *
+   * Vem de cima porque a lista é redesenhada a cada mensagem que chega, e
+   * buscar a configuração aqui dentro seria uma requisição por render.
+   */
+  relogio: Relogio;
   selectedId: string | null;
   /** Não lidas que chegaram via socket depois do último carregamento. */
   liveUnread?: Record<string, number>;
@@ -200,16 +182,22 @@ export function ConversationList({
                     </span>
                   ) : null}
                   {(() => {
-                    const espera = esperaVisivel(conversation.waitingSince);
+                    const espera = descreverEspera(conversation.waitingSince, relogio);
                     if (!espera) return null;
                     return (
                       <span
-                        title={`Sem resposta há ${espera.rotulo}`}
+                        title={
+                          espera.foraDoExpediente
+                            ? `Sem resposta há ${espera.rotulo} — fora do horário de atendimento`
+                            : `Sem resposta há ${espera.rotulo}`
+                        }
                         className={cn(
                           "flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-                          espera.grave
+                          espera.nivel === "grave"
                             ? "bg-destructive/15 text-destructive"
-                            : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                            : espera.nivel === "atencao"
+                              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                              : "bg-muted text-muted-foreground",
                         )}
                       >
                         <Timer className="size-3" />

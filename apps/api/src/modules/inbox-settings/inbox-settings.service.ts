@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../generated/prisma/client';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { UpdateInboxSettingsDto } from './dto/inbox-settings.dto';
 import {
@@ -25,7 +26,10 @@ function normalizar(
 
 @Injectable()
 export class InboxSettingsService {
-  constructor(private readonly prisma: TenantPrismaService) {}
+  constructor(
+    private readonly prisma: TenantPrismaService,
+    private readonly global: PrismaService,
+  ) {}
 
   /**
    * A configuração já lida nesta requisição.
@@ -54,6 +58,26 @@ export class InboxSettingsService {
     return this.prisma.db.inboxSettings.create({
       data: { tenantId: this.prisma.tenantId },
     });
+  }
+
+  /**
+   * A configuração mais o fuso da empresa.
+   *
+   * O fuso vive no Tenant, não aqui, mas quem lê o expediente sempre
+   * precisa dos dois juntos: uma faixa "08:00 às 18:00" não significa nada
+   * sem saber de quem é o relógio. Mandar separado obrigaria o painel a
+   * uma segunda requisição pra montar uma informação só.
+   */
+  async paraOPainel() {
+    const [config, tenant] = await Promise.all([
+      this.get(),
+      this.global.client.tenant.findUniqueOrThrow({
+        where: { id: this.prisma.tenantId },
+        select: { timezone: true },
+      }),
+    ]);
+
+    return { ...config, timezone: tenant.timezone };
   }
 
   get() {

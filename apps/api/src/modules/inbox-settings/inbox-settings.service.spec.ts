@@ -32,7 +32,7 @@ function servicoCom(existente: Record<string, unknown> | null) {
     },
   };
 
-  return { service: new InboxSettingsService(prisma as never), prisma };
+  return { service: new InboxSettingsService(prisma as never, {} as never), prisma };
 }
 
 const existente = { id: 'cfg-1', showAgentName: false, sendReadReceipts: true };

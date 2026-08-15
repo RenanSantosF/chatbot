@@ -9,7 +9,7 @@ export class InboxSettingsController {
 
   @Get()
   get() {
-    return this.inboxSettingsService.get();
+    return this.inboxSettingsService.paraOPainel();
   }
 
   @Patch()

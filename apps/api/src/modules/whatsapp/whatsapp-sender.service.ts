@@ -39,8 +39,14 @@ export class WhatsappSenderService {
     body: string,
     replyToExternalId?: string | null,
   ): Promise<string | null> {
+    this.ultimaFalha = null;
+
     const settings = await this.prisma.db.whatsAppSettings.findFirst();
     if (!settings) {
+      // O motivo é guardado, e não só registrado no log: canal
+      // desconectado é a falha que mais engana quem atende, porque tudo do
+      // lado de cá parece ter funcionado.
+      this.ultimaFalha = 'o WhatsApp não está conectado nesta empresa';
       this.logger.warn(
         `Tenant ${this.prisma.tenantId} sem WhatsApp conectado — mensagem não enviada.`,
       );
@@ -56,7 +62,7 @@ export class WhatsappSenderService {
     // A chamada em si mora em `meta-texto` porque o encerramento
     // automático também precisa dela, e aquele é uma rotina de fundo que
     // não pode injetar um serviço de escopo de requisição.
-    const { wamid, erro } = await postarTexto({
+    const { wamid, erro, corpo, status } = await postarTexto({
       phoneNumberId: settings.phoneNumberId,
       accessToken,
       to,
@@ -65,6 +71,11 @@ export class WhatsappSenderService {
     });
 
     if (erro) {
+      // Com corpo, sai o texto que a Meta escreveu; sem corpo (rede caiu
+      // antes de haver resposta), sai o motivo da exceção.
+      this.ultimaFalha = corpo
+        ? motivoDaMeta(corpo, status ?? 0)
+        : `não deu pra falar com a Meta (${erro})`;
       this.logger.error(`Falha ao enviar mensagem via WhatsApp: ${erro}`);
       return null;
     }

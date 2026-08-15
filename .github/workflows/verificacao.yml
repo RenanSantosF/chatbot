@@ -76,6 +76,12 @@ jobs:
       - name: Lint
         run: pnpm --filter web run lint
 
+      # A suíte do painel começa pela lógica pura — as funções que decidem
+      # o que a tela mostra. São elas que erram calado: um selo que não
+      # aparece, um alarme que dispara na hora errada.
+      - name: Testes
+        run: pnpm --filter web test
+
       # `next build` é a conferência de tipos do painel, e não só o empacote:
       # esta versão do Next gera os tipos das rotas durante o build, então um
       # `tsc --noEmit` solto reprova por tipo que ainda não existe.

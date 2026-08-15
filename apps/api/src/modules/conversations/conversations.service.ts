@@ -930,11 +930,48 @@ export class ConversationsService {
         await this.assinar(data.senderType, data.senderId, data.content),
         quoted?.externalId,
       );
-      if (externalId) {
-        await this.prisma.db.message.update({
-          where: { id: message.id },
-          data: { externalId },
-        });
+
+      /*
+       * Sem id da Meta, a mensagem NÃO saiu — e isso precisa aparecer.
+       *
+       * O caminho de anexo já marcava a falha; o de texto ficava calado. O
+       * resultado era o pior tipo de defeito: o WhatsApp desconectado, o
+       * envio falhando, e o balão aparecendo com o mesmo tique de sempre.
+       * Quem atendeu achava que o cliente tinha recebido, e o único lugar
+       * que sabia da verdade era o log do servidor — que quem atende não
+       * abre.
+       *
+       * O status vira FAILED (é o que acende o triângulo vermelho no
+       * balão) e o motivo vai no metadata, junto da mensagem: "o WhatsApp
+       * não está conectado nesta empresa" é acionável; um aviso no Railway
+       * não é.
+       */
+      const falha = externalId
+        ? null
+        : (this.whatsapp.motivoDaUltimaFalha ?? 'a Meta recusou o envio');
+
+      const gravada = await this.prisma.db.message.update({
+        where: { id: message.id },
+        data: {
+          ...(externalId ? { externalId } : { status: 'FAILED' as const }),
+          ...(falha
+            ? {
+                metadata: {
+                  ...(typeof data.metadata === 'object' && data.metadata
+                    ? (data.metadata as Record<string, unknown>)
+                    : {}),
+                  falha,
+                } as Prisma.InputJsonValue,
+              }
+            : {}),
+        },
+        include: messageInclude,
+      });
+
+      if (falha) {
+        // A tela precisa saber AGORA. Sem este aviso o triângulo só
+        // apareceria na próxima vez que a conversa fosse aberta.
+        await this.emitirMensagemCriada(conversationId, gravada);
       }
     }
 

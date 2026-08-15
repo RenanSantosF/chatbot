@@ -15,6 +15,7 @@ import {
 } from "@/components/inbox/inbox-filters";
 import { useRealtime } from "@/components/realtime-provider";
 import { useSession } from "@/components/session-provider";
+import type { Relogio } from "@/lib/espera";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import { conversationCache } from "@/lib/conversation-cache";
@@ -105,6 +106,15 @@ export default function InboxPage() {
   // é liberar, e travar o compositor por um instante enquanto a resposta não
   // chega seria pior que o contrário.
   const [podeEnviarEncerrada, setPodeEnviarEncerrada] = useState(true);
+  /**
+   * Expediente e fuso da empresa.
+   *
+   * Buscado uma vez e passado pra lista: é o que faz o selo de espera parar
+   * de gritar de madrugada. Enquanto não chega, o padrão "sem expediente"
+   * mantém o comportamento anterior — alarme sempre ligado, que é o lado
+   * seguro pra errar.
+   */
+  const [relogio, setRelogio] = useState<Relogio>({ expediente: null, fuso: "America/Sao_Paulo" });
 
   // Filtros sobrevivem a recarregar e a sair da tela — quem trabalha o dia
   // todo no Inbox não quer reconfigurar a cada volta.
@@ -274,8 +284,18 @@ export default function InboxPage() {
     // é justamente ele quem mais usa o compositor. A falha silenciosa
     // mantém o padrão liberado em vez de travar a tela de quem não pode
     // consultar o ajuste.
-    apiFetch<{ allowSendWhenResolved?: boolean }>("/inbox-settings")
-      .then((s) => setPodeEnviarEncerrada(s.allowSendWhenResolved !== false))
+    apiFetch<{
+      allowSendWhenResolved?: boolean;
+      businessHours?: Relogio["expediente"];
+      timezone?: string;
+    }>("/inbox-settings")
+      .then((s) => {
+        setPodeEnviarEncerrada(s.allowSendWhenResolved !== false);
+        setRelogio({
+          expediente: s.businessHours ?? null,
+          fuso: s.timezone ?? "America/Sao_Paulo",
+        });
+      })
       .catch(() => setPodeEnviarEncerrada(true));
   }, []);
 
@@ -644,6 +664,7 @@ export default function InboxPage() {
           loadingMore={loadingMore}
           onLoadMore={loadMore}
           onSelect={setSelectedId}
+          relogio={relogio}
         />
       </div>
       {/* Remontar ao trocar de conversa zera rascunho e busca — que é o

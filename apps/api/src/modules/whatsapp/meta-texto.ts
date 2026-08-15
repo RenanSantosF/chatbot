@@ -16,8 +16,18 @@ export interface EnvioDeTexto {
 export interface ResultadoDoEnvio {
   /** O wamid da Meta — é por ele que os webhooks de status encontram a mensagem. */
   wamid: string | null;
-  /** Preenchido quando a Meta recusou ou a rede caiu. */
+  /** Preenchido quando a Meta recusou ou a rede caiu. Já legível num log. */
   erro?: string;
+  /**
+   * A resposta crua e o código HTTP, quando houve resposta.
+   *
+   * Vão junto porque o motivo BONITO — o que aparece pro atendente no
+   * balão — sai de `motivoDaMeta`, que precisa do corpo original pra achar
+   * o `error_user_msg`. Sem eles, quem chama só teria a string de log e
+   * mostraria "400: {json inteiro}" na tela de quem está atendendo.
+   */
+  corpo?: string;
+  status?: number;
 }
 
 /**
@@ -63,7 +73,12 @@ export async function postarTexto({
 
     const corpo = await response.text();
     if (!response.ok) {
-      return { wamid: null, erro: `${response.status}: ${corpo}` };
+      return {
+        wamid: null,
+        erro: `${response.status}: ${corpo}`,
+        corpo,
+        status: response.status,
+      };
     }
 
     return { wamid: extrairWamid(corpo) };

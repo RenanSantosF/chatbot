@@ -28,6 +28,8 @@ interface Estado {
    * o efeito da mensagem. A tomada automática do atendimento tem teste
    * próprio (ver conversations.atribuicao.spec.ts).
    */
+  /** Motivo da falha de envio. Ausente = a Meta aceitou. */
+  falhaNoEnvio?: string;
   antesDeAssumir?: {
     assignedUserId: string | null;
     assignmentAccepted?: boolean;
@@ -47,6 +49,7 @@ function montar(estado: Estado = {}) {
 
   const criadas: Record<string, unknown>[] = [];
   const atualizacoes: Record<string, unknown>[] = [];
+  const atualizacoesDeMensagem: Record<string, unknown>[] = [];
 
   const prisma = {
     tenantId: 'tenant-teste',
@@ -104,7 +107,12 @@ function montar(estado: Estado = {}) {
           criadas.push(criada);
           return criada;
         }),
-        update: jest.fn().mockImplementation(() => ({})),
+        update: jest
+          .fn()
+          .mockImplementation((args: { data: Record<string, unknown> }) => {
+            atualizacoesDeMensagem.push(args.data);
+            return { id: 'msg-1', senderType: 'AGENT', senderId: null };
+          }),
         findFirst: jest
           .fn()
           .mockResolvedValue(
@@ -127,8 +135,13 @@ function montar(estado: Estado = {}) {
   };
 
   const whatsapp = {
-    sendText: jest.fn().mockResolvedValue('wamid.NOVO'),
+    // `undefined` = envio deu certo; qualquer texto = falhou com aquele
+    // motivo, do jeito que o serviço de verdade se comporta.
+    sendText: jest
+      .fn()
+      .mockResolvedValue(estado.falhaNoEnvio ? null : 'wamid.NOVO'),
     markAsRead: jest.fn(),
+    motivoDaUltimaFalha: estado.falhaNoEnvio ?? null,
   };
   const realtime = { emitToTenant: jest.fn() };
   const inboxSettings = {
@@ -148,7 +161,15 @@ function montar(estado: Estado = {}) {
     {} as never,
   );
 
-  return { service, prisma, whatsapp, realtime, criadas, atualizacoes };
+  return {
+    service,
+    prisma,
+    whatsapp,
+    realtime,
+    criadas,
+    atualizacoes,
+    atualizacoesDeMensagem,
+  };
 }
 
 describe('eco do celular (coexistência)', () => {
@@ -595,5 +616,65 @@ describe('entrega repetida do webhook', () => {
     });
 
     expect(criadas).toHaveLength(1);
+  });
+});
+
+/**
+ * Mensagem que não saiu não pode parecer entregue.
+ *
+ * O relato que originou isto: o WhatsApp foi desconectado, o atendente
+ * mandou uma mensagem, e o balão apareceu com o mesmo tique de sempre. Do
+ * lado de cá parecia tudo certo; do lado do cliente não chegou nada. O
+ * único lugar que sabia da verdade era o log do servidor — que quem atende
+ * não abre, e nem deveria precisar.
+ *
+ * O caminho de ANEXO já marcava a falha desde sempre. O de texto ficava
+ * calado, e é justamente por ele que passa a maior parte das mensagens.
+ */
+describe('envio que falha', () => {
+  it('a mensagem fica marcada como FALHOU', async () => {
+    const { service, atualizacoesDeMensagem } = montar({
+      falhaNoEnvio: 'o WhatsApp não está conectado nesta empresa',
+    });
+
+    await service.sendAgentMessage('conversa-1', 'user-1', 'Bom dia!');
+
+    expect(atualizacoesDeMensagem[0]).toMatchObject({ status: 'FAILED' });
+  });
+
+  it('o motivo fica junto da mensagem, não só no log', async () => {
+    // É o que transforma o triângulo vermelho em algo acionável: quem
+    // atende lê "o WhatsApp não está conectado" e sabe o que fazer.
+    const { service, atualizacoesDeMensagem } = montar({
+      falhaNoEnvio: 'o WhatsApp não está conectado nesta empresa',
+    });
+
+    await service.sendAgentMessage('conversa-1', 'user-1', 'Bom dia!');
+
+    expect(atualizacoesDeMensagem[0].metadata).toMatchObject({
+      falha: 'o WhatsApp não está conectado nesta empresa',
+    });
+  });
+
+  it('a tela é avisada na hora', async () => {
+    // Sem o aviso, o triângulo só apareceria na próxima vez que alguém
+    // abrisse a conversa — e até lá a impressão é de mensagem entregue.
+    const { service, realtime } = montar({ falhaNoEnvio: 'a Meta recusou' });
+
+    await service.sendAgentMessage('conversa-1', 'user-1', 'Bom dia!');
+
+    const eventos = realtime.emitToTenant.mock.calls.map(
+      (chamada: unknown[]) => chamada[1],
+    );
+    expect(eventos.filter((e: unknown) => e === 'message.created')).toHaveLength(2);
+  });
+
+  it('quando o envio dá certo, grava o id da Meta e não marca falha', async () => {
+    const { service, atualizacoesDeMensagem } = montar();
+
+    await service.sendAgentMessage('conversa-1', 'user-1', 'Bom dia!');
+
+    expect(atualizacoesDeMensagem[0]).toMatchObject({ externalId: 'wamid.NOVO' });
+    expect(atualizacoesDeMensagem[0]).not.toHaveProperty('status');
   });
 });
