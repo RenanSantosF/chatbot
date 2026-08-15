@@ -22,6 +22,24 @@ interface RetornoDaMeta {
   phone_number_id?: string;
   waba_id?: string;
   business_id?: string;
+  /** Só nos eventos de erro. */
+  error_message?: string;
+  current_step?: string;
+}
+
+/**
+ * O último recado da janela da Meta, seja ele qual for.
+ *
+ * A janela conversa por `postMessage` e manda três tipos de evento: FINISH
+ * (concluiu), CANCEL (a pessoa fechou) e ERROR (deu errado do lado de lá).
+ * Guardar o evento, e não só os identificadores, é o que separa "o usuário
+ * desistiu" de "a conexão falhou" — sem isso os dois casos são exatamente o
+ * mesmo silêncio, e uma janela que abre e fecha sozinha não deixa rastro
+ * nenhum pra investigar.
+ */
+interface EventoDaMeta {
+  event?: string;
+  data?: RetornoDaMeta;
 }
 
 declare global {
@@ -35,6 +53,50 @@ declare global {
     };
     fbAsyncInit?: () => void;
   }
+}
+
+/**
+ * Traduz o fim malsucedido numa frase que diz o que fazer.
+ *
+ * O caso que motivou isto: a janela abria, piscava e fechava sozinha, sem
+ * mensagem em lugar nenhum — e o código tratava isso como "o usuário
+ * desistiu", que é o desfecho normal. Sem distinguir os dois, o defeito
+ * mais comum de configuração fica invisível justamente pra quem está
+ * configurando.
+ *
+ * A janela fechar ANTES de mandar qualquer evento é o sintoma clássico de
+ * o domínio não estar liberado no app da Meta: o Facebook recusa a abertura
+ * e fecha na hora, sem chegar a desenhar tela nenhuma.
+ */
+function porQueNaoConectou(
+  ultimo: EventoDaMeta | null,
+  code?: string,
+): string {
+  if (ultimo?.event === "ERROR") {
+    return (
+      ultimo.data?.error_message ??
+      "A Meta recusou a conexão. Tente de novo em alguns instantes."
+    );
+  }
+
+  if (ultimo?.event === "CANCEL") {
+    const passo = ultimo.data?.current_step;
+    return passo
+      ? `Conexão interrompida em "${passo}". Você pode recomeçar quando quiser.`
+      : "Conexão interrompida. Você pode recomeçar quando quiser.";
+  }
+
+  // Autorizou (veio código) mas os identificadores não chegaram: a janela
+  // terminou sem anunciar a conta.
+  if (code) {
+    return "A autorização passou, mas a Meta não informou qual número foi conectado. Tente de novo.";
+  }
+
+  return (
+    "A janela do Facebook fechou sem responder. Isso costuma ser o domínio " +
+    "deste site não estar liberado no app da Meta — confira o domínio em " +
+    "Configurações do app e nos domínios permitidos do Login para Empresas."
+  );
 }
 
 /**
@@ -55,6 +117,7 @@ export function ConectarWhatsApp({
   const [sdkPronto, setSdkPronto] = useState(false);
   const [conectando, setConectando] = useState(false);
   const identificadores = useRef<RetornoDaMeta | null>(null);
+  const ultimoEvento = useRef<EventoDaMeta | null>(null);
 
   useEffect(() => {
     apiFetch<ConfigDoSignup>("/whatsapp/embedded-signup/config")
@@ -74,6 +137,7 @@ export function ConectarWhatsApp({
           data?: RetornoDaMeta;
         };
         if (dados.type !== "WA_EMBEDDED_SIGNUP") return;
+        ultimoEvento.current = { event: dados.event, data: dados.data };
         if (dados.data?.phone_number_id) identificadores.current = dados.data;
       } catch {
         // A Meta manda outras mensagens nesse canal que não são JSON.
@@ -87,6 +151,9 @@ export function ConectarWhatsApp({
   async function conectar() {
     if (!window.FB || !config?.configId) return;
     identificadores.current = null;
+    // Zerado junto: um erro da tentativa anterior explicaria errado a
+    // desistência desta.
+    ultimoEvento.current = null;
     setConectando(true);
 
     window.FB.login(
@@ -96,8 +163,7 @@ export function ConectarWhatsApp({
 
         if (!code || !ids?.waba_id || !ids.phone_number_id) {
           setConectando(false);
-          // Fechar a janela no meio é o caso comum, e não é erro.
-          if (code || ids) toast.error("A conexão não foi concluída.");
+          toast.error(porQueNaoConectou(ultimoEvento.current, code));
           return;
         }
 
