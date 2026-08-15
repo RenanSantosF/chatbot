@@ -28,6 +28,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { CopilotWidget } from "@/components/copilot-widget";
+import { Marca } from "@/components/marca";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
 import { SessionProvider } from "@/components/session-provider";
@@ -175,12 +176,7 @@ function Shell({
             className="flex items-center justify-center py-1.5"
             title={`${tenant.name} · ${SITE_NAME}`}
           >
-            {/* Monograma tirado da própria marca: era um "C" cravado, de
-                quando o produto se chamava Clara, e uma troca de nome
-                deixaria a inicial errada no canto de toda tela do painel. */}
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-              {SITE_NAME.charAt(0)}
-            </div>
+            <Marca className="size-8 shrink-0 rounded-md" />
           </div>
         </SidebarHeader>
         <SidebarContent>

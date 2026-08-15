@@ -25,6 +25,12 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
             <Link href="/privacidade" className="transition-colors hover:text-foreground">
               Privacidade
             </Link>
+            <Link
+              href="/exclusao-de-dados"
+              className="transition-colors hover:text-foreground"
+            >
+              Excluir dados
+            </Link>
           </nav>
         </div>
       </header>

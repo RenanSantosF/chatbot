@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   Atencao,
   DocumentoLegal,
@@ -147,6 +148,16 @@ export default function PrivacidadePage() {
           própria plataforma, fale com quem administra a conta da sua empresa.
         </p>
       </Secao>
+      <Secao titulo="Exclusão de dados">
+        <p>
+          O caminho para apagar dados — e quem apaga o quê — está descrito em{" "}
+          <Link href="/exclusao-de-dados" className="underline underline-offset-4">
+            Exclusão de dados
+          </Link>
+          .
+        </p>
+      </Secao>
+
       <Identificacao />
     </DocumentoLegal>
   );

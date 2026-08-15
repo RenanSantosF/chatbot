@@ -48,22 +48,21 @@ export default function OpenGraphImage() {
         />
 
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: "#1fab63",
-              color: "#062b18",
-              fontSize: 32,
-              fontWeight: 700,
-            }}
-          >
-            {SITE_NAME.charAt(0)}
-          </div>
+          {/* O símbolo desenhado à mão, e não o componente <Marca>: esta
+              imagem é gerada pelo Satori, que entende um subconjunto de SVG
+              e não aceita degradê por <defs>. Duas cores chapadas dão o
+              mesmo resultado no tamanho em que ela é vista. */}
+          <svg width="56" height="56" viewBox="0 0 1024 1024">
+            <rect width="1024" height="1024" rx="232" fill="#0C8B5E" />
+            <path d="M318 620 L318 812 L470 640 Z" fill="#fff" />
+            <rect x="212" y="258" width="600" height="414" rx="112" fill="#fff" />
+            <circle cx="340" cy="462" r="46" fill="#006F58" />
+            <circle cx="502" cy="462" r="46" fill="#006F58" />
+            <path
+              d="M664 392 Q678 448 734 462 Q678 476 664 532 Q650 476 594 462 Q650 448 664 392 Z"
+              fill="#006F58"
+            />
+          </svg>
           <div style={{ color: "#f2f5f4", fontSize: 34, fontWeight: 600 }}>
             {SITE_NAME}
           </div>

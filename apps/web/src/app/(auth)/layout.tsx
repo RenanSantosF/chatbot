@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiFetchServer } from "@/lib/api-server";
 import type { MeResponse } from "@/lib/types";
+import { Marca } from "@/components/marca";
 import { SITE_NAME } from "@/lib/site";
 
 /**
@@ -65,7 +66,11 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           className="pointer-events-none absolute -right-20 -bottom-24 size-80 rounded-full bg-black/10 blur-3xl"
         />
 
-        <Link href="/" className="relative text-lg font-semibold tracking-tight">
+        <Link
+          href="/"
+          className="relative flex items-center gap-2 text-lg font-semibold tracking-tight"
+        >
+          <Marca className="size-8 rounded-md" />
           {SITE_NAME}
         </Link>
 
@@ -94,7 +99,11 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       <main className="flex flex-1 flex-col items-center justify-center gap-6 px-5 py-12">
         {/* A marca aparece aqui só quando a coluna da esquerda não existe —
             repetir nas duas deixaria "Inteliwa" duas vezes na mesma tela. */}
-        <Link href="/" className="text-lg font-semibold tracking-tight lg:hidden">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-lg font-semibold tracking-tight lg:hidden"
+        >
+          <Marca className="size-8 rounded-md" />
           {SITE_NAME}
         </Link>
 
