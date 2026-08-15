@@ -185,6 +185,48 @@ No Railway dá pra fazer sem compose: **New > Docker Image**, imagem
 catálogo, e as mesmas variáveis do arquivo (trocando os endereços pelos
 que o Railway gerar).
 
+### 5.1.1 Modo enxuto: um serviço só, nenhum banco novo
+
+O plano gratuito do Railway limita quantos serviços você cria, e a
+Evolution "completa" pede três (ela + Postgres + Redis). Dá pra rodar com
+**um**, sem perder nada que importe num teste:
+
+**Redis vira cache em memória.** Troque por:
+
+```
+CACHE_REDIS_ENABLED=false
+CACHE_LOCAL_ENABLED=true
+```
+
+A Evolution cai no cache local sozinha. O cache morre junto com o
+contêiner — para um número só, isso é uma reconexão mais lenta depois de
+reiniciar, não perda de sessão. A sessão vive no Postgres.
+
+**O Postgres é o que você já tem.** Reaproveite o Supabase, num schema
+separado, para que as 36 tabelas dela não se misturem com as suas.
+
+1. No **SQL Editor** do Supabase:
+   ```sql
+   CREATE SCHEMA IF NOT EXISTS evolution;
+   ```
+2. Use a connection string com o schema no fim:
+   ```
+   DATABASE_CONNECTION_URI=postgresql://...supabase.com:5432/postgres?schema=evolution
+   ```
+
+Duas armadilhas nesse endereço:
+
+- **Porta 5432, conexão direta — não a de transação (6543).** A Evolution
+  roda migrações ao subir, e o pooler em modo transação não aguenta o
+  travamento que a migração usa: ela sobe e morre em laço, com erro que
+  não diz isso.
+- **`?schema=evolution` não é opcional.** Sem ele as tabelas dela caem no
+  `public`, junto com as suas. Não há colisão de nome hoje (as dela são
+  `"Message"`, as suas são `messages`), mas um `prisma migrate` seu
+  passando por ali fica bem mais assustador de ler.
+
+Fica assim: **1 serviço novo** no Railway, nenhum banco novo.
+
 ### 5.2 Antes de conectar, confira a API
 
 O servidor Evolution precisa **chamar a API de volta** quando chegar

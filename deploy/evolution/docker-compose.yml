@@ -47,15 +47,35 @@ services:
       # porque a reconexão depende deles; o resto é peso morto pra nós — o
       # histórico que vale é o do Inteliwa, e duplicá-lo aqui só faz o
       # disco encher.
+      # A sessão (as credenciais do aparelho vinculado) é guardada
+      # independentemente destes campos — por isso desligar tudo aqui não
+      # faz o QR code ser pedido de novo a cada reinício.
       DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      # Mensagem NÃO é guardada aqui, e não é só economia de disco.
+      #
+      # Com o arquivamento ligado, a Evolution procura a mensagem original
+      # no banco DELA antes de mandar o evento de status — e desiste do
+      # evento quando não acha. Como o histórico de verdade é o do
+      # Inteliwa, e o banco dela é só um espelho, esse espelho incompleto
+      # vira tique de entrega que nunca chega.
+      #
+      # Desligado, ela manda o status sempre, sem consultar nada.
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
       DATABASE_SAVE_DATA_CONTACTS: "true"
       DATABASE_SAVE_DATA_CHATS: "true"
       DATABASE_SAVE_DATA_LABELS: "false"
-      DATABASE_SAVE_DATA_HISTORIC: "false"
 
       # --- Cache --------------------------------------------------------
+      # Redis aqui porque o compose já sobe um. Onde subir um serviço a
+      # mais custa (plano gratuito com limite de serviços), troque por
+      # cache em memória: CACHE_REDIS_ENABLED=false e
+      # CACHE_LOCAL_ENABLED=true. A Evolution cai no cache local sozinha.
+      #
+      # O que muda: o cache morre junto com o contêiner. Para um número
+      # só, isso é uma reconexão mais lenta depois de reiniciar — não é
+      # perda de sessão.
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: "redis://redis:6379/6"
       CACHE_REDIS_PREFIX_KEY: "evolution"
