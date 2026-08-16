@@ -189,9 +189,20 @@ vai em texto limpo — quem a pegar manda mensagem pelo WhatsApp do seu
 cliente.
 
 No Railway dá pra fazer sem compose: **New > Docker Image**, imagem
-`evoapicloud/evolution-api:v2.3.7`, mais um Postgres e um Redis do
-catálogo, e as mesmas variáveis do arquivo (trocando os endereços pelos
-que o Railway gerar).
+`evoapicloud/evolution-api:v2.3.7`, e as mesmas variáveis do arquivo
+(trocando os endereços pelos que o Railway gerar). Veja o modo enxuto
+abaixo pra não precisar de Postgres nem Redis novos.
+
+Dois detalhes do Railway que custam meia hora cada:
+
+- **A porta é 8080.** A Evolution escuta em `SERVER_PORT` (padrão 8080) e
+  NÃO lê a variável `PORT` que o Railway injeta. Ao gerar o domínio,
+  informe 8080 — senão o endereço existe e devolve 502, com o contêiner
+  de pé, o que parece falha da imagem e não é.
+- **`SERVER_URL` sai do domínio, então gere o domínio primeiro.** Dá pra
+  fugir do copia-e-cola usando a referência do próprio Railway:
+  `SERVER_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}` — ele preenche sozinho e
+  continua certo se o domínio mudar.
 
 ### 5.1.1 Modo enxuto: um serviço só, nenhum banco novo
 
