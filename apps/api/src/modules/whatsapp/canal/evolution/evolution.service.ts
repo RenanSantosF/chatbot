@@ -39,6 +39,13 @@ export class EvolutionService {
    * desenvolvimento isso quer dizer um túnel — e falhar cedo, com esta
    * mensagem, evita a hora perdida procurando por que "conectou mas não
    * chega nada".
+   *
+   * O `/api` NÃO é enfeite: toda a API vive sob esse prefixo global (ver
+   * `setGlobalPrefix` em main.ts), e `API_PUBLIC_URL` guarda só o domínio.
+   * Sem ele o endereço registrado na Evolution aponta pra uma rota que não
+   * existe, ela entrega tudo em 404, e o sintoma é exatamente o que esta
+   * função existe pra evitar: conecta, o QR code funciona, e nenhuma
+   * mensagem aparece no painel.
    */
   private urlDoWebhook(secret: string): string {
     const base = process.env.API_PUBLIC_URL?.replace(/\/+$/, '');
@@ -47,7 +54,7 @@ export class EvolutionService {
         'Configure API_PUBLIC_URL com o endereço público desta API antes de conectar: é para lá que o servidor de mensagens envia o que chega.',
       );
     }
-    return `${base}/webhooks/evolution/${secret}`;
+    return `${base}/api/webhooks/evolution/${secret}`;
   }
 
   async status() {
