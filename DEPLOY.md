@@ -221,8 +221,21 @@ A Evolution cai no cache local sozinha. O cache morre junto com o
 contêiner — para um número só, isso é uma reconexão mais lenta depois de
 reiniciar, não perda de sessão. A sessão vive no Postgres.
 
-**O Postgres é o que você já tem.** Reaproveite o Supabase, num schema
-separado, para que as 36 tabelas dela não se misturem com as suas.
+**O Postgres precisa ser OUTRO — não o banco da API.**
+
+Schema separado não basta, e essa lição custou uma queda de produção. As
+duas aplicações usam Prisma, e `prisma migrate deploy` pega um advisory
+lock de número FIXO (`72707369`) que vale para o banco inteiro, não para
+o schema. Com as duas no mesmo banco, dois deploys simultâneos disputam o
+mesmo cadeado: um espera dez segundos, desiste com `P1002`, e a migração
+fica marcada como falha. A partir daí todo deploy da API morre com
+`P3009` até alguém limpar a linha na mão — ver "Quando der errado".
+
+No plano gratuito do Supabase dá pra ter **dois projetos**: crie um só
+pra Evolution. É de graça e resolve de vez.
+
+Mantenha o schema separado de qualquer forma, para as 36 tabelas dela não
+se misturarem com as suas:
 
 1. No **SQL Editor** do Supabase:
    ```sql
@@ -291,6 +304,37 @@ sozinho. Você não configura webhook em lugar nenhum.
 | "a sessão não existe mais no servidor" | O servidor foi recriado do zero — conecte de novo |
 | Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
 | Anexo não envia | Esperado: mídia pela Evolution ainda não existe |
+| A API começa a falhar com `P3009` | Uma migração ficou marcada como falha por disputa de cadeado — ver abaixo |
+
+### Migração travada em `P3009`
+
+Acontece quando dois `prisma migrate deploy` correm no mesmo banco ao
+mesmo tempo. O sintoma é a API não subir mais, com o nome da migração
+culpada no log. No SQL Editor:
+
+```sql
+-- 1. A migração chegou a aplicar alguma coisa?
+--    O tempo esgota pegando o cadeado, antes de qualquer SQL, então o
+--    normal é tudo vir vazio.
+SELECT migration_name, finished_at, rolled_back_at, applied_steps_count
+FROM _prisma_migrations
+ORDER BY started_at DESC
+LIMIT 5;
+
+-- 2a. Nada aplicado: apague a tentativa e deixe o próximo deploy refazer.
+DELETE FROM _prisma_migrations WHERE migration_name = 'NOME_DA_MIGRACAO';
+
+-- 2b. Aplicou tudo mas não foi marcada: marque como concluída.
+UPDATE _prisma_migrations
+SET finished_at = now(), rolled_back_at = NULL, applied_steps_count = 1
+WHERE migration_name = 'NOME_DA_MIGRACAO';
+```
+
+Antes de escolher entre 2a e 2b, confira no banco se os objetos que a
+migração cria já existem. Aplicar de novo por cima do que existe falha
+com "already exists", e marcar como concluída o que não aplicou deixa o
+banco sem as colunas que o código espera — os dois erros são piores que a
+pergunta.
 
 Não fixe a versão do WhatsApp Web à mão: da 2.3 em diante a Evolution a
 busca sozinha, e a variável antiga (`CONFIG_SESSION_PHONE_VERSION`) não é
