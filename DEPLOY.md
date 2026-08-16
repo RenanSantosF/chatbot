@@ -20,7 +20,15 @@ Todos têm plano free suficiente pra testar. Depois, se validar o negócio, dá 
    CREATE EXTENSION IF NOT EXISTS vector;
    ```
    (é a extensão que guarda os embeddings da Base de Conhecimento — sem isso as migrations da API vão falhar)
-3. Em **Project Settings > Database**, copie a **Connection string** no modo **Session pooler** (porta 6543) — é a que aguenta várias conexões simultâneas de uma API tradicional tipo esta. Vai ficar parecido com:
+3. Em **Project Settings > Database**, copie a **Connection string** do
+   pooler na **porta 6543** — é a que aguenta várias conexões simultâneas de
+   uma API tradicional tipo esta. Vai ficar parecido com:
+
+   > O Supabase renomeou essas opções: a porta 6543 hoje aparece como
+   > **Transaction pooler**, e o nome **Session pooler** passou a valer pra
+   > outra coisa, na porta 5432. Se a tela não bater com o texto, vá pela
+   > porta.
+
    ```
    postgresql://postgres.xxxxxxxx:SUA_SENHA@aws-0-sa-east-1.pooler.supabase.com:6543/postgres
    ```
@@ -216,10 +224,22 @@ separado, para que as 36 tabelas dela não se misturem com as suas.
 
 Duas armadilhas nesse endereço:
 
-- **Porta 5432, conexão direta — não a de transação (6543).** A Evolution
-  roda migrações ao subir, e o pooler em modo transação não aguenta o
-  travamento que a migração usa: ela sobe e morre em laço, com erro que
-  não diz isso.
+- **Porta 5432 — nunca a 6543.** A Evolution roda migrações ao subir, e o
+  pooler em modo transação (6543) não aguenta o travamento que a migração
+  usa: ela sobe e morre em laço, com um erro que não diz isso.
+
+  Das três opções que o Supabase oferece, duas servem e uma não:
+
+  | Opção | Porta | Serve |
+  |---|---|---|
+  | Direct connection | 5432 | Sim, mas o endereço é só IPv6 |
+  | **Session pooler** | 5432 | **Sim — e resolve em IPv4 também** |
+  | Transaction pooler | 6543 | Não |
+
+  Prefira o **Session pooler**: é modo sessão, então o travamento da
+  migração funciona, e ele não depende de a rede de saída ter IPv6. A
+  conexão direta funciona igual onde houver IPv6 — a diferença é só o
+  risco de descobrir que não há.
 - **`?schema=evolution` não é opcional.** Sem ele as tabelas dela caem no
   `public`, junto com as suas. Não há colisão de nome hoje (as dela são
   `"Message"`, as suas são `messages`), mas um `prisma migrate` seu
