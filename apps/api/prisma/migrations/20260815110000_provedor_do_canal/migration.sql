@@ -8,26 +8,59 @@
 -- corre risco de bloqueio.
 --
 -- A escolha é comercial, não técnica. Guardá-la por empresa é o que permite
--- vender os dois no mesmo produto, em planos diferentes, sem manter dois
--- sistemas.
-CREATE TYPE "CanalProvedor" AS ENUM ('META_CLOUD', 'EVOLUTION');
+-- vender os dois no mesmo produto, em planos diferentes.
+--
+-- ---------------------------------------------------------------------
+-- POR QUE ESTE ARQUIVO É TOLERANTE AO QUE JÁ EXISTE
+--
+-- Uma versão anterior desta migração foi publicada e chegou a rodar: ela
+-- criava o tipo `CanalProvedor` e punha a coluna `provider` em
+-- `whatsapp_settings`. Aquele lugar estava errado — quem usa a Evolution
+-- nunca cria aquela linha, então a escolha ficava num lugar que, pra
+-- metade dos casos, não existe — e a migração foi reescrita pondo a
+-- coluna em `tenants`.
+--
+-- O erro foi trocar o arquivo em vez de escrever uma migração nova por
+-- cima. Banco que recebeu a versão antiga já tem o tipo, e um `CREATE
+-- TYPE` seco falha nele pra sempre; banco novo não tem nada. Este arquivo
+-- precisa levar os dois ao mesmo destino, e é por isso que cada passo
+-- pergunta antes de agir.
+-- ---------------------------------------------------------------------
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'CanalProvedor') THEN
+    CREATE TYPE "CanalProvedor" AS ENUM ('META_CLOUD', 'EVOLUTION');
+  END IF;
+END
+$$;
 
 -- Fica no tenant, e não em whatsapp_settings, porque quem escolhe a
 -- Evolution nunca cria aquela linha: não tem token da Meta nem número na
--- Cloud API. Guardar a escolha lá seria guardá-la num lugar que, pra
--- metade dos casos, não existe.
+-- Cloud API.
 --
 -- Todo mundo que já existe está no oficial, e continua.
 ALTER TABLE "tenants"
-  ADD COLUMN "canal" "CanalProvedor" NOT NULL DEFAULT 'META_CLOUD';
+  ADD COLUMN IF NOT EXISTS "canal" "CanalProvedor" NOT NULL DEFAULT 'META_CLOUD';
 
-CREATE TYPE "EvolutionEstado" AS ENUM (
-  'DESCONECTADO',
-  'AGUARDANDO_QRCODE',
-  'CONECTADO'
-);
+-- A coluna que a versão anterior criou no lugar errado. Nenhum código
+-- publicado chegou a lê-la, então não há dado a preservar: o padrão dela
+-- era o mesmo META_CLOUD que a coluna nova acaba de receber.
+ALTER TABLE "whatsapp_settings" DROP COLUMN IF EXISTS "provider";
 
-CREATE TABLE "evolution_settings" (
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'EvolutionEstado') THEN
+    CREATE TYPE "EvolutionEstado" AS ENUM (
+      'DESCONECTADO',
+      'AGUARDANDO_QRCODE',
+      'CONECTADO'
+    );
+  END IF;
+END
+$$;
+
+CREATE TABLE IF NOT EXISTS "evolution_settings" (
   "id" TEXT NOT NULL,
   "tenantId" TEXT NOT NULL,
   "baseUrl" TEXT NOT NULL,
@@ -45,16 +78,26 @@ CREATE TABLE "evolution_settings" (
   CONSTRAINT "evolution_settings_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "evolution_settings_tenantId_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "evolution_settings_tenantId_key"
   ON "evolution_settings"("tenantId");
 
 -- O nome da sessão chega em todo webhook e é por ele que descobrimos de
 -- qual empresa é a mensagem — mesmo papel do phone_number_id no caminho
 -- oficial, e por isso único na plataforma inteira, não por empresa.
-CREATE UNIQUE INDEX "evolution_settings_instance_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "evolution_settings_instance_key"
   ON "evolution_settings"("instance");
 
-ALTER TABLE "evolution_settings"
-  ADD CONSTRAINT "evolution_settings_tenantId_fkey"
-  FOREIGN KEY ("tenantId") REFERENCES "tenants"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+-- `ADD CONSTRAINT` não aceita IF NOT EXISTS; a pergunta tem que ser feita
+-- à mão.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'evolution_settings_tenantId_fkey'
+  ) THEN
+    ALTER TABLE "evolution_settings"
+      ADD CONSTRAINT "evolution_settings_tenantId_fkey"
+      FOREIGN KEY ("tenantId") REFERENCES "tenants"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END
+$$;
