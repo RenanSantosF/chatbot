@@ -153,9 +153,33 @@ export class EvolutionService {
     const credenciais = { baseUrl, apiKey, instance: config.instance };
     const url = this.urlDoWebhook(config.webhookSecret);
 
-    // Criar dá 403 quando a sessão já existe. Não é erro: é o caso de quem
-    // está reconectando depois de uma queda, e aí o caminho é pedir o QR
-    // code da sessão que já está lá.
+    /*
+     * Parear exige uma sessão NOVA. Sempre.
+     *
+     * O material de pareamento — código de oito caracteres ou QR — só vale
+     * pra um socket que acabou de subir e ainda não tentou nada. Numa
+     * sessão que já existe, seja porque a tentativa anterior falhou, seja
+     * porque ela ficou pela metade, o servidor devolve um código que o
+     * WhatsApp recusa com "não foi possível conectar o dispositivo".
+     *
+     * Também é o que destrava a troca de modo: pedido o código, aquele
+     * socket fica em modo código e não produz QR nenhum. Sem recriar,
+     * quem começou por um caminho não conseguia mais tentar o outro.
+     *
+     * Só quando NÃO está conectada: apagar uma sessão viva mataria um
+     * atendimento que está funcionando.
+     */
+    if (existente && existente.estado !== 'CONECTADO') {
+      await evolution.desconectar(credenciais);
+      await evolution.apagarInstancia(credenciais);
+      this.logger.log(
+        `Sessão ${config.instance} recriada do zero pro tenant ${this.prisma.tenantId}: pareamento novo exige socket limpo.`,
+      );
+    }
+
+    // Criar dá 403 quando a sessão já existe — o que, depois da limpeza
+    // acima, só acontece com uma sessão VIVA. Aí o caminho é pedir o
+    // material de pareamento da que já está lá.
     let resposta = await evolution.criarInstancia(credenciais, url, numero);
     const jaExistia = !resposta.ok && resposta.status === 403;
     if (jaExistia) {
@@ -262,6 +286,18 @@ export class EvolutionService {
    */
   async renovarQrCode(numero?: string | null) {
     const { config, credenciais } = await this.credenciais();
+
+    /*
+     * Pedir material novo numa sessão não pareada é recriá-la.
+     *
+     * `/instance/connect` devolve o que aquele socket já tinha — e se ele
+     * está em modo código, devolve o mesmo código vencido, ou nada quando
+     * se pede QR. Passar por `conectar`, que limpa antes, é o que faz
+     * "gerar outro" gerar de fato outro.
+     */
+    if (config.estado !== 'CONECTADO') {
+      return this.conectar(numero);
+    }
 
     const resposta = await evolution.conectar(credenciais, numero);
     if (!resposta.ok) {

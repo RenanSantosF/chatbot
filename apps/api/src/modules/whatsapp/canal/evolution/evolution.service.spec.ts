@@ -191,6 +191,40 @@ describe('endereço do webhook', () => {
     );
   });
 
+  it('apaga a sessão antes de parear de novo', async () => {
+    // Código de pareamento só vale em socket que acabou de subir. Numa
+    // sessão que sobrou de uma tentativa falha, o WhatsApp recusa com
+    // "não foi possível conectar o dispositivo" — e um socket que já
+    // pediu código nunca mais devolve QR.
+    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+    const chamadas = servidor({ sessaoJaExiste: true });
+    const { service } = montar({
+      baseUrl: 'https://evo.exemplo.com',
+      estado: 'AGUARDANDO_QRCODE',
+    });
+
+    await service.conectar();
+
+    const apagou = chamadas.findIndex((c) => c.url.includes('/instance/delete/'));
+    const criou = chamadas.findIndex((c) => c.url.includes('/instance/create'));
+    expect(apagou).toBeGreaterThanOrEqual(0);
+    expect(apagou).toBeLessThan(criou);
+  });
+
+  it('não apaga uma sessão que está viva', async () => {
+    // Recriar por cima de um atendimento funcionando o derrubaria.
+    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+    const chamadas = servidor({ sessaoJaExiste: true });
+    const { service } = montar({
+      baseUrl: 'https://evo.exemplo.com',
+      estado: 'CONECTADO',
+    });
+
+    await service.conectar();
+
+    expect(chamadas.some((c) => c.url.includes('/instance/delete/'))).toBe(false);
+  });
+
   it('recusa conectar sem o endereço público configurado', async () => {
     // Melhor falhar na cara de quem clicou que registrar um webhook
     // apontando pra localhost e descobrir horas depois.
