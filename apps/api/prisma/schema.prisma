@@ -308,9 +308,33 @@ enum QueueVisibility {
   OWN_QUEUES
 }
 
+/// O que fazer com o áudio que o cliente manda, quando quem atende é
+/// gente.
+///
+/// Com a IA respondendo a transcrição SEMPRE acontece — sem ouvir, ela não
+/// tem o que responder, e isso não é preferência. Para o atendente humano
+/// é: ele consegue ouvir, então transcrever vira conveniência que custa
+/// uma chamada ao modelo por áudio.
+///
+/// DESLIGADA nem oferece o botão. SOB_DEMANDA deixa a escolha com quem
+/// atende, áudio a áudio. AUTOMATICA transcreve tudo na chegada — é a
+/// escolha de quem prefere ler a ouvir, trabalha sem fone, ou precisa do
+/// histórico pesquisável por inteiro.
+enum TranscricaoDeAudio {
+  DESLIGADA
+  SOB_DEMANDA
+  AUTOMATICA
+}
+
 model InboxSettings {
   id               String   @id @default(uuid())
   tenantId         String   @unique
+
+  /// Ver TranscricaoDeAudio. O padrão deixa a escolha com quem atende:
+  /// ligar tudo sem avisar cobraria do dono uma chamada ao modelo por
+  /// áudio recebido, e desligar esconderia um recurso que ele nem saberia
+  /// que existe.
+  transcricaoDeAudio TranscricaoDeAudio @default(SOB_DEMANDA)
   // Confirmação de leitura: quando desligada, abrir a conversa no painel
   // não acende o tique azul no aparelho do cliente. É escolha da empresa —
   // tem negócio que prefere não revelar que leu e ainda não respondeu.
@@ -579,6 +603,14 @@ model Message {
   // Reações (emoji) na mensagem, como {"👍": ["5511..."]}. Guardadas na
   // própria mensagem reagida, não como mensagem nova — é assim que a Meta
   // manda e é assim que faz sentido exibir.
+  /// O que foi falado no áudio, em texto.
+  ///
+  /// Guardada, e não gerada a cada abertura, por três motivos que se
+  /// somam: transcrever custa uma chamada ao modelo por áudio, o resultado
+  /// não muda (a gravação é a mesma), e é ela que a busca dentro da
+  /// conversa precisa encontrar — sem isso, o que o cliente disse falando
+  /// some de toda pesquisa.
+  transcricao    String?
   reactions      Json?
   // Quando alguém apagou a mensagem no painel. Apagamento é lógico: a
   // linha permanece com o conteúdo, porque histórico de atendimento é

@@ -56,6 +56,7 @@ function construtorCom(opcoes: {
     { searchRelevantChunks: jest.fn().mockResolvedValue([]) } as never,
     { missingRequired: jest.fn().mockResolvedValue([]) } as never,
     { expediente: jest.fn().mockResolvedValue({}) } as never,
+    { transcrever: jest.fn().mockResolvedValue(null) } as never,
   );
 
   return { service, findFirst, findMany };

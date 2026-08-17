@@ -113,6 +113,9 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
         chave={meta.mediaId}
         voz={meta.voice}
         daEmpresa={message.senderType !== "CUSTOMER"}
+        conversationId={message.conversationId}
+        messageId={message.id}
+        transcricao={message.transcricao}
       />
     );
   }

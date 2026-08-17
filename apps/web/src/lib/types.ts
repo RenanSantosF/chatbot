@@ -119,6 +119,14 @@ export interface ConversationMessage {
   reactions: Record<string, string[]> | null;
   /** Quando foi apagada no painel. O conteúdo não vem mais junto. */
   deletedAt?: string | null;
+  /**
+   * O áudio em texto, quando já foi transcrito.
+   *
+   * Só existe em mensagem de áudio, e nem em toda uma: depende de a IA ter
+   * atendido a conversa, de a empresa ter ligado o automático, ou de
+   * alguém ter clicado em transcrever.
+   */
+  transcricao?: string | null;
   replyToId: string | null;
   replyTo: {
     id: string;
@@ -362,6 +370,13 @@ export interface InboxSettings {
   autoCloseMessage: string;
   showAgentName: boolean;
   queueVisibility: "ALL" | "OWN_QUEUES";
+  /**
+   * O que fazer com o áudio do cliente quando quem responde é gente.
+   *
+   * O atendimento da IA não passa por aqui: ela transcreve sempre, porque
+   * sem ouvir não tem o que responder.
+   */
+  transcricaoDeAudio: "DESLIGADA" | "SOB_DEMANDA" | "AUTOMATICA";
   /**
    * Faixas de atendimento por dia da semana, domingo em "0".
    *

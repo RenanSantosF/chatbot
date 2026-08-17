@@ -61,6 +61,7 @@ function montar(
     {} as never,
     {} as never,
     {} as never,
+    { transcreverSeAutomatico: jest.fn() } as never,
   );
 
   const aplicar = (verificacao: VerificacaoDaResposta) =>

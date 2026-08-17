@@ -25,8 +25,10 @@ import type {
   ConversationMessage,
   ConversationPriority,
   ConversationSummary,
+  InboxSettings,
   MessageStatus,
 } from "@/lib/types";
+import { TranscricaoDeAudioProvider } from "@/components/inbox/transcricao-de-audio";
 
 interface Page<T> {
   items: T[];
@@ -106,6 +108,8 @@ export default function InboxPage() {
   // é liberar, e travar o compositor por um instante enquanto a resposta não
   // chega seria pior que o contrário.
   const [podeEnviarEncerrada, setPodeEnviarEncerrada] = useState(true);
+  const [transcricao, setTranscricao] =
+    useState<InboxSettings["transcricaoDeAudio"]>("SOB_DEMANDA");
   /**
    * Expediente e fuso da empresa.
    *
@@ -288,6 +292,7 @@ export default function InboxPage() {
       allowSendWhenResolved?: boolean;
       businessHours?: Relogio["expediente"];
       timezone?: string;
+      transcricaoDeAudio?: InboxSettings["transcricaoDeAudio"];
     }>("/inbox-settings")
       .then((s) => {
         setPodeEnviarEncerrada(s.allowSendWhenResolved !== false);
@@ -295,6 +300,7 @@ export default function InboxPage() {
           expediente: s.businessHours ?? null,
           fuso: s.timezone ?? "America/Sao_Paulo",
         });
+        if (s.transcricaoDeAudio) setTranscricao(s.transcricaoDeAudio);
       })
       .catch(() => setPodeEnviarEncerrada(true));
   }, []);
@@ -438,11 +444,39 @@ export default function InboxPage() {
       );
     };
 
+    /**
+     * O áudio virou texto — pode ter sido a IA, o automático ou o botão de
+     * outra pessoa da equipe. Chega por evento porque nenhum dos três
+     * acontece dentro do clique de quem está com a conversa aberta.
+     */
+    const onMessageTranscrita = ({
+      conversationId,
+      messageId,
+      transcricao,
+    }: {
+      conversationId: string;
+      messageId: string;
+      transcricao: string;
+    }) => {
+      if (selectedIdRef.current !== conversationId) return;
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              messages: prev.messages.map((m) =>
+                m.id === messageId ? { ...m, transcricao } : m,
+              ),
+            }
+          : prev,
+      );
+    };
+
     socket.on("connect", onConnect);
     socket.on("conversation.updated", onConversationUpdated);
     socket.on("message.created", onMessageCreated);
     socket.on("message.updated", onMessageUpdated);
     socket.on("message.status", onMessageStatus);
+    socket.on("message.transcrita", onMessageTranscrita);
 
     return () => {
       socket.off("connect", onConnect);
@@ -450,6 +484,7 @@ export default function InboxPage() {
       socket.off("message.created", onMessageCreated);
       socket.off("message.updated", onMessageUpdated);
       socket.off("message.status", onMessageStatus);
+      socket.off("message.transcrita", onMessageTranscrita);
     };
     // Sem `filters` nas dependências: os ouvintes leem o recorte atual
     // pelo ref, e assim o efeito é montado uma vez só em vez de desligar e
@@ -648,6 +683,7 @@ export default function InboxPage() {
     // Sem cartão, sem margem, sem título: a tela inteira é o painel, do
     // jeito que o WhatsApp Web faz. O cabeçalho da conversa e a barra de
     // filtros já dizem onde a pessoa está.
+    <TranscricaoDeAudioProvider modo={transcricao}>
     <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[400px_1fr] xl:grid-cols-[400px_1fr_330px] [&>*]:min-h-0">
       <div className="hidden min-h-0 flex-col border-r md:flex">
         {/* Sem o simulador de cliente: ele existia pra testar o fluxo antes
@@ -695,5 +731,6 @@ export default function InboxPage() {
         <CustomerPanel conversation={detail} />
       </div>
     </div>
+    </TranscricaoDeAudioProvider>
   );
 }

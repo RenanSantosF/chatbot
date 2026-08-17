@@ -1,8 +1,11 @@
 "use client";
 
-import { Mic, Pause, Play } from "lucide-react";
+import { FileText, Loader2, Mic, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useTranscricaoDeAudio } from "./transcricao-de-audio";
 
 /** Quantas barras a onda tem. Fixo pra todo áudio caber na mesma largura. */
 const BARRAS = 40;
@@ -98,6 +101,9 @@ export function AudioMessage({
   chave,
   voz,
   daEmpresa,
+  conversationId,
+  messageId,
+  transcricao,
 }: {
   url: string;
   /** Semente da onda de reserva — o id da mídia serve. */
@@ -106,6 +112,10 @@ export function AudioMessage({
   voz?: boolean;
   /** Muda a paleta: balão verde pede contraste diferente do balão claro. */
   daEmpresa: boolean;
+  conversationId: string;
+  messageId: string;
+  /** O texto do áudio, quando já existe. */
+  transcricao?: string | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [tocando, setTocando] = useState(false);
@@ -113,6 +123,38 @@ export function AudioMessage({
   const [duracao, setDuracao] = useState(0);
   const [velocidade, setVelocidade] = useState<number>(1);
   const [onda, setOnda] = useState<number[]>(() => ondaDeReserva(chave));
+  const modo = useTranscricaoDeAudio();
+  const [doBotao, setDoBotao] = useState<string | null>(null);
+  const [transcrevendo, setTranscrevendo] = useState(false);
+
+  /*
+   * O texto pode vir por dois caminhos, e nenhum espelha o outro.
+   *
+   * A prop vem do servidor — da IA, do automático, ou do botão de outra
+   * pessoa da equipe, chegando por `message.transcrita`. O estado local é
+   * a resposta do clique de quem está aqui, que aparece na hora sem
+   * depender do evento voltar. A prop tem precedência quando existe: ela é
+   * o que está gravado.
+   */
+  const texto = transcricao ?? doBotao;
+
+  async function transcrever() {
+    setTranscrevendo(true);
+    try {
+      const { transcricao: veio, motivo } = await apiFetch<{
+        transcricao: string | null;
+        motivo?: string;
+      }>(`/conversations/${conversationId}/messages/${messageId}/transcrever`, {
+        method: "POST",
+      });
+      if (veio) setDoBotao(veio);
+      else toast.error(motivo ?? "Não deu pra transcrever este áudio.");
+    } catch {
+      toast.error("Não deu pra transcrever este áudio.");
+    } finally {
+      setTranscrevendo(false);
+    }
+  }
 
   useEffect(() => {
     let vivo = true;
@@ -139,7 +181,8 @@ export function AudioMessage({
   }
 
   return (
-    <div className="flex w-64 max-w-full items-center gap-2.5">
+    <div className="flex w-64 max-w-full flex-col gap-1.5">
+    <div className="flex items-center gap-2.5">
       <audio
         ref={audioRef}
         src={url}
@@ -230,6 +273,29 @@ export function AudioMessage({
             {relogio(tocando || posicao > 0 ? posicao : duracao)}
           </span>
 
+          {/* Discreto de propósito: fica na linha dos segundos, do tamanho
+              deles, e só existe enquanto há o que transcrever. Depois de
+              clicado ele some — o texto embaixo passa a ser a resposta. */}
+          {modo !== "DESLIGADA" && !texto ? (
+            <button
+              type="button"
+              title="Transcrever este áudio"
+              disabled={transcrevendo}
+              onClick={() => void transcrever()}
+              className={cn(
+                "flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium transition-colors disabled:opacity-60",
+                daEmpresa ? "hover:bg-black/15" : "hover:bg-foreground/10",
+              )}
+            >
+              {transcrevendo ? (
+                <Loader2 className="size-3 shrink-0 animate-spin" />
+              ) : (
+                <FileText className="size-3 shrink-0" />
+              )}
+              {transcrevendo ? "Transcrevendo…" : "Transcrever"}
+            </button>
+          ) : null}
+
           {/* Só aparece depois que o áudio começou: um seletor de velocidade
               num áudio que ninguém tocou ainda é ruído. */}
           {posicao > 0 || tocando ? (
@@ -256,6 +322,24 @@ export function AudioMessage({
           ) : null}
         </div>
       </div>
+    </div>
+
+      {/* A fala em texto, embaixo do player e claramente atrelada a ele.
+          Em itálico e com uma barra na lateral porque não é o que o cliente
+          escreveu: é o que a máquina entendeu do que ele falou, e a
+          diferença tem que estar visível pra quem vai responder. */}
+      {texto ? (
+        <p
+          className={cn(
+            "border-l-2 pl-2 text-[13px] leading-snug italic text-pretty",
+            daEmpresa
+              ? "border-bubble-out-foreground/30 text-bubble-out-foreground/85"
+              : "border-foreground/20 text-foreground/85",
+          )}
+        >
+          {texto}
+        </p>
+      ) : null}
     </div>
   );
 }

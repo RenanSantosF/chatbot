@@ -4,6 +4,8 @@ import { GoogleGenAI } from '@google/genai';
 import type {
   AiEmbedInput,
   AiEmbeddingProvider,
+  AiTranscribeInput,
+  AiTranscriptionProvider,
   AiGenerateInput,
   AiGenerateResult,
   AiMessage,
@@ -81,6 +83,16 @@ const TEMPO_LIMITE_MS = 25_000;
 const TEMPO_LIMITE_EMBEDDING_MS = 15_000;
 
 /**
+ * Transcrever é mais lento que responder, e vale esperar.
+ *
+ * O arquivo sobe inline junto do pedido, e um áudio de dois minutos são
+ * alguns megabytes atravessando antes de o modelo começar. Quarenta
+ * segundos cobre com folga o áudio de recado comum; acima disso, o mais
+ * provável é que não vá voltar.
+ */
+const TEMPO_LIMITE_TRANSCRICAO_MS = 40_000;
+
+/**
  * Traduz o cancelamento por tempo numa frase que diz o que aconteceu.
  *
  * O erro cru de um `AbortSignal` é "This operation was aborted", que no
@@ -106,7 +118,9 @@ function toGeminiRole(role: AiMessage['role']): 'user' | 'model' {
 }
 
 @Injectable()
-export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
+export class GeminiProvider
+  implements AiProvider, AiEmbeddingProvider, AiTranscriptionProvider
+{
   private readonly logger = new Logger(GeminiProvider.name);
 
   async generateReply({
@@ -245,6 +259,77 @@ export class GeminiProvider implements AiProvider, AiEmbeddingProvider {
         error instanceof Error ? error.stack : error,
       );
       throw comoErroDeTempo(error, 'gerar a resposta');
+    }
+  }
+
+  /**
+   * O que o cliente falou, em texto.
+   *
+   * O áudio vai inline em base64 — o mesmo caminho do anexo na Evolution,
+   * e pela mesma razão: uma etapa de upload separado seria mais uma coisa
+   * pra falhar num fluxo que já roda dentro do processamento do webhook.
+   *
+   * A instrução é enxuta de propósito. Pedir resumo ou interpretação aqui
+   * seria transformar a fala do cliente em opinião do modelo antes de
+   * qualquer pessoa ler o original — e é a fala dele que vira prova num
+   * atendimento jurídico. O que se quer é estenografia, não redação.
+   */
+  async transcribe({
+    buffer,
+    mimeType,
+    apiKey,
+    model,
+  }: AiTranscribeInput): Promise<string | null> {
+    const client = new GoogleGenAI({ apiKey });
+
+    try {
+      const resposta = await client.models.generateContent({
+        model: model ?? DEFAULT_MODEL,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text:
+                  'Transcreva este áudio em português do Brasil, palavra por palavra. ' +
+                  'Devolva SÓ a transcrição, sem comentários, sem aspas e sem descrever ' +
+                  'sons. Se não houver fala audível, responda exatamente: (sem fala)',
+              },
+              {
+                inlineData: {
+                  mimeType: mimeType.split(';')[0].trim(),
+                  data: buffer.toString('base64'),
+                },
+              },
+            ],
+          },
+        ],
+        config: {
+          // Zero: transcrição não é lugar pra variação. A mesma gravação
+          // tem que dar o mesmo texto sempre — é o que permite comparar o
+          // que o painel mostra com o que o cliente disse.
+          temperature: 0,
+          thinkingConfig: { thinkingBudget: ORCAMENTO_DE_RACIOCINIO },
+          abortSignal: AbortSignal.timeout(TEMPO_LIMITE_TRANSCRICAO_MS),
+        },
+      });
+
+      const texto = resposta.text?.trim();
+      if (!texto || texto === '(sem fala)') return null;
+
+      this.logger.log(
+        `Áudio transcrito (${buffer.length} bytes): ${texto.length} caracteres.`,
+      );
+      return texto;
+    } catch (error) {
+      // Nunca lança: a mensagem já está gravada e aparece no painel de
+      // qualquer jeito. Sem transcrição o balão volta a ser só o áudio,
+      // que é o comportamento de antes — degradar é aceitável, derrubar o
+      // recebimento não.
+      this.logger.warn(
+        `Não deu pra transcrever o áudio: ${error instanceof Error ? error.message : error}`,
+      );
+      return null;
     }
   }
 

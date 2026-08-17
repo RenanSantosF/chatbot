@@ -140,6 +140,21 @@ export class UpdateInboxSettingsDto {
   queueVisibility?: 'ALL' | 'OWN_QUEUES';
 
   /**
+   * O que acontece com o áudio do cliente quando quem responde é gente.
+   *
+   * Não vale pro atendimento da IA: ela transcreve sempre, porque sem isso
+   * não tem o que responder. Aqui a escolha é de custo — cada transcrição
+   * é uma chamada ao modelo, paga pelo dono da conta:
+   *
+   * - DESLIGADA: nem o botão aparece.
+   * - SOB_DEMANDA: o atendente clica quando quiser (padrão).
+   * - AUTOMATICA: todo áudio recebido já chega transcrito.
+   */
+  @IsOptional()
+  @IsIn(['DESLIGADA', 'SOB_DEMANDA', 'AUTOMATICA'])
+  transcricaoDeAudio?: 'DESLIGADA' | 'SOB_DEMANDA' | 'AUTOMATICA';
+
+  /**
    * As faixas de atendimento de cada dia, domingo em 0.
    *
    * `null` desliga o recurso: sem expediente configurado, a empresa atende

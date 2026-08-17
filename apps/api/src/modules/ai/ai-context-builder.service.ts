@@ -23,6 +23,7 @@ import {
   mereceBuscaNaBase,
 } from './ai-context';
 import type { AiMessage } from './providers/ai-provider.interface';
+import { TranscricaoService } from './transcricao.service';
 
 const TONE_DESCRIPTION: Record<AiTone, string> = {
   PROFESSIONAL: 'profissional e direto, sem gírias',
@@ -61,7 +62,47 @@ export class AiContextBuilder {
     private readonly knowledge: KnowledgeService,
     private readonly collection: CollectionService,
     private readonly inboxSettings: InboxSettingsService,
+    private readonly transcricao: TranscricaoService,
   ) {}
+
+  /**
+   * O que o cliente FALOU entra no histórico como texto.
+   *
+   * A IA transcreve sempre, e isto não passa pela configuração do dono: a
+   * escolha dele vale pro atendente humano, que consegue ouvir. Sem
+   * transcrição, o áudio chegava ao modelo como "[o cliente enviou um
+   * áudio, que você não consegue abrir]" — e num escritório onde boa parte
+   * do cliente prefere falar a digitar, isso é metade do atendimento fora
+   * do alcance dela.
+   *
+   * Custa uma chamada a mais só na PRIMEIRA vez: a transcrição fica
+   * guardada na mensagem, então o próximo turno da mesma conversa a lê do
+   * banco.
+   *
+   * Falhar aqui não impede a resposta — a mensagem volta ao marcador de
+   * antes, e o modelo ao menos sabe que houve um áudio.
+   */
+  private async comAudioTranscrito<
+    T extends { id: string; messageType: string; content: string },
+  >(mensagens: T[]): Promise<T[]> {
+    const audios = mensagens.filter((m) => m.messageType === 'AUDIO');
+    if (audios.length === 0) return mensagens;
+
+    const textos = new Map<string, string>();
+    for (const audio of audios) {
+      const texto = await this.transcricao.transcrever(audio.id);
+      if (texto) textos.set(audio.id, texto);
+    }
+
+    return mensagens.map((mensagem) => {
+      const texto = textos.get(mensagem.id);
+      if (!texto) return mensagem;
+      // Vira TEXT porque, pro modelo, deixou de ser um anexo ilegível e
+      // passou a ser fala. Manter AUDIO faria `descreverMensagem` colar o
+      // marcador de "não consigo abrir" na frente da transcrição.
+      return { ...mensagem, messageType: 'TEXT', content: texto };
+    });
+  }
 
   private buildSystemPrompt(params: {
     tenantName: string;
@@ -336,6 +377,8 @@ export class AiContextBuilder {
       orderBy: { createdAt: 'desc' },
       take: LIMITE_DO_HISTORICO,
       select: {
+        // O id só é lido aqui pra transcrever o áudio logo abaixo.
+        id: true,
         content: true,
         messageType: true,
         senderType: true,
@@ -348,7 +391,7 @@ export class AiContextBuilder {
       },
     });
 
-    const ordered = messages.reverse();
+    const ordered = (await this.comAudioTranscrito(messages)).reverse();
     const ultimaDoCliente = [...ordered]
       .reverse()
       .find((message) => message.senderType === 'CUSTOMER');

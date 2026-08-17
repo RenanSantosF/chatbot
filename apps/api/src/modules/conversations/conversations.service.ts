@@ -19,6 +19,7 @@ import type {
 } from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
+import { TranscricaoService } from '../ai/transcricao.service';
 import type { VerificacaoDaResposta } from '../ai/ai-guardrails';
 import { CollectionService } from '../collection/collection.service';
 import { CustomersService } from '../customers/customers.service';
@@ -271,6 +272,7 @@ export class ConversationsService {
     private readonly routing: RoutingService,
     private readonly collection: CollectionService,
     private readonly tags: TagsService,
+    private readonly transcricao: TranscricaoService,
   ) {}
 
   /**
@@ -2519,6 +2521,28 @@ export class ConversationsService {
     });
 
     let latestConversation = inbound.conversation;
+
+    /*
+     * Áudio virando texto pro atendente humano.
+     *
+     * Só aqui, e só quando a IA NÃO vai responder, por dois motivos: a IA
+     * transcreve sozinha ao montar o contexto (ela precisa, não é
+     * configurável), e ela faz isso dentro desta mesma chamada — disparar
+     * as duas transcrições em paralelo pagaria a mesma conversão duas
+     * vezes, sem ninguém ganhar nada.
+     *
+     * Sem `await` de propósito: transcrever leva segundos e o webhook que
+     * demora é o webhook que a Evolution reenvia. O balão do áudio já está
+     * gravado e já apareceu na tela; o texto chega depois, por
+     * `message.transcrita`.
+     */
+    if (
+      inbound.message &&
+      inbound.message.messageType === 'AUDIO' &&
+      conversation.aiMode !== 'AI_ACTIVE'
+    ) {
+      void this.transcricao.transcreverSeAutomatico(inbound.message.id);
+    }
 
     if (conversation.aiMode === 'AI_ACTIVE' && !(await this.chegouOutraDepois(inbound.message))) {
       const resultado = await this.aiEngine.generateReply(conversation.id);

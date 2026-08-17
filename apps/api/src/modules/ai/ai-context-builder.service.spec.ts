@@ -20,10 +20,15 @@ function montar(
     reaberturaEm?: Date;
     /** As faixas de atendimento, no formato guardado no banco. */
     expediente?: Record<string, [string, string][]>;
+    /** O que a transcrição devolve pra qualquer áudio do histórico. */
+    transcricao?: string | null;
   } = {},
 ) {
   const buscas: string[] = [];
   let whereDasMensagens: Record<string, unknown> = {};
+  const transcrever = jest
+    .fn()
+    .mockResolvedValue(opcoes.transcricao ?? null);
 
   const prisma = {
     client: {
@@ -98,12 +103,14 @@ function montar(
         .fn()
         .mockResolvedValue(lerExpediente(opcoes.expediente ?? null)),
     } as never,
+    { transcrever } as never,
   );
 
   return {
     builder,
     buscas,
     knowledge,
+    transcrever,
     quandoLeuMensagens: () => whereDasMensagens,
   };
 }
@@ -152,6 +159,61 @@ describe('o que NÃO chega no modelo', () => {
 
     expect(history).toHaveLength(1);
     expect(history[0].content).toBe('quanto custa?');
+  });
+});
+
+describe('o áudio que a IA precisa ouvir', () => {
+  it('entra no histórico como fala, não como anexo ilegível', async () => {
+    const { builder } = montar({
+      mensagens: [
+        msg({
+          id: 'audio-1',
+          messageType: 'AUDIO',
+          content: '',
+        }),
+      ],
+      transcricao: 'preciso remarcar a audiência de quinta',
+    });
+
+    const { history } = await builder.build('conversa-1');
+
+    expect(history[0].content).toBe('preciso remarcar a audiência de quinta');
+    // O marcador de "não consigo abrir" não pode sobrar na frente da fala.
+    expect(history[0].content).not.toMatch(/áudio/i);
+  });
+
+  it('a pergunta que vai pra base de conhecimento é a fala transcrita', async () => {
+    const { builder, buscas } = montar({
+      mensagens: [msg({ id: 'audio-1', messageType: 'AUDIO', content: '' })],
+      transcricao: 'vocês atendem aos sábados?',
+    });
+
+    await builder.build('conversa-1');
+
+    expect(buscas).toEqual(['vocês atendem aos sábados?']);
+  });
+
+  it('falhar a transcrição não derruba a resposta', async () => {
+    const { builder } = montar({
+      mensagens: [msg({ id: 'audio-1', messageType: 'AUDIO', content: '' })],
+      transcricao: null,
+    });
+
+    const { history } = await builder.build('conversa-1');
+
+    expect(history).toHaveLength(1);
+    // Volta ao comportamento antigo: o modelo ao menos sabe que houve áudio.
+    expect(history[0].content).toMatch(/áudio/i);
+  });
+
+  it('não gasta chamada com conversa sem áudio nenhum', async () => {
+    const { builder, transcrever } = montar({
+      mensagens: [msg({ content: 'bom dia' })],
+    });
+
+    await builder.build('conversa-1');
+
+    expect(transcrever).not.toHaveBeenCalled();
   });
 });
 

@@ -62,6 +62,7 @@ function montar(
     {} as never,
     {} as never,
     {} as never,
+    { transcreverSeAutomatico: jest.fn() } as never,
   );
 
   return { service, prisma, realtime, atualizacoes };
@@ -314,6 +315,7 @@ describe('a chave que chega diferente da que foi gravada', () => {
       {} as never,
       {} as never,
       {} as never,
+      { transcreverSeAutomatico: jest.fn() } as never,
     );
 
     return { service, consultas };

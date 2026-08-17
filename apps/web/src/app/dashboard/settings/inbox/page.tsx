@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AudioLines,
   CheckCheck,
   Clock,
   Eye,
@@ -23,6 +24,7 @@ import { QuickRepliesCard } from "@/components/settings/quick-replies-card";
 import { TagsCard } from "@/components/settings/tags-card";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import type { InboxSettings } from "@/lib/types";
 
 export default function InboxSettingsPage() {
@@ -261,6 +263,42 @@ export default function InboxSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
+            <AudioLines className="size-4" />
+            Transcrever áudio do cliente
+          </CardTitle>
+          <CardDescription>
+            Vale pro atendimento humano. Quando quem responde é a IA, o áudio é sempre
+            transcrito — sem ouvir ela não teria o que responder —, e essa transcrição
+            aparece no balão pra todo mundo. Aqui você decide o que acontece nas conversas
+            que estão com a equipe. Cada transcrição é uma consulta à IA, cobrada na sua
+            conta.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2" role="radiogroup" aria-label="Transcrever áudio do cliente">
+          <OpcaoDeTranscricao
+            ativa={settings.transcricaoDeAudio === "SOB_DEMANDA"}
+            onClick={() => patch({ transcricaoDeAudio: "SOB_DEMANDA" })}
+            titulo="O atendente decide"
+            descricao="Aparece um botão discreto no balão do áudio. Só gasta quando alguém clica."
+          />
+          <OpcaoDeTranscricao
+            ativa={settings.transcricaoDeAudio === "AUTOMATICA"}
+            onClick={() => patch({ transcricaoDeAudio: "AUTOMATICA" })}
+            titulo="Transcrever tudo automaticamente"
+            descricao="Todo áudio recebido já chega com o texto embaixo. Ninguém precisa parar pra ouvir — e nenhum áudio fica sem ler por estar sem fone."
+          />
+          <OpcaoDeTranscricao
+            ativa={settings.transcricaoDeAudio === "DESLIGADA"}
+            onClick={() => patch({ transcricaoDeAudio: "DESLIGADA" })}
+            titulo="Não transcrever"
+            descricao="Nem o botão aparece. A equipe ouve o áudio, como sempre fez."
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
             <Layers className="size-4" />
             Agrupar conversas do mesmo cliente
           </CardTitle>
@@ -473,5 +511,51 @@ function NumberField({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Uma das três escolhas de transcrição.
+ *
+ * Três linhas empilhadas com a atual acesa, e não um seletor: cada opção
+ * carrega uma consequência de custo que precisa estar visível ANTES do
+ * clique, e explicação não cabe dentro de um `<option>`.
+ */
+function OpcaoDeTranscricao({
+  ativa,
+  onClick,
+  titulo,
+  descricao,
+}: {
+  ativa: boolean;
+  onClick: () => void;
+  titulo: string;
+  descricao: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={ativa}
+      onClick={onClick}
+      className={cn(
+        "flex items-start gap-3 rounded-md border p-3 text-left transition-colors",
+        ativa ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+          ativa ? "border-primary" : "border-muted-foreground/40",
+        )}
+      >
+        {ativa ? <span className="size-2 rounded-full bg-primary" /> : null}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{titulo}</span>
+        <span className="block text-xs text-muted-foreground text-pretty">{descricao}</span>
+      </span>
+    </button>
   );
 }

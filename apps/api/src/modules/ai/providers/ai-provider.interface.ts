@@ -50,6 +50,32 @@ export interface AiProvider {
 
 export const AI_PROVIDER = Symbol('AI_PROVIDER');
 
+export interface AiTranscribeInput {
+  buffer: Buffer;
+  /** O tipo declarado do arquivo. O modelo precisa dele pra decodificar. */
+  mimeType: string;
+  apiKey: string;
+  model?: string | null;
+}
+
+/**
+ * Ouvir o que o cliente falou.
+ *
+ * Contrato à parte de `AiProvider` pelo mesmo motivo dos embeddings: nem
+ * todo provedor de conversa transcreve áudio na mesma conta, e obrigar
+ * quem não transcreve a implementar um método que só sabe lançar é pior
+ * que declarar a capacidade onde ela existe.
+ *
+ * Existe porque, sem ele, o áudio chegava ao modelo como
+ * "[o cliente enviou um áudio, que você não consegue abrir]" — e num
+ * escritório onde boa parte do cliente prefere falar a digitar, isso é
+ * metade do atendimento que a IA não enxerga.
+ */
+export interface AiTranscriptionProvider {
+  /** @returns o texto falado, ou null quando não deu pra entender nada. */
+  transcribe(input: AiTranscribeInput): Promise<string | null>;
+}
+
 export type EmbeddingTaskType = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
 
 export interface AiEmbedInput {

@@ -21,6 +21,7 @@ import type {
   ConversationStatus,
 } from '../../../generated/prisma/client';
 import type { RequestUser } from '../auth/auth.types';
+import { TranscricaoService } from '../ai/transcricao.service';
 import {
   ConversationsService,
   type OrdemDoInbox,
@@ -33,7 +34,10 @@ import { SimulateInboundDto } from './dto/simulate-inbound.dto';
 
 @Controller('conversations')
 export class ConversationsController {
-  constructor(private readonly conversationsService: ConversationsService) {}
+  constructor(
+    private readonly conversationsService: ConversationsService,
+    private readonly transcricao: TranscricaoService,
+  ) {}
 
   @Get()
   list(
@@ -156,6 +160,22 @@ export class ConversationsController {
     @Body('emoji') emoji: string,
   ) {
     return this.conversationsService.reactToMessage(id, messageId, emoji ?? '');
+  }
+
+  /**
+   * O botão de transcrever, do lado do atendente.
+   *
+   * Exige a mesma permissão de responder porque é quem responde que
+   * precisa entender o áudio — e porque cada chamada destas custa dinheiro
+   * do dono da conta.
+   */
+  @Post(':id/messages/:messageId/transcrever')
+  @RequiresPermission('conversations.send')
+  transcrever(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.transcricao.transcreverAPedido(id, messageId);
   }
 
   /**
