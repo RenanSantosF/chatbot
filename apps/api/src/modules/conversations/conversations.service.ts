@@ -20,6 +20,7 @@ import type {
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
 import { TranscricaoService } from '../ai/transcricao.service';
+import { AuditService } from '../audit/audit.service';
 import type { VerificacaoDaResposta } from '../ai/ai-guardrails';
 import { CollectionService } from '../collection/collection.service';
 import { CustomersService } from '../customers/customers.service';
@@ -273,6 +274,7 @@ export class ConversationsService {
     private readonly collection: CollectionService,
     private readonly tags: TagsService,
     private readonly transcricao: TranscricaoService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -1439,7 +1441,7 @@ export class ConversationsService {
   async apagarMensagem(
     conversationId: string,
     messageId: string,
-    quem: { userId: string; role: UserRole },
+    quem: { userId: string; role: UserRole; name?: string },
   ) {
     await this.requireConversationExists(conversationId);
 
@@ -1476,6 +1478,42 @@ export class ConversationsService {
       where: { id: messageId },
       data: { deletedAt: new Date(), deletedById: quem.userId },
     });
+
+    /*
+     * O CONTEÚDO vai pro registro, e este é o único lugar onde ele ainda
+     * existe pra ser copiado.
+     *
+     * Foi escolha explícita do dono do produto, e ela tem um preço que
+     * merece estar escrito aqui, não só no schema: o texto que alguém
+     * apagou continua legível por dono e admin, pra sempre. Em troca,
+     * "apaguei sem querer" e "eu nunca mandei isso" deixam de ser
+     * discussões sem árbitro.
+     *
+     * Registrado no serviço e não no controller (como as outras ações)
+     * porque o controller recebe a mensagem JÁ apagada — sem conteúdo
+     * nenhum pra guardar. É a exceção que a regra precisa ter.
+     */
+    await this.audit.registrar(
+      { userId: quem.userId, name: quem.name },
+      {
+        action: 'MENSAGEM_APAGADA',
+        conversationId,
+        resumo: `Apagou uma mensagem ${mensagem.senderType === 'AI' ? 'da IA' : 'da equipe'}.`,
+        snapshot: {
+          content: mensagem.content,
+          messageType: mensagem.messageType,
+          senderType: mensagem.senderType,
+          // Defensivo de propósito. O `registrar` já engole a falha DELE,
+          // mas montar o argumento acontece antes da chamada — e uma
+          // exceção aqui derrubaria a exclusão que está sendo observada,
+          // que é justamente o que a auditoria não pode fazer.
+          enviadaEm:
+            mensagem.createdAt instanceof Date
+              ? mensagem.createdAt.toISOString()
+              : null,
+        },
+      },
+    );
 
     this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
       conversationId,

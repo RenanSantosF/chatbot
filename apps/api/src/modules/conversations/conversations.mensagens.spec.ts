@@ -169,6 +169,7 @@ function montar(estado: Estado = {}) {
     {} as never,
     {} as never,
     { transcreverSeAutomatico: jest.fn() } as never,
+    { registrar: jest.fn() } as never,
   );
 
   return {

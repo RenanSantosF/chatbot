@@ -20,6 +20,10 @@ function montar() {
     tenantId: 'tenant-1',
     instance: 'inteliwa-1',
     webhookSecret: SEGREDO,
+    // Nulo = nunca pareou. Os testes que precisam de "já pareado"
+    // sobrescrevem isto pelo findFirst.
+    lastSeenAt: null as Date | null,
+    estado: 'CONECTADO',
   };
 
   const prisma = {
@@ -728,5 +732,114 @@ describe('as conversas que já estavam no aparelho', () => {
         }),
       }),
     );
+  });
+});
+
+/**
+ * `connecting` não é "aguardando parear" numa sessão que já pareou.
+ *
+ * A Evolution manda esse estado toda vez que o socket sobe — inclusive
+ * logo depois do `open` do pareamento por código, e a cada reconexão do
+ * servidor. Traduzir isso pra AGUARDANDO_QRCODE rebaixava uma sessão
+ * VIVA: o painel exibia "aguardando a leitura do QR code", travava o
+ * compositor e mandava reconectar o que nunca tinha caído.
+ */
+describe('reconexão não derruba sessão de pé', () => {
+  const conexao = (state: string) => ({
+    event: 'connection.update',
+    instance: 'inteliwa-1',
+    data: { state },
+  });
+
+  it('mantém o estado quando o socket reconecta numa sessão já pareada', async () => {
+    const { controller, prisma, realtime, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockResolvedValue({
+      id: 'config-1',
+      tenantId: 'tenant-1',
+      instance: 'inteliwa-1',
+      webhookSecret: SEGREDO,
+      lastSeenAt: new Date('2026-08-17T04:00:00Z'),
+    });
+
+    await controller.receber(SEGREDO, req, conexao('connecting'));
+
+    expect(prisma.client.evolutionSettings.update).not.toHaveBeenCalled();
+    // Nem o aviso na tela: era ele que travava o teclado do atendente.
+    expect(realtime.emitToTenant).not.toHaveBeenCalled();
+  });
+
+  it('quem NUNCA pareou continua vendo "aguardando QR code"', async () => {
+    // Aqui o estado é verdadeiro: não há sessão, e é preciso parear.
+    const { controller, prisma, req } = montar();
+
+    await controller.receber(SEGREDO, req, conexao('connecting'));
+
+    expect(prisma.client.evolutionSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ estado: 'AGUARDANDO_QRCODE' }),
+      }),
+    );
+  });
+
+  it('a queda de verdade continua chegando', async () => {
+    // O guarda vale só pro `connecting`. Se a sessão cair mesmo, o
+    // `close` chega e o aviso tem que aparecer — senão o defeito vira o
+    // oposto: mensagem sumindo em silêncio.
+    const { controller, prisma, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockResolvedValue({
+      id: 'config-1',
+      tenantId: 'tenant-1',
+      instance: 'inteliwa-1',
+      webhookSecret: SEGREDO,
+      lastSeenAt: new Date('2026-08-17T04:00:00Z'),
+    });
+
+    await controller.receber(SEGREDO, req, conexao('close'));
+
+    expect(prisma.client.evolutionSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ estado: 'DESCONECTADO' }),
+      }),
+    );
+  });
+});
+
+describe('estado torto se conserta sozinho', () => {
+  it('mensagem chegando destrava a sessão marcada como aguardando QR code', async () => {
+    // O caso real: a sessão pareou por código, um `connecting` atrasado
+    // rebaixou o estado, e o painel ficou com o teclado travado enquanto
+    // o WhatsApp entregava normalmente do outro lado.
+    const { controller, prisma, realtime, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockResolvedValue({
+      id: 'config-1',
+      tenantId: 'tenant-1',
+      instance: 'inteliwa-1',
+      webhookSecret: SEGREDO,
+      lastSeenAt: new Date(),
+      estado: 'AGUARDANDO_QRCODE',
+    });
+
+    await controller.receber(SEGREDO, req, mensagem());
+
+    expect(prisma.client.evolutionSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ estado: 'CONECTADO', lastError: null }),
+      }),
+    );
+    expect(realtime.emitToTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'canal.estado',
+      { estado: 'CONECTADO', lastError: null },
+    );
+  });
+
+  it('não escreve à toa quando o estado já está certo', async () => {
+    // Toda mensagem passa por aqui: uma escrita por mensagem recebida
+    // seria um custo permanente pra consertar um caso raro.
+    const { controller, prisma, req } = montar();
+
+    await controller.receber(SEGREDO, req, mensagem());
+
+    expect(prisma.client.evolutionSettings.update).not.toHaveBeenCalled();
   });
 });

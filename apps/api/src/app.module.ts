@@ -16,6 +16,7 @@ import { RetentionModule } from './modules/retention/retention.module';
 import { InboxSettingsModule } from './modules/inbox-settings/inbox-settings.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { QueuesModule } from './modules/queues/queues.module';
 import { QuickRepliesModule } from './modules/quick-replies/quick-replies.module';
@@ -66,6 +67,7 @@ import { StorageModule } from './modules/storage/storage.module';
     KnowledgeModule,
     MetricsModule,
     PermissionsModule,
+    AuditModule,
     TasksModule,
     QueuesModule,
     QuickRepliesModule,

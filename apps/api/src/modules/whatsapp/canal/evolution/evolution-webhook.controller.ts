@@ -103,6 +103,9 @@ export class EvolutionWebhookController {
     switch (evento) {
       case 'MESSAGES_UPSERT':
         await this.mensagens(body, config);
+        // Mensagem chegando é prova de sessão viva. Conserta sozinho o
+        // estado que ficou torto — ver `corrigirEstadoTorto`.
+        await this.corrigirEstadoTorto(config);
         break;
       case 'MESSAGES_UPDATE':
         await this.statusDeEntrega(body);
@@ -406,19 +409,102 @@ export class EvolutionWebhookController {
     );
   }
 
+  /**
+   * A sessão está entregando mensagem e o painel diz que ela caiu.
+   *
+   * Existe porque o estado errado GRAVADO não se conserta sozinho: ele só
+   * mudaria no próximo `open`, e num aparelho já pareado esse evento pode
+   * demorar horas — ou não vir nunca, se a sessão nunca mais oscilar. A
+   * empresa fica com o compositor travado e o aviso de "reconecte" na
+   * tela enquanto o WhatsApp funciona perfeitamente do outro lado.
+   *
+   * Mensagem entregue é a prova mais forte que existe de que a sessão
+   * está de pé — mais forte que qualquer estado que tenhamos gravado
+   * antes. Então ela ganha da nossa anotação.
+   */
+  private async corrigirEstadoTorto(config: {
+    id: string;
+    tenantId: string;
+    estado: string;
+    instance: string;
+  }) {
+    if (config.estado === 'CONECTADO') return;
+
+    await this.prisma.client.evolutionSettings.update({
+      where: { id: config.id },
+      data: {
+        estado: 'CONECTADO',
+        lastSeenAt: new Date(),
+        qrCode: null,
+        pairingCode: null,
+        lastError: null,
+      },
+    });
+
+    this.realtime.emitToTenant(config.tenantId, 'canal.estado', {
+      estado: 'CONECTADO',
+      lastError: null,
+    });
+
+    this.logger.log(
+      `Sessão ${config.instance} estava marcada como ${config.estado} mas ` +
+        'entregou mensagem; estado corrigido pra CONECTADO.',
+    );
+  }
+
   private async conexao(
     body: EventoDaEvolution,
-    config: { id: string; tenantId: string; instance: string },
+    config: {
+      id: string;
+      tenantId: string;
+      instance: string;
+      /**
+       * Quando a sessão esteve de pé pela última vez.
+       *
+       * É o que separa "nunca pareou" de "já pareou e está reconectando".
+       * Escolhido em vez de `connectedPhone` porque aquele campo existe no
+       * schema mas nunca chega a ser gravado — só lido e zerado —, então
+       * apoiar a decisão nele seria apoiá-la em algo sempre nulo.
+       */
+      lastSeenAt: Date | null;
+    },
   ) {
     const dados = body.data as { state?: string; statusReason?: number } | undefined;
     const bruto = dados?.state;
+
+    /*
+     * `connecting` só quer dizer "aguardando parear" ANTES do primeiro
+     * pareamento.
+     *
+     * A Evolution manda `connecting` toda vez que o socket sobe — e ele
+     * sobe de novo depois de conectado, em reconexão, em reinício do
+     * servidor, e logo em seguida ao `open` do pareamento por código.
+     * Traduzir isso pra AGUARDANDO_QRCODE rebaixava uma sessão que estava
+     * VIVA: o painel passava a exibir "aguardando a leitura do QR code",
+     * travava o compositor e mandava reconectar uma conexão que nunca
+     * tinha caído.
+     *
+     * Quem já pareou tem telefone gravado. Nesse caso `connecting` é
+     * transitório e o estado anterior continua valendo — se a sessão
+     * tiver caído mesmo, o `close` chega e diz isso com todas as letras.
+     */
+    const jaPareado = Boolean(config.lastSeenAt);
 
     const estado =
       bruto === 'open'
         ? ('CONECTADO' as const)
         : bruto === 'connecting'
-          ? ('AGUARDANDO_QRCODE' as const)
+          ? jaPareado
+            ? null
+            : ('AGUARDANDO_QRCODE' as const)
           : ('DESCONECTADO' as const);
+
+    if (estado === null) {
+      this.logger.log(
+        `Sessão ${config.instance}: reconectando (já pareada) — estado mantido.`,
+      );
+      return;
+    }
 
     // O código de motivo é o que separa "o celular ficou sem internet" de
     // "o WhatsApp desvinculou o aparelho" — e só o segundo exige ler o QR

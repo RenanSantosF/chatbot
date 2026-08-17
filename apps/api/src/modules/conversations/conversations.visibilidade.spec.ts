@@ -63,6 +63,7 @@ function montar(opcoes: {
     {} as never,
     {} as never,
     { transcreverSeAutomatico: jest.fn() } as never,
+    { registrar: jest.fn() } as never,
   );
 
   return { service, wheres };

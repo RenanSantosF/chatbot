@@ -17,11 +17,14 @@ import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { RequiresPermission } from '../../common/auth/permission.decorator';
 import { Roles } from '../../common/auth/roles.decorator';
 import type {
+  AuditAction,
   ConversationPriority,
   ConversationStatus,
+  Prisma,
 } from '../../../generated/prisma/client';
 import type { RequestUser } from '../auth/auth.types';
 import { TranscricaoService } from '../ai/transcricao.service';
+import { AuditService } from '../audit/audit.service';
 import {
   ConversationsService,
   type OrdemDoInbox,
@@ -37,7 +40,35 @@ export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
     private readonly transcricao: TranscricaoService,
+    private readonly audit: AuditService,
   ) {}
+
+  /**
+   * O registro é feito AQUI, na borda, e não lá dentro do serviço.
+   *
+   * Dois motivos. O primeiro é que só aqui se sabe QUEM fez: os métodos do
+   * serviço são chamados também pela IA e pelo webhook, e creditar uma
+   * transferência automática a uma pessoa seria pior que não registrar
+   * nada. O segundo é que só se registra o que DEU CERTO — uma
+   * transferência que morreu numa exceção não chega nesta linha.
+   */
+  private async registrar(
+    user: RequestUser,
+    action: AuditAction,
+    conversationId: string,
+    resumo: string,
+    snapshot?: Prisma.InputJsonValue,
+  ) {
+    await this.audit.registrar(
+      { userId: user.userId, name: user.name },
+      { action, conversationId, resumo, ...(snapshot ? { snapshot } : {}) },
+    );
+  }
+
+  /** O nome que a linha do registro vai mostrar meses depois. */
+  private nomeDoCliente(conversa: { customer?: { name?: string | null } | null }) {
+    return conversa.customer?.name ?? 'cliente sem nome';
+  }
 
   @Get()
   list(
@@ -192,6 +223,9 @@ export class ConversationsController {
     return this.conversationsService.apagarMensagem(id, messageId, {
       userId: user.userId,
       role: user.role,
+      // O nome vai junto pra o registro dizer QUEM apagou sem depender de
+      // o usuário ainda existir quando alguém for ler.
+      name: user.name,
     });
   }
 
@@ -231,25 +265,43 @@ export class ConversationsController {
    */
   @Post(':id/assign')
   @RequiresPermission('conversations.assign')
-  assign(
+  async assign(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
     @Body('force') force?: boolean,
   ) {
-    return this.conversationsService.assign(id, user.userId, {
+    const conversa = await this.conversationsService.assign(id, user.userId, {
       role: user.role,
       force: Boolean(force),
     });
+    await this.registrar(
+      user,
+      'CONVERSA_ATRIBUIDA',
+      id,
+      `Assumiu a conversa com ${this.nomeDoCliente(conversa)}.`,
+    );
+    return conversa;
   }
 
   @Post(':id/transfer')
   @RequiresPermission('conversations.assign')
-  transfer(
+  async transfer(
     @Param('id') id: string,
     @Body('toUserId') toUserId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.conversationsService.transferTo(id, toUserId, user.userId);
+    const conversa = await this.conversationsService.transferTo(
+      id,
+      toUserId,
+      user.userId,
+    );
+    await this.registrar(
+      user,
+      'CONVERSA_TRANSFERIDA',
+      id,
+      `Transferiu a conversa com ${this.nomeDoCliente(conversa)} para ${conversa.assignedUser?.name ?? 'outro atendente'}.`,
+    );
+    return conversa;
   }
 
   /** Encaminha pro setor, sem nomear pessoa — quem estiver livre pega. */
@@ -310,14 +362,28 @@ export class ConversationsController {
 
   @Post(':id/reopen')
   @RequiresPermission('conversations.resolve')
-  reopen(@Param('id') id: string) {
-    return this.conversationsService.reopen(id);
+  async reopen(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    const conversa = await this.conversationsService.reopen(id);
+    await this.registrar(
+      user,
+      'CONVERSA_REABERTA',
+      id,
+      `Reabriu o atendimento de ${this.nomeDoCliente(conversa)}.`,
+    );
+    return conversa;
   }
 
   @Post(':id/resolve')
   @RequiresPermission('conversations.resolve')
-  resolve(@Param('id') id: string) {
-    return this.conversationsService.resolve(id);
+  async resolve(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    const conversa = await this.conversationsService.resolve(id);
+    await this.registrar(
+      user,
+      'CONVERSA_RESOLVIDA',
+      id,
+      `Encerrou o atendimento de ${this.nomeDoCliente(conversa)}.`,
+    );
+    return conversa;
   }
 
   /**

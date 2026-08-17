@@ -89,8 +89,98 @@ model Tenant {
   inboxSettings      InboxSettings?
   whatsappSettings   WhatsAppSettings?
   evolutionSettings  EvolutionSettings?
+  auditLogs          AuditLog[]
 
   @@map("tenants")
+}
+
+/// O que se registra no histórico de auditoria.
+///
+/// A lista é fechada de propósito. Um campo de texto livre viraria, em
+/// dois meses, vinte grafias da mesma ação e um registro impossível de
+/// filtrar — que é o mesmo que não ter registro.
+enum AuditAction {
+  /// Mensagem apagada do painel. O conteúdo vai junto (ver `snapshot`).
+  MENSAGEM_APAGADA
+  CONVERSA_TRANSFERIDA
+  CONVERSA_ATRIBUIDA
+  CONVERSA_RESOLVIDA
+  CONVERSA_REABERTA
+  PRIORIDADE_ALTERADA
+  IA_REATIVADA
+  CONFIGURACAO_ALTERADA
+  COLABORADOR_CRIADO
+  COLABORADOR_ALTERADO
+  COLABORADOR_REMOVIDO
+  WHATSAPP_CONECTADO
+  WHATSAPP_DESCONECTADO
+}
+
+/// O que a equipe fez, guardado pra quem responde pela empresa.
+///
+/// Existe por um pedido que qualquer dono de loja faz na primeira semana:
+/// saber o que as pessoas mandam e "desmandam". Sem isto, uma mensagem
+/// apagada sumia sem deixar rastro — e a única saída, quando dava briga,
+/// era a palavra de um contra a do outro.
+///
+/// Três decisões que valem estar escritas:
+///
+/// 1. É SÓ ESCRITA. Não existe rota de editar nem de apagar linha daqui.
+///    Um registro que o registrado consegue alterar não registra nada.
+///
+/// 2. Guarda o CONTEÚDO do que foi apagado, no `snapshot`. Foi escolha
+///    explícita do dono do produto, e ela tem um custo que precisa ser
+///    dito: o texto que alguém apagou continua existindo, legível por
+///    dono e admin. Em troca, "apaguei sem querer" e "nunca mandei isso"
+///    deixam de ser indecidíveis.
+///
+/// 3. O autor é uma referência SEM cascade de exclusão (`onDelete:
+///    SetNull`): demitir alguém não pode limpar o rastro do que a pessoa
+///    fez. O nome fica gravado em `actorName` justamente pra a linha
+///    continuar legível depois que o usuário sumir.
+model AuditLog {
+  id       String @id @default(uuid())
+  tenantId String
+
+  action AuditAction
+
+  /// Quem fez. Nulo quando foi o sistema (webhook, rotina automática).
+  actorId   String?
+  /// O nome de quem fez, congelado no momento da ação.
+  ///
+  /// Duplica o `user.name` de propósito: o histórico tem que continuar
+  /// legível depois que a pessoa for removida da equipe, e tem que dizer
+  /// o nome que ela tinha NA ÉPOCA, não o de agora.
+  actorName String
+
+  /// A conversa envolvida, quando a ação acontece dentro de uma.
+  conversationId String?
+  /// O que a linha descreve, em uma frase, já pronta pra tela.
+  ///
+  /// Montada na gravação e não na leitura: a frase depende de dados que
+  /// podem mudar ou sumir depois (nome de fila, nome de colaborador), e
+  /// remontá-la meses depois produziria um histórico que muda sozinho.
+  resumo String
+
+  /// O estado que a ação mudou ou destruiu, cru.
+  ///
+  /// Numa mensagem apagada é o conteúdo dela; numa configuração alterada,
+  /// o antes e o depois. Json porque o formato é diferente por ação, e
+  /// uma coluna por caso viraria uma tabela com trinta colunas nulas.
+  snapshot Json?
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// A consulta da tela: por empresa, do mais novo pro mais velho.
+  @@index([tenantId, createdAt])
+  /// O filtro por tipo de ação, dentro da empresa.
+  @@index([tenantId, action, createdAt])
+  /// "O que aconteceu NESTA conversa" — o atalho aberto pelo painel.
+  @@index([tenantId, conversationId, createdAt])
+  @@map("audit_logs")
 }
 
 /// Quem entrega a mensagem.
@@ -297,6 +387,7 @@ model User {
   queueMemberships      QueueMember[]
   routingRules          RoutingRule[]
   customerNotes         CustomerNote[]
+  auditLogs             AuditLog[]     @relation("AuditActor")
 
   // Email é único globalmente (não só por tenant): simplifica o login, que não
   // exige saber a qual empresa o usuário pertence antes de autenticar.
