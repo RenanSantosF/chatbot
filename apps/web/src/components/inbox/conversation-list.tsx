@@ -164,13 +164,16 @@ export function ConversationList({
             </Avatar>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <span className={cn("truncate text-[15px]", unread > 0 ? "font-semibold" : "font-medium")}>
+                {/* 16/14/12 em vez de 15/13/11: é a lista que se lê o dia
+                    inteiro, e um ponto a mais em cada nível se paga em
+                    cansaço sem tirar nenhuma conversa da tela. */}
+                <span className={cn("truncate text-[16px]", unread > 0 ? "font-semibold" : "font-medium")}>
                   {conversation.customer.name}
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <span
                     className={cn(
-                      "text-[11px]",
+                      "text-[12px]",
                       unread > 0 ? "font-medium text-primary" : "text-muted-foreground",
                     )}
                   >
@@ -214,7 +217,7 @@ export function ConversationList({
               <div className="mt-0.5 flex items-center gap-1.5">
                 <p
                   className={cn(
-                    "min-w-0 flex-1 truncate text-[13px]",
+                    "min-w-0 flex-1 truncate text-[14px]",
                     unread > 0 ? "font-medium text-foreground" : "text-muted-foreground",
                   )}
                 >
