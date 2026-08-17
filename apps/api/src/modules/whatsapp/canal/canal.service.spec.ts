@@ -50,10 +50,20 @@ function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
     motivoDaUltimaFalha: null as string | null,
   };
 
-  const prisma = { tenantId: 'tenant-1', db: {} };
+  const prisma = {
+    tenantId: 'tenant-1',
+    db: {
+      evolutionSettings: {
+        // Sem sessão pareada, por padrão: o resgate por sessão viva tem
+        // teste próprio abaixo.
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    },
+  };
   const global = {
     client: {
       tenant: {
+        update: jest.fn().mockResolvedValue({}),
         findUnique: jest
           .fn()
           .mockResolvedValue(provider ? { canal: provider } : null),
@@ -68,7 +78,7 @@ function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
     evolution as unknown as EvolutionCanal,
   );
 
-  return { service, meta, evolution, global };
+  return { service, meta, evolution, global, prisma };
 }
 
 describe('escolha do provedor', () => {
@@ -111,6 +121,50 @@ describe('escolha do provedor', () => {
     await service.enviarTexto('5511999', 'b');
 
     expect(global.client.tenant.findUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('canal desatualizado', () => {
+  it('usa a Evolution quando a sessão está pareada, mesmo com o campo em META_CLOUD', async () => {
+    // O campo só é escrito ao conectar e desconectar, então ele atrasa. O
+    // estrago é mudo: a tela mostra "Conectado", o que CHEGA entra
+    // normalmente, e só o envio cai no provedor oficial — que não tem
+    // credencial nenhuma e recusa.
+    const { service, meta, evolution, prisma } = montar('META_CLOUD');
+    prisma.db.evolutionSettings.findFirst.mockResolvedValue({
+      estado: 'CONECTADO',
+    });
+
+    await service.enviarTexto('5511999', 'oi');
+
+    expect(evolution.enviarTexto).toHaveBeenCalled();
+    expect(meta.enviarTexto).not.toHaveBeenCalled();
+  });
+
+  it('corrige o campo de passagem, pra não repetir', async () => {
+    const { service, global, prisma } = montar('META_CLOUD');
+    prisma.db.evolutionSettings.findFirst.mockResolvedValue({
+      estado: 'CONECTADO',
+    });
+
+    await service.enviarTexto('5511999', 'oi');
+
+    expect(global.client.tenant.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { canal: 'EVOLUTION' } }),
+    );
+  });
+
+  it('não sequestra quem está no oficial com a sessão fora do ar', async () => {
+    // Sessão apenas EXISTIR não basta: quem desconectou a Evolution e
+    // voltou pro oficial não pode ser arrastado de volta.
+    const { service, meta, prisma } = montar('META_CLOUD');
+    prisma.db.evolutionSettings.findFirst.mockResolvedValue({
+      estado: 'DESCONECTADO',
+    });
+
+    await service.enviarTexto('5511999', 'oi');
+
+    expect(meta.enviarTexto).toHaveBeenCalled();
   });
 });
 

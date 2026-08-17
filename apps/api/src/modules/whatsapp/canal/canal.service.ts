@@ -51,12 +51,48 @@ export class CanalService {
    * conectado" que o painel sabe mostrar.
    */
   private async provedor(): Promise<CanalDeMensagem> {
-    const tenant = await this.global.client.tenant.findUnique({
-      where: { id: this.prisma.tenantId },
-      select: { canal: true },
-    });
+    const [tenant, sessao] = await Promise.all([
+      this.global.client.tenant.findUnique({
+        where: { id: this.prisma.tenantId },
+        select: { canal: true },
+      }),
+      this.prisma.db.evolutionSettings.findFirst({ select: { estado: true } }),
+    ]);
 
-    this.ultimoUsado = tenant?.canal === 'EVOLUTION' ? this.evolution : this.meta;
+    if (tenant?.canal === 'EVOLUTION') {
+      this.ultimoUsado = this.evolution;
+      return this.ultimoUsado;
+    }
+
+    /*
+     * Uma sessão pareada vale mais que o campo.
+     *
+     * O `canal` só é escrito ao conectar e ao desconectar, então ele
+     * ATRASA: uma sessão que voltou sozinha, um desconectar seguido de
+     * reconexão pelo próprio servidor, ou uma linha gravada por uma
+     * versão anterior deixam o campo dizendo META_CLOUD com o aparelho
+     * vinculado e funcionando.
+     *
+     * O estrago é mudo do jeito mais cruel: a tela mostra "Conectado", o
+     * webhook entrega as mensagens que chegam, e só o ENVIO cai no
+     * provedor oficial — que não tem credencial nenhuma e recusa. Aparelho
+     * vinculado de pé é evidência melhor que um campo que ninguém
+     * atualizou, então ele ganha, e o campo é corrigido de passagem pra
+     * não repetir.
+     */
+    if (sessao?.estado === 'CONECTADO') {
+      this.logger.warn(
+        `Tenant ${this.prisma.tenantId} tinha sessão da Evolution conectada com o canal em META_CLOUD; corrigido.`,
+      );
+      await this.global.client.tenant.update({
+        where: { id: this.prisma.tenantId },
+        data: { canal: 'EVOLUTION' },
+      });
+      this.ultimoUsado = this.evolution;
+      return this.ultimoUsado;
+    }
+
+    this.ultimoUsado = this.meta;
     return this.ultimoUsado;
   }
 
