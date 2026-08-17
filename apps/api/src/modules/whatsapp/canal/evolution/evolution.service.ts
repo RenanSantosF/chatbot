@@ -164,59 +164,21 @@ export class EvolutionService {
     const url = this.urlDoWebhook(config.webhookSecret);
 
     /*
-     * Parear exige uma sessão NOVA. Sempre.
+     * NÃO apague a instância pra "começar limpa".
      *
-     * O material de pareamento — código de oito caracteres ou QR — só vale
-     * pra um socket que acabou de subir e ainda não tentou nada. Numa
-     * sessão que já existe, seja porque a tentativa anterior falhou, seja
-     * porque ela ficou pela metade, o servidor devolve um código que o
-     * WhatsApp recusa com "não foi possível conectar o dispositivo".
+     * Isto já esteve aqui, com a intenção de garantir um socket novo a
+     * cada pareamento, e o resultado foi pior que o problema: a Evolution
+     * apaga a linha no banco dela mas mantém o socket vivo em memória.
+     * Ele segue gerando código e tentando gravar num registro que não
+     * existe mais — `P2025: No record was found for an update` — e o
+     * pareamento nunca completa. O celular nem chega a receber o pedido
+     * de conexão, então o erro que aparece é "não foi possível conectar o
+     * dispositivo", que aponta pro lugar errado.
      *
-     * Também é o que destrava a troca de modo: pedido o código, aquele
-     * socket fica em modo código e não produz QR nenhum. Sem recriar,
-     * quem começou por um caminho não conseguia mais tentar o outro.
-     *
-     * Só quando NÃO está conectada: apagar uma sessão viva mataria um
-     * atendimento que está funcionando.
+     * Quando uma sessão precisar mesmo ser recriada, o caminho é
+     * desconectar pela tela (que faz logout ANTES de apagar, terminando o
+     * socket) e conectar de novo.
      */
-    /*
-     * Um pareamento em andamento não pode ser recriado por baixo.
-     *
-     * Recriar zera o socket, e com ele o código de oito caracteres ou o
-     * QR que a pessoa está justamente digitando ou lendo. O WhatsApp
-     * responde "não foi possível conectar o dispositivo" — não porque o
-     * código estava errado, mas porque a sessão a que ele pertencia
-     * deixou de existir enquanto ela olhava pro celular.
-     *
-     * Acontecia sozinho: trocar de modo pede pareamento, "gerar outro"
-     * pede pareamento, e a tela consulta o estado a cada poucos segundos.
-     * Enquanto houver material recém-emitido, o certo é devolver o que já
-     * está valendo em vez de começar de novo.
-     */
-    const emitidoAgora =
-      existente?.updatedAt &&
-      Date.now() - existente.updatedAt.getTime() < VALIDADE_DO_PAREAMENTO_MS &&
-      Boolean(existente.qrCode || existente.pairingCode);
-
-    if (emitidoAgora) {
-      this.logger.log(
-        `Sessão ${config.instance}: pareamento ainda válido, devolvido sem recriar.`,
-      );
-      return {
-        instance: config.instance,
-        qrCode: existente.qrCode,
-        pairingCode: existente.pairingCode,
-        estado: 'AGUARDANDO_QRCODE' as const,
-      };
-    }
-
-    if (existente && existente.estado !== 'CONECTADO') {
-      await evolution.desconectar(credenciais);
-      await evolution.apagarInstancia(credenciais);
-      this.logger.log(
-        `Sessão ${config.instance} recriada do zero pro tenant ${this.prisma.tenantId}: pareamento novo exige socket limpo.`,
-      );
-    }
 
     // Criar dá 403 quando a sessão já existe — o que, depois da limpeza
     // acima, só acontece com uma sessão VIVA. Aí o caminho é pedir o
@@ -329,17 +291,13 @@ export class EvolutionService {
     const { config, credenciais } = await this.credenciais();
 
     /*
-     * Pedir material novo numa sessão não pareada é recriá-la.
+     * Pede ao servidor o material da sessão que já existe.
      *
-     * `/instance/connect` devolve o que aquele socket já tinha — e se ele
-     * está em modo código, devolve o mesmo código vencido, ou nada quando
-     * se pede QR. Passar por `conectar`, que limpa antes, é o que faz
-     * "gerar outro" gerar de fato outro.
+     * Não recria nada: recriar exigiria apagar a instância, e apagar
+     * deixa o socket órfão em memória — ver o aviso longo em `conectar`.
+     * Pra trocar de QR pra código (ou o contrário) numa sessão que não
+     * pareou, o caminho é desconectar pela tela e conectar de novo.
      */
-    if (config.estado !== 'CONECTADO') {
-      return this.conectar(numero);
-    }
-
     const resposta = await evolution.conectar(credenciais, numero);
     if (!resposta.ok) {
       throw new BadRequestException(

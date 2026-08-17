@@ -191,73 +191,25 @@ describe('endereço do webhook', () => {
     );
   });
 
-  it('apaga a sessão antes de parear de novo', async () => {
-    // Código de pareamento só vale em socket que acabou de subir. Numa
-    // sessão que sobrou de uma tentativa falha, o WhatsApp recusa com
-    // "não foi possível conectar o dispositivo" — e um socket que já
-    // pediu código nunca mais devolve QR.
+
+
+
+  it('nunca apaga a instância pra parear', async () => {
+    // Apagar deixa o socket órfão em memória: ele segue gerando código e
+    // tentando gravar num registro que não existe mais (P2025), o
+    // pareamento nunca completa, e o celular nem chega a receber o pedido
+    // de conexão. Isto já esteve no código e custou uma noite.
     process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
     const chamadas = servidor({ sessaoJaExiste: true });
     const { service } = montar({
       baseUrl: 'https://evo.exemplo.com',
       estado: 'AGUARDANDO_QRCODE',
-    });
-
-    await service.conectar();
-
-    const apagou = chamadas.findIndex((c) => c.url.includes('/instance/delete/'));
-    const criou = chamadas.findIndex((c) => c.url.includes('/instance/create'));
-    expect(apagou).toBeGreaterThanOrEqual(0);
-    expect(apagou).toBeLessThan(criou);
-  });
-
-  it('não recria por baixo de um pareamento que a pessoa está usando', async () => {
-    // Recriar zera o socket e, com ele, o código que ela está digitando.
-    // O WhatsApp responde "não foi possível conectar o dispositivo" — não
-    // porque o código estava errado, mas porque a sessão dele sumiu
-    // enquanto ela olhava pro celular.
-    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
-    const chamadas = servidor({ sessaoJaExiste: true });
-    const { service } = montar({
-      baseUrl: 'https://evo.exemplo.com',
-      estado: 'AGUARDANDO_QRCODE',
-      pairingCode: '3Z243KXG',
-      updatedAt: new Date(),
-    });
-
-    const resultado = await service.conectar('5527998836017');
-
-    expect(resultado).toMatchObject({ pairingCode: '3Z243KXG' });
-    expect(chamadas).toHaveLength(0);
-  });
-
-  it('recria quando o pareamento anterior já venceu', async () => {
-    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
-    const chamadas = servidor({ sessaoJaExiste: true });
-    const { service } = montar({
-      baseUrl: 'https://evo.exemplo.com',
-      estado: 'AGUARDANDO_QRCODE',
-      pairingCode: 'VENCIDO1',
-      updatedAt: new Date(Date.now() - 5 * 60_000),
     });
 
     await service.conectar('5527998836017');
 
-    expect(chamadas.some((c) => c.url.includes('/instance/delete/'))).toBe(true);
-  });
-
-  it('não apaga uma sessão que está viva', async () => {
-    // Recriar por cima de um atendimento funcionando o derrubaria.
-    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
-    const chamadas = servidor({ sessaoJaExiste: true });
-    const { service } = montar({
-      baseUrl: 'https://evo.exemplo.com',
-      estado: 'CONECTADO',
-    });
-
-    await service.conectar();
-
     expect(chamadas.some((c) => c.url.includes('/instance/delete/'))).toBe(false);
+    expect(chamadas.some((c) => c.url.includes('/instance/logout/'))).toBe(false);
   });
 
   it('recusa conectar sem o endereço público configurado', async () => {
