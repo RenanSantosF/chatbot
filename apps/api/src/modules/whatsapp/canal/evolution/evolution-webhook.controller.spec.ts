@@ -988,6 +988,7 @@ describe('nome do cliente', () => {
       phone: '5511999999999',
       name: 'Richard Oliveira',
       daAgenda: true,
+      criarSeNovo: true,
     });
   });
 
@@ -1011,7 +1012,15 @@ describe('nome do cliente', () => {
     );
   });
 
-  it('sem nome salvo, aceita o apelido — mas sem autoridade pra sobrescrever', async () => {
+  /*
+   * O apelido não é cadastro.
+   *
+   * A lista que a Evolution entrega é tudo que o aparelho conhece — quem
+   * escreveu uma vez, participante de grupo, quem caiu numa transmissão —
+   * e todos eles têm `notify`. Aceitá-lo como prova de agenda enchia a
+   * base de "contatos" que a empresa nunca salvou.
+   */
+  it('sem nome salvo, o apelido melhora quem já é cliente mas não cria ninguém', async () => {
     const { controller, customers, req } = montar();
 
     await controller.receber(SEGREDO, req, {
@@ -1021,7 +1030,36 @@ describe('nome do cliente', () => {
     });
 
     expect(customers.upsertFromAddressBook).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Rick', daAgenda: false }),
+      expect.objectContaining({
+        name: 'Rick',
+        daAgenda: false,
+        criarSeNovo: false,
+      }),
+    );
+  });
+
+  /*
+   * Empresa verificada fica no meio: o nome comercial identifica de
+   * verdade, mas ela aparece na lista sem nunca ter sido salva. Corrige um
+   * registro existente, não cria um novo.
+   */
+  it('nome comercial verificado corrige, mas também não cria', async () => {
+    const { controller, customers, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'contacts.upsert',
+      instance: 'inteliwa-1',
+      data: [
+        { id: '5511999999999@s.whatsapp.net', verifiedName: 'Padaria Aurora' },
+      ] as never,
+    });
+
+    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Padaria Aurora',
+        daAgenda: true,
+        criarSeNovo: false,
+      }),
     );
   });
 

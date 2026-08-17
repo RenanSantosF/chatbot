@@ -102,6 +102,29 @@ export class EvolutionWebhookController {
       // também não é cliente dela.
       if (!telefone) continue;
 
+      /*
+       * O que separa "está na minha agenda" de "o WhatsApp conhece".
+       *
+       * `name` é o único campo que vem da agenda do APARELHO — é o que a
+       * empresa digitou ao salvar aquela pessoa. Os outros três não
+       * significam isso: `notify` e `pushName` são o apelido que a própria
+       * pessoa escolheu pra si, e TODO usuário do WhatsApp tem um.
+       *
+       * A lista que a Evolution entrega não é a agenda: é tudo que o
+       * aparelho conhece — quem escreveu uma vez, participante de grupo,
+       * quem entrou numa transmissão. Aceitando o apelido como prova de
+       * cadastro, cada um deles virava cliente com nome e cara de contato
+       * salvo, e a lista de "nova conversa" ficava cheia de gente que a
+       * empresa nunca salvou. Era exatamente o sintoma relatado.
+       *
+       * `verifiedName` é o nome comercial verificado, e fica no meio: ele
+       * identifica de verdade, mas uma empresa verificada aparece aqui sem
+       * nunca ter sido salva. Por isso ele CORRIGE um registro existente e
+       * não CRIA um novo.
+       */
+      const naAgenda = Boolean(contato.name?.trim());
+      const verificado = Boolean(contato.verifiedName?.trim());
+
       const nome = (
         contato.name ??
         contato.verifiedName ??
@@ -112,14 +135,21 @@ export class EvolutionWebhookController {
       if (!nome) continue;
 
       try {
-        await this.customers.upsertFromAddressBook({
+        const salvo = await this.customers.upsertFromAddressBook({
           phone: telefone,
           name: nome,
           // Veio da agenda: ganha do que estiver gravado. É o que
           // conserta quem foi batizado de "Você" pela importação.
-          daAgenda: Boolean(contato.name ?? contato.verifiedName),
+          daAgenda: naAgenda || verificado,
+          /*
+           * Sem cadastro na agenda, o nome só serve pra melhorar quem JÁ é
+           * cliente — alguém que conversou com a empresa e está gravado
+           * como um telefone sem nome. Criar a partir daqui é o que
+           * inventava contato.
+           */
+          criarSeNovo: naAgenda,
         });
-        salvos += 1;
+        if (salvo) salvos += 1;
       } catch (erro) {
         this.logger.warn(
           `Não deu pra salvar o contato ${telefone}: ${erro instanceof Error ? erro.message : erro}`,

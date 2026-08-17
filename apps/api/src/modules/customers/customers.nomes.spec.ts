@@ -109,3 +109,47 @@ describe('nome vindo da agenda', () => {
     );
   });
 });
+
+/**
+ * A lista do aparelho não é a agenda.
+ *
+ * O que a Evolution entrega é tudo que o WhatsApp conhece: quem escreveu
+ * uma vez, participante de grupo, quem caiu numa transmissão. Todos eles
+ * têm apelido público, e nenhum deles foi salvo pela empresa. Criar
+ * cadastro a partir daí enchia a lista de "nova conversa" de gente que o
+ * dono do número jurava nunca ter salvo — e ele estava certo.
+ */
+describe('quem NÃO está salvo na agenda', () => {
+  it('não vira cliente', async () => {
+    const { service, create } = montar(null);
+
+    const salvo = await service.upsertFromAddressBook({
+      phone: '5527999998888',
+      name: 'Rick',
+      criarSeNovo: false,
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(salvo).toBeNull();
+  });
+
+  it('mas ainda dá nome a quem já é cliente e está gravado como telefone', async () => {
+    // Este é o ganho que se perderia proibindo tudo: quem conversou com a
+    // empresa e nunca se identificou aparece como um número na tela.
+    const { service, update } = montar({
+      id: 'cliente-1',
+      phone: '5527999998888',
+      name: '5527999998888',
+    });
+
+    await service.upsertFromAddressBook({
+      phone: '5527999998888',
+      name: 'Rick',
+      criarSeNovo: false,
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { name: 'Rick' } }),
+    );
+  });
+});

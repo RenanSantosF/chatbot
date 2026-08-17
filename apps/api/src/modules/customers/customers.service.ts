@@ -7,6 +7,39 @@ interface FindOrCreateInput {
   name: string;
 }
 
+/** O cliente como o banco devolve. */
+type Cliente = Awaited<
+  ReturnType<TenantPrismaService['db']['customer']['findFirstOrThrow']>
+>;
+
+interface ContatoDeAgenda {
+  phone: string;
+  name?: string;
+  /**
+   * O nome veio da AGENDA do aparelho, e não de um apelido que a pessoa
+   * escolheu pra si.
+   *
+   * Quando vem de lá, ele ganha de qualquer coisa que já esteja gravada: é
+   * o nome que a empresa usa pra falar dessa pessoa no dia a dia, e é o
+   * único que conserta um registro que nasceu torto.
+   */
+  daAgenda?: boolean;
+  /**
+   * Pode CRIAR o cliente, ou só melhorar o nome de quem já existe?
+   *
+   * Padrão `true`, que é o caso de quem chegou por mensagem: aí o cadastro
+   * nasce junto do atendimento e é isso que se quer.
+   *
+   * A sincronização da agenda passa `false` pra quem não está salvo no
+   * aparelho. A lista que o WhatsApp entrega é tudo que ele conhece — quem
+   * escreveu uma vez, participante de grupo, quem caiu numa transmissão — e
+   * criar a partir dela enchia a base de gente que a empresa nunca
+   * cadastrou. O nome ainda serve pra corrigir quem já é cliente e está
+   * gravado como um telefone sem nome.
+   */
+  criarSeNovo?: boolean;
+}
+
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
 /**
@@ -152,19 +185,14 @@ export class CustomersService {
    * atendimento, e sumir com a conversa por causa de uma faxina na agenda do
    * celular seria perda de dado.
    */
-  async upsertFromAddressBook(input: {
-    phone: string;
-    name?: string;
-    /**
-     * O nome veio da AGENDA do aparelho, e não de um apelido que a pessoa
-     * escolheu pra si.
-     *
-     * Quando vem de lá, ele ganha de qualquer coisa que já esteja
-     * gravada: é o nome que a empresa usa pra falar dessa pessoa no dia a
-     * dia, e é o único que conserta um registro que nasceu torto.
-     */
-    daAgenda?: boolean;
-  }) {
+  // Duas assinaturas porque são dois contratos: quem deixa `criarSeNovo`
+  // de fora SEMPRE recebe um cliente, e obrigar esses chamadores a testar
+  // um `null` que não pode acontecer seria espalhar ramo morto por eles.
+  async upsertFromAddressBook(
+    input: ContatoDeAgenda & { criarSeNovo?: true },
+  ): Promise<Cliente>;
+  async upsertFromAddressBook(input: ContatoDeAgenda): Promise<Cliente | null>;
+  async upsertFromAddressBook(input: ContatoDeAgenda): Promise<Cliente | null> {
     const nome = input.name?.trim();
 
     const existing = await this.prisma.db.customer.findFirst({
@@ -172,6 +200,7 @@ export class CustomersService {
     });
 
     if (!existing) {
+      if (input.criarSeNovo === false) return null;
       return this.prisma.db.customer.create({
         data: {
           tenantId: this.prisma.tenantId,
