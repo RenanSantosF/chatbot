@@ -262,3 +262,92 @@ describe('encaminhar mensagem', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('a chave que chega diferente da que foi gravada', () => {
+  /**
+   * O defeito relatado na Evolution: envio funcionando, cliente recebendo,
+   * e o balão parado no relógio. O id externo dela é uma chave composta
+   * (conversa + de quem + id), e o WhatsApp escreve a parte "conversa" de
+   * um jeito na resposta do envio e de outro no evento de entrega —
+   * inclusive como `@lid`, um identificador opaco de onde não se recupera
+   * o telefone.
+   *
+   * `normalizarJid` acerta a maioria na gravação. Estes testes guardam a
+   * rede que pega o resto: procurar pelo ID DA MENSAGEM, que é único e
+   * nunca muda de forma.
+   */
+  function montarComBusca(porExterno: Record<string, unknown | null>) {
+    const consultas: Record<string, unknown>[] = [];
+
+    const prisma = {
+      tenantId: 'tenant-teste',
+      db: {
+        message: {
+          findFirst: jest
+            .fn()
+            .mockImplementation((args: { where: Record<string, unknown> }) => {
+              consultas.push(args.where);
+              const alvo = args.where.externalId;
+              if (typeof alvo === 'string') return porExterno[alvo] ?? null;
+              const sufixo = (alvo as { endsWith?: string })?.endsWith;
+              return sufixo ? (porExterno[sufixo] ?? null) : null;
+            }),
+          update: jest
+            .fn()
+            .mockImplementation((args: { data: unknown }) => ({
+              id: 'msg-1',
+              conversationId: 'conversa-1',
+              ...(args.data as object),
+            })),
+        },
+      },
+    };
+
+    const service = new ConversationsService(
+      prisma as never,
+      {} as never,
+      { emitToTenant: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    return { service, consultas };
+  }
+
+  const GRAVADO = '5527999998888@s.whatsapp.net|1|3EB0ABC';
+  const MENSAGEM = { id: 'msg-1', status: 'SENT', conversationId: 'conversa-1' };
+
+  it('acha pela busca exata quando as duas formas batem', async () => {
+    const { service, consultas } = montarComBusca({ [GRAVADO]: MENSAGEM });
+
+    await service.applyDeliveryStatus(GRAVADO, 'DELIVERED');
+
+    // Uma consulta só: o caminho oficial nunca paga pela rede de segurança.
+    expect(consultas).toHaveLength(1);
+  });
+
+  it('acha pelo id da mensagem quando a conversa veio como @lid', async () => {
+    // O evento chega com uma chave que não existe no banco; a mensagem só
+    // é encontrada pelo id.
+    const { service, consultas } = montarComBusca({ '|3EB0ABC': MENSAGEM });
+
+    await service.applyDeliveryStatus('199887766@lid|1|3EB0ABC', 'DELIVERED');
+
+    expect(consultas).toHaveLength(2);
+    expect(consultas[1].externalId).toEqual({ endsWith: '|3EB0ABC' });
+  });
+
+  it('não procura pedaço nenhum num id que não é chave composta', async () => {
+    // O `wamid` da Meta é uma string só. Uma segunda consulta aqui seria
+    // varredura de tabela em todo webhook do caminho oficial.
+    const { service, consultas } = montarComBusca({});
+
+    await service.applyDeliveryStatus('wamid.HBgNNTUyNw==', 'DELIVERED');
+
+    expect(consultas).toHaveLength(1);
+  });
+});

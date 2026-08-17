@@ -33,8 +33,50 @@ export interface ChaveDaMensagem {
   id: string;
 }
 
+/**
+ * O mesmo JID escrito sempre do mesmo jeito.
+ *
+ * Existe porque o id externo é comparado por igualdade exata, e o WhatsApp
+ * escreve o MESMO destinatário de formas diferentes conforme o evento:
+ *
+ * - `5527999998888@s.whatsapp.net` na resposta do envio;
+ * - `5527999998888:12@s.whatsapp.net` quando vem o aparelho junto;
+ * - às vezes com espaço ou `+` que sobrou de quem digitou.
+ *
+ * Sem normalizar, a mensagem era gravada com uma forma e o evento de
+ * entrega chegava com outra — a busca não achava nada, e o tique nunca
+ * virava. O envio funcionava, o cliente recebia, e o balão ficava no
+ * relógio pra sempre.
+ *
+ * O que NÃO dá pra normalizar é `@lid`, o identificador opaco que o
+ * WhatsApp usa pra esconder o telefone: dele não se recupera o número.
+ * Esse caso fica por conta da busca pelo id da mensagem (ver
+ * `applyDeliveryStatus`).
+ */
+export function normalizarJid(remoteJid: string): string {
+  const telefone = telefoneDoJid(remoteJid);
+  return telefone ? jidDoTelefone(telefone) : remoteJid.trim();
+}
+
 export function empacotarId(chave: ChaveDaMensagem): string {
-  return [chave.remoteJid, chave.fromMe ? '1' : '0', chave.id].join(SEPARADOR);
+  return [
+    normalizarJid(chave.remoteJid),
+    chave.fromMe ? '1' : '0',
+    chave.id,
+  ].join(SEPARADOR);
+}
+
+/**
+ * Só o id da mensagem dentro do pacote.
+ *
+ * É a parte que o WhatsApp garante única, e a única que nunca muda de
+ * forma entre um evento e outro. Serve de rede pra quando a comparação
+ * exata falha — `@lid`, formato novo, mensagem gravada por uma versão
+ * anterior desta função.
+ */
+export function idDaMensagem(externo: string): string | null {
+  const partes = externo.split(SEPARADOR);
+  return partes.length === 3 ? (partes[2] || null) : null;
 }
 
 /**

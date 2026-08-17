@@ -32,6 +32,7 @@ import {
 } from '../whatsapp/audio-container';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { CanalService } from '../whatsapp/canal/canal.service';
+import { idDaMensagem } from '../whatsapp/canal/evolution/evolution-id';
 
 /**
  * Os três estados que importam pra quem atende, montados a partir dos cinco
@@ -1027,10 +1028,42 @@ export class ConversationsService {
    * garante ordem de entrega dos webhooks, então um "delivered" atrasado
    * chegando depois de um "read" não pode apagar o tique azul.
    */
-  async applyDeliveryStatus(externalId: string, status: MessageStatus) {
-    const message = await this.prisma.db.message.findFirst({
+  /**
+   * A mensagem dona de um id externo, com uma rede embaixo.
+   *
+   * A busca exata resolve tudo no caminho oficial: o `wamid` da Meta é uma
+   * string só, escrita igual na ida e na volta. Na Evolution o id externo
+   * é uma chave composta (conversa + de quem + id), e o WhatsApp escreve a
+   * parte "conversa" de formas diferentes conforme o evento — com sufixo
+   * de aparelho, ou como `@lid`, o identificador opaco que esconde o
+   * telefone e do qual não se recupera o número.
+   *
+   * `normalizarJid` já acerta a maioria na gravação. O `@lid` não tem
+   * conserto por normalização, e é por ele que esta segunda tentativa
+   * existe: o ID DA MENSAGEM é único e nunca muda de forma.
+   *
+   * A segunda consulta não usa índice (é um LIKE com curinga à esquerda),
+   * e é aceitável porque só roda quando a primeira falhou — no caminho
+   * oficial, nunca; na Evolution, só nas conversas em `@lid`. O preço de
+   * não ter isto era o tique nunca virar.
+   */
+  private async acharPeloIdExterno(externalId: string) {
+    const exata = await this.prisma.db.message.findFirst({
       where: { externalId },
     });
+    if (exata) return exata;
+
+    const id = idDaMensagem(externalId);
+    if (!id) return null;
+
+    return this.prisma.db.message.findFirst({
+      where: { externalId: { endsWith: `|${id}` } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async applyDeliveryStatus(externalId: string, status: MessageStatus) {
+    const message = await this.acharPeloIdExterno(externalId);
     if (!message || STATUS_RANK[status] <= STATUS_RANK[message.status]) {
       return;
     }
@@ -1195,10 +1228,11 @@ export class ConversationsService {
    * a Meta representa desfazer.
    */
   async applyReaction(externalId: string, emoji: string, from: string) {
-    const message = await this.prisma.db.message.findFirst({
-      where: { externalId },
-      select: { id: true, conversationId: true, reactions: true },
-    });
+    // Mesma rede da entrega: a chave da mensagem reagida chega escrita do
+    // jeito do WhatsApp, não do jeito que guardamos (ver acharPeloIdExterno).
+    // Sem ela, o cliente reagia e o emoji não aparecia em conversa nenhuma
+    // que estivesse em `@lid`.
+    const message = await this.acharPeloIdExterno(externalId);
     if (!message) return;
 
     const current =

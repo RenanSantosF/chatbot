@@ -58,7 +58,18 @@ export interface DadosDaMensagem {
    * raiz do evento. Procurar só dentro da mensagem perde toda resposta.
    */
   contextInfo?: { stanzaId?: string } | null;
-  status?: string;
+  /**
+   * O estado de entrega, que vem de dois jeitos.
+   *
+   * A Evolution repassa o que o Baileys dá, e o Baileys tem o estado como
+   * ENUM NUMÉRICO na origem. Dependendo da versão e do evento, o que chega
+   * é o nome ("DELIVERY_ACK") ou o número (3). Declarar só `string` não
+   * era só imprecisão de tipo: `traduzirStatus` chamava `.toUpperCase()`
+   * no valor, e um número derrubava o webhook inteiro com TypeError — a
+   * entrega voltava 500, a Evolution reenviava, e nenhum tique jamais
+   * virava. O envio funcionando normalmente o tempo todo.
+   */
+  status?: string | number;
 }
 
 /**
@@ -257,9 +268,44 @@ const STATUS: Record<string, MessageStatus | undefined> = {
   ERROR: 'FAILED',
 };
 
-export function traduzirStatus(bruto: string | undefined): MessageStatus | null {
-  if (!bruto) return null;
-  return STATUS[bruto.toUpperCase()] ?? null;
+/**
+ * O mesmo vocabulário, na forma numérica do Baileys.
+ *
+ * A ordem é a da biblioteca, e ela é a razão de o número existir: o estado
+ * de entrega é uma escada (erro < pendente < no servidor < entregue <
+ * lido), e comparar número é o que deixa o Baileys ignorar um evento
+ * atrasado. Aqui a escada já existe do nosso lado (STATUS_RANK, em
+ * ConversationsService) — só precisamos do nome.
+ */
+const STATUS_NUMERICO: Record<number, MessageStatus> = {
+  0: 'FAILED',
+  1: 'PENDING',
+  2: 'SENT',
+  3: 'DELIVERED',
+  4: 'READ',
+  5: 'READ',
+};
+
+/**
+ * O estado de entrega, aceitando as duas formas.
+ *
+ * Um número chegando aqui derrubava o webhook com TypeError — e como esse
+ * caminho é o de TODO tique, o efeito era o defeito mais confuso possível:
+ * mensagem sai, cliente recebe, e o balão fica no relógio pra sempre.
+ */
+export function traduzirStatus(
+  bruto: string | number | undefined | null,
+): MessageStatus | null {
+  if (bruto === undefined || bruto === null || bruto === '') return null;
+
+  if (typeof bruto === 'number') return STATUS_NUMERICO[bruto] ?? null;
+
+  // Número em forma de texto ("3") acontece: o valor atravessa JSON e
+  // volta como string em algumas versões.
+  const texto = String(bruto).trim();
+  if (/^\d+$/.test(texto)) return STATUS_NUMERICO[Number(texto)] ?? null;
+
+  return STATUS[texto.toUpperCase()] ?? null;
 }
 
 /**

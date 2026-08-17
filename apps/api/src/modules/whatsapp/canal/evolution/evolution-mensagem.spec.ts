@@ -268,3 +268,41 @@ describe('motivo da recusa', () => {
     expect(motivoDaEvolution('', 404)).toContain('sessão não existe');
   });
 });
+
+describe('estado de entrega em número (o defeito do tique)', () => {
+  /**
+   * O relato: envio funcionando, cliente recebendo, e o balão parado no
+   * relógio pra sempre. A causa não era a busca nem o tipo desconhecido —
+   * era `.toUpperCase()` num número, que derrubava o webhook com
+   * TypeError. Toda entrega de `messages.update` voltava 500, a Evolution
+   * reenviava, e nenhum tique jamais virava.
+   *
+   * O número vem do Baileys, onde o estado é enum numérico na origem.
+   */
+  it.each([
+    [0, 'FAILED'],
+    [1, 'PENDING'],
+    [2, 'SENT'],
+    [3, 'DELIVERED'],
+    [4, 'READ'],
+    [5, 'READ'],
+  ])('traduz o código %s', (bruto, esperado) => {
+    expect(traduzirStatus(bruto)).toBe(esperado);
+  });
+
+  it('aceita o número que atravessou o JSON como texto', () => {
+    expect(traduzirStatus('3')).toBe('DELIVERED');
+  });
+
+  it('continua entendendo o nome', () => {
+    expect(traduzirStatus('DELIVERY_ACK')).toBe('DELIVERED');
+    expect(traduzirStatus('read')).toBe('READ');
+  });
+
+  it('não inventa estado pro que não conhece', () => {
+    expect(traduzirStatus('ALGO_NOVO')).toBeNull();
+    expect(traduzirStatus(99)).toBeNull();
+    expect(traduzirStatus(undefined)).toBeNull();
+    expect(traduzirStatus('')).toBeNull();
+  });
+});
