@@ -328,9 +328,17 @@ export function ChatPanel({
    * tudo; depois a busca dentro da conversa; por último a citação presa no
    * compositor.
    *
-   * De propósito NÃO fecha a conversa: Esc é o gesto de desfazer o último
-   * passo, e perder a conversa aberta (e o rascunho junto) por uma tecla
-   * seria caro demais pra quem só queria cancelar a resposta citada.
+   * A conversa é a ÚLTIMA camada, e só sai quando não há rascunho: Esc é o
+   * gesto de desfazer o último passo, e perder o que já foi escrito por uma
+   * tecla seria caro demais pra quem só queria cancelar a resposta citada.
+   *
+   * As camadas que este componente não conhece — a foto ampliada, o painel
+   * de emojis, a tira de reações, o seletor de etiquetas — se defendem
+   * sozinhas: cada uma escuta o Esc na fase de CAPTURA e o barra ali. Tem
+   * que ser na captura, e não na bolha: os ouvintes estão todos no
+   * `document`, e este aqui foi registrado primeiro, então na bolha ele
+   * rodaria antes e a conversa fecharia junto com a foto — que era
+   * exatamente o defeito relatado.
    */
   useEffect(() => {
     const aoTeclar = (event: KeyboardEvent) => {
@@ -478,6 +486,18 @@ export function ChatPanel({
       ) {
         return;
       }
+
+      /*
+       * Nem quando há uma janela por cima.
+       *
+       * A foto ampliada e as caixas de confirmação cobrem a conversa
+       * inteira, e o compositor continua vivo atrás delas. Sem esta
+       * conferência, quem apertasse uma tecla com a foto aberta começava a
+       * escrever uma mensagem que não estava vendo — e só descobria ao
+       * fechar a imagem. `aria-modal` é o que essas janelas já declaram
+       * pra dizer justamente isso: nada atrás de mim está valendo.
+       */
+      if (document.querySelector('[aria-modal="true"]')) return;
 
       const campo = composerRef.current;
       if (!campo || campo.disabled) return;

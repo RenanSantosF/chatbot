@@ -22,19 +22,34 @@ export function ImageLightbox({
 }) {
   const handleKey = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      /*
+       * Esc fecha UMA camada por vez.
+       *
+       * Sem o `stopPropagation`, o mesmo Esc que fechava a foto chegava ao
+       * painel da conversa — que também escuta no `document` — e fechava a
+       * conversa junto. Quem só queria sair da imagem voltava pra tela de
+       * "nenhuma conversa aberta" e tinha que procurar onde estava.
+       *
+       * Na fase de CAPTURA, e não na de bolha: os dois ouvintes estão no
+       * mesmo alvo, e o do painel foi registrado primeiro — ele roda antes
+       * na bolha, e aí barrar já não adianta. A captura vem antes das duas.
+       * É a mesma mecânica do seletor de etiquetas.
+       */
+      event.stopPropagation();
+      onClose();
     },
     [onClose],
   );
 
   useEffect(() => {
-    document.addEventListener("keydown", handleKey);
+    document.addEventListener("keydown", handleKey, true);
     // Trava a rolagem de fundo enquanto o modal está aberto, senão a página
     // rola atrás da imagem e a sensação é de coisa quebrada.
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", handleKey);
+      document.removeEventListener("keydown", handleKey, true);
       document.body.style.overflow = previous;
     };
   }, [handleKey]);

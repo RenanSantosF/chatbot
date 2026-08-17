@@ -103,14 +103,18 @@ function BotaoDeReagir({
       if (!containerRef.current?.contains(event.target as Node)) setAberto(false);
     };
     const noEsc = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAberto(false);
+      if (event.key !== "Escape") return;
+      // Na captura, pra o Esc não fechar a conversa junto da tira de
+      // reações (mesma mecânica do seletor de etiquetas).
+      event.stopPropagation();
+      setAberto(false);
     };
 
     document.addEventListener("mousedown", foraDaqui);
-    document.addEventListener("keydown", noEsc);
+    document.addEventListener("keydown", noEsc, true);
     return () => {
       document.removeEventListener("mousedown", foraDaqui);
-      document.removeEventListener("keydown", noEsc);
+      document.removeEventListener("keydown", noEsc, true);
     };
   }, [aberto]);
 
