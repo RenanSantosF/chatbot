@@ -41,7 +41,16 @@ services:
       # --- Banco --------------------------------------------------------
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: "postgresql"
-      DATABASE_CONNECTION_URI: "postgresql://evolution:evolution@postgres:5432/evolution"
+      # O `connection_limit` não é ajuste fino: é o que impede a Evolution
+      # de derrubar o banco sozinha.
+      #
+      # Ao conectar, o WhatsApp despeja o histórico do aparelho de uma vez
+      # — centenas de conversas e contatos em segundos. O Prisma abre
+      # conexão à vontade pra dar conta, e num pooler gratuito (15 clientes
+      # no Supabase) isso estoura na hora, com
+      # `EMAXCONNSESSION: max clients reached`. Aí não sobra conexão nem
+      # pra ela nem pra mais ninguém no mesmo banco.
+      DATABASE_CONNECTION_URI: "postgresql://evolution:evolution@postgres:5432/evolution?connection_limit=8&pool_timeout=30"
       DATABASE_CONNECTION_CLIENT_NAME: "evolution"
       # O que ela guarda no banco dela. Mensagem e contato ficam ligados
       # porque a reconexão depende deles; o resto é peso morto pra nós — o
@@ -63,8 +72,13 @@ services:
       DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
       DATABASE_SAVE_MESSAGE_UPDATE: "false"
       DATABASE_SAVE_DATA_HISTORIC: "false"
-      DATABASE_SAVE_DATA_CONTACTS: "true"
-      DATABASE_SAVE_DATA_CHATS: "true"
+      # Contato e conversa também ficam de fora: o sistema mantém os
+      # próprios, e nunca lê os dela. Ligados, eles transformam a
+      # sincronização inicial numa tempestade de escrita — quinhentas
+      # conversas e quatrocentos contatos gravados de uma vez, pra
+      # alimentar tabelas que ninguém consulta.
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
       DATABASE_SAVE_DATA_LABELS: "false"
 
       # --- Cache --------------------------------------------------------

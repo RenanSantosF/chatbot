@@ -241,10 +241,21 @@ se misturarem com as suas:
    ```sql
    CREATE SCHEMA IF NOT EXISTS evolution;
    ```
-2. Use a connection string com o schema no fim:
+2. Use a connection string com o schema **e o limite de conexões**:
    ```
-   DATABASE_CONNECTION_URI=postgresql://...supabase.com:5432/postgres?schema=evolution
+   DATABASE_CONNECTION_URI=postgresql://...supabase.com:5432/postgres?schema=evolution&connection_limit=8&pool_timeout=30
    ```
+
+   O `connection_limit` não é ajuste fino, é o que impede a Evolution de
+   derrubar o banco sozinha. Ao conectar, o WhatsApp despeja o histórico do
+   aparelho de uma vez — centenas de conversas e contatos em segundos — e o
+   Prisma abre conexão à vontade pra dar conta. O pooler gratuito do
+   Supabase aceita 15 clientes; passa disso e tudo para com
+   `EMAXCONNSESSION: max clients reached`, inclusive quem mais estiver
+   naquele banco.
+
+   Vale o mesmo pra API, aliás: se ela dividir o banco com qualquer outra
+   coisa, ponha um `connection_limit` nela também.
 
 Duas armadilhas nesse endereço:
 
@@ -305,6 +316,8 @@ sozinho. Você não configura webhook em lugar nenhum.
 | Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
 | Anexo não envia | Esperado: mídia pela Evolution ainda não existe |
 | A API começa a falhar com `P3009` | Uma migração ficou marcada como falha por disputa de cadeado — ver abaixo |
+| `EMAXCONNSESSION: max clients reached` | Falta `connection_limit` na string da Evolution, e/ou ela está dividindo o banco com a API |
+| A API para de responder junto com isso | Mesma causa: a Evolution consumiu as 15 conexões do pooler e não sobrou nenhuma |
 
 ### Migração travada em `P3009`
 
