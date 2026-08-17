@@ -12,6 +12,7 @@ function montar() {
     recordOutboundEcho: jest.fn().mockResolvedValue({}),
     applyDeliveryStatus: jest.fn().mockResolvedValue({}),
     applyReaction: jest.fn().mockResolvedValue({}),
+    aplicarApagadaExterna: jest.fn().mockResolvedValue({}),
     importarHistorico: jest.fn().mockResolvedValue(2),
   };
 
@@ -267,6 +268,29 @@ describe('reação', () => {
       expect.any(String),
       '',
       '5511999999999',
+    );
+  });
+});
+
+describe('apagar para todos', () => {
+  it('some do painel quando some do aparelho', async () => {
+    // A empresa retira a mensagem porque estava errada, o cliente não a vê
+    // mais, e o painel seguia mostrando como dito algo que ninguém disse.
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'messages.delete',
+      instance: 'inteliwa-1',
+      data: {
+        remoteJid: '5511999999999@s.whatsapp.net',
+        fromMe: true,
+        id: '3EB0APAGADA',
+        status: 'DELETED',
+      },
+    });
+
+    expect(conversations.aplicarApagadaExterna).toHaveBeenCalledWith(
+      '5511999999999@s.whatsapp.net|1|3EB0APAGADA',
     );
   });
 });

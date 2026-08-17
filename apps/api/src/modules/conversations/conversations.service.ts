@@ -2959,6 +2959,44 @@ export class ConversationsService {
     }
   }
 
+  /**
+   * O aparelho apagou "para todos"; o painel acompanha.
+   *
+   * Antes isto ficava de fora de propósito, com o argumento de que o
+   * histórico daqui é registro e não deve mudar. O argumento não se
+   * sustenta pra quem está atendendo: a empresa retirou a mensagem
+   * porque ela estava errada, o cliente não a vê mais, e o painel seguia
+   * mostrando como dito algo que ninguém disse. Quem responde olhando
+   * pra ali responde ao que não existe.
+   *
+   * O conteúdo continua no banco, como no apagar pelo painel: some da
+   * tela, permanece pra quem precisar auditar.
+   *
+   * Silenciosa quando não acha a mensagem: apagar algo que nunca chegou
+   * aqui é rotina — mensagem de grupo, de antes da conexão, ou de um tipo
+   * que não sabemos traduzir.
+   */
+  async aplicarApagadaExterna(externalId: string) {
+    const mensagem = await this.prisma.db.message.findFirst({
+      where: { externalId },
+      select: { id: true, conversationId: true, deletedAt: true },
+    });
+    if (!mensagem || mensagem.deletedAt) return null;
+
+    const atualizada = await this.prisma.db.message.update({
+      where: { id: mensagem.id },
+      data: { deletedAt: new Date() },
+      include: messageInclude,
+    });
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
+      conversationId: mensagem.conversationId,
+      message: this.esconderApagada(atualizada),
+    });
+
+    return atualizada;
+  }
+
   async recordOutboundEcho(input: {
     customerPhone: string;
     content: string;

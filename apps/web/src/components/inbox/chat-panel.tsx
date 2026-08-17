@@ -412,6 +412,50 @@ export function ChatPanel({
     // página seguinte — que é o que faz a rolagem contínua funcionar.
   }, [hasOlder, carregarAnteriores, conversation?.id]);
 
+  /*
+   * Digitar em qualquer lugar escreve no campo de mensagem.
+   *
+   * Com a conversa aberta, o teclado pertence a ela. Antes era preciso
+   * clicar no campo primeiro, e quem vinha de clicar num balão, numa
+   * etiqueta ou no painel do cliente digitava a resposta inteira no vazio
+   * — sem nada aparecer na tela e sem entender por quê.
+   *
+   * O que NÃO é sequestrado: teclas de atalho (com Ctrl, Alt ou Meta),
+   * navegação (setas, Tab, Esc, F1-F12) e qualquer digitação que já esteja
+   * num campo de verdade — a busca da conversa, uma nota do cliente, o
+   * seletor de etiqueta. Roubar o foco desses seria trocar um incômodo
+   * por outro pior.
+   */
+  useEffect(() => {
+    if (!conversation) return;
+
+    function aoDigitar(evento: KeyboardEvent) {
+      if (evento.ctrlKey || evento.metaKey || evento.altKey) return;
+      // Uma tecla só, e imprimível: "a" entra, "Enter" e "ArrowUp" não.
+      if (evento.key.length !== 1) return;
+
+      const alvo = evento.target as HTMLElement | null;
+      if (
+        alvo?.isContentEditable ||
+        alvo?.tagName === "INPUT" ||
+        alvo?.tagName === "TEXTAREA" ||
+        alvo?.tagName === "SELECT"
+      ) {
+        return;
+      }
+
+      const campo = composerRef.current;
+      if (!campo || campo.disabled) return;
+
+      // Só o foco: a própria tecla chega ao campo pelo evento seguinte, e
+      // inseri-la à mão aqui a escreveria duas vezes.
+      campo.focus();
+    }
+
+    document.addEventListener("keydown", aoDigitar);
+    return () => document.removeEventListener("keydown", aoDigitar);
+  }, [conversation?.id, conversation]);
+
   // useLayoutEffect, não useEffect: a correção precisa acontecer no mesmo
   // quadro em que os balões antigos entram. Um quadro depois já teria
   // aparecido como um salto.

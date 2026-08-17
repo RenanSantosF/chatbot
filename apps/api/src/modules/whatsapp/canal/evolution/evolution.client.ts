@@ -60,6 +60,10 @@ const EVENTOS = [
    * Mandar os dois nomes "por garantia" derrubava a conexão toda.
    */
   'MESSAGES_SET',
+  // Apagar "para todos" no celular. Sem assinar, a mensagem sumia do
+  // aparelho e continuava no painel — e o histórico passava a mostrar
+  // como dito algo que a empresa retirou de propósito.
+  'MESSAGES_DELETE',
 ];
 
 export interface RespostaDaEvolution<T = unknown> {

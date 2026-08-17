@@ -101,6 +101,15 @@ export interface MessageMetadata {
   longitude?: number;
   name?: string;
   address?: string;
+  /**
+   * O arquivo no NAVEGADOR, enquanto o servidor não devolve o dele.
+   *
+   * Só existe no balão otimista, e some com ele. É o que faz a prévia da
+   * imagem e a duração do áudio aparecerem antes de qualquer viagem à
+   * rede — sem isso, o balão nasceria como um retângulo cinza no exato
+   * momento em que a pessoa quer ver que deu certo.
+   */
+  previaLocal?: string;
 }
 
 export interface ConversationMessage {

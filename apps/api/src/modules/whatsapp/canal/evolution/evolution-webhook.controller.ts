@@ -107,6 +107,9 @@ export class EvolutionWebhookController {
         // estado que ficou torto — ver `corrigirEstadoTorto`.
         await this.corrigirEstadoTorto(config);
         break;
+      case 'MESSAGES_DELETE':
+        await this.apagadas(body);
+        break;
       case 'MESSAGES_UPDATE':
         await this.statusDeEntrega(body);
         break;
@@ -264,6 +267,16 @@ export class EvolutionWebhookController {
           : undefined,
         createdAt: horaDaMensagem(dados),
       });
+    }
+  }
+
+  /** Apagou "para todos" no celular: o painel para de mostrar também. */
+  private async apagadas(body: EventoDaEvolution) {
+    for (const dados of comoLista(body.data)) {
+      const chave = chaveDoEvento(dados);
+      if (!chave) continue;
+
+      await this.conversations.aplicarApagadaExterna(empacotarId(chave));
     }
   }
 

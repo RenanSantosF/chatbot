@@ -57,6 +57,8 @@ export interface DadosDaMensagem {
    * envio funciona, e o tique de entregue nunca vira.
    */
   keyId?: string;
+  /** O evento de apagar traz a chave achatada com `id`, não `keyId`. */
+  id?: string;
   remoteJid?: string;
   fromMe?: boolean;
   pushName?: string;
@@ -93,7 +95,7 @@ export interface DadosDaMensagem {
  * caçada em dois arquivos.
  */
 export function chaveDoEvento(dados: DadosDaMensagem): ChaveDaMensagem | null {
-  const id = dados.key?.id ?? dados.keyId;
+  const id = dados.key?.id ?? dados.keyId ?? dados.id;
   const bruto = dados.key?.remoteJid ?? dados.remoteJid;
   if (!id || !bruto) return null;
 

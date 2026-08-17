@@ -84,8 +84,17 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
     );
   }
 
-  if (!meta?.mediaId) return null;
-  const url = mediaUrl(meta.mediaId);
+  /*
+   * O balão otimista aponta pro arquivo local.
+   *
+   * Enquanto o anexo sobe, não existe id de mídia nenhum — e sem um
+   * endereço o balão nasceria como retângulo cinza no exato momento em
+   * que a pessoa quer ver que deu certo. `previaLocal` é o arquivo no
+   * próprio navegador, e some junto com o balão quando a versão do
+   * servidor chega.
+   */
+  const url = meta?.previaLocal ?? (meta?.mediaId ? mediaUrl(meta.mediaId) : null);
+  if (!url || !meta) return null;
 
   /*
    * Figurinha é figurinha, não foto.
@@ -153,7 +162,9 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
     return (
       <AudioMessage
         url={url}
-        chave={meta.mediaId}
+        // Sem chave enquanto sobe: a transcrição e o cache dependem do
+        // identificador do servidor, que ainda não existe.
+        chave={meta.mediaId ?? url}
         voz={meta.voice}
         daEmpresa={message.senderType !== "CUSTOMER"}
         conversationId={message.conversationId}

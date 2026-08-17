@@ -491,6 +491,14 @@ export default function InboxPage() {
     // religar cinco ouvintes a cada clique na barra de filtros.
   }, [socket, loadConversations, loadDetail, agendarContagem]);
 
+  /** Mesma classificação que o servidor faz, só que antes da viagem. */
+  function tipoDoArquivo(file: File): ConversationMessage["messageType"] {
+    if (file.type.startsWith("image/")) return "IMAGE";
+    if (file.type.startsWith("audio/")) return "AUDIO";
+    if (file.type.startsWith("video/")) return "VIDEO";
+    return "DOCUMENT";
+  }
+
   async function handleSend(content: string) {
     if (!selectedId) return;
 
@@ -585,6 +593,47 @@ export default function InboxPage() {
 
   async function handleSendFile(file: File, caption?: string) {
     if (!selectedId) return;
+
+    /*
+     * Anexo e áudio também entram na hora.
+     *
+     * Só o texto tinha balão otimista, e a diferença aparecia justamente
+     * onde ela dói mais: subir um arquivo leva SEGUNDOS. Quem gravava um
+     * áudio via a tela não mudar nada por um tempo longo e ficava sem
+     * saber se enviou, se falhou ou se o clique nem pegou — a ponto de
+     * gravar de novo.
+     *
+     * O balão nasce com o arquivo local, então a prévia da imagem e a
+     * duração do áudio já aparecem antes de qualquer viagem à rede. Quem
+     * troca pela versão de verdade é o evento de tempo real, como no
+     * texto.
+     */
+    const optimisticId = `${ID_OTIMISTA}${Date.now()}`;
+    const optimistic: ConversationMessage = {
+      id: optimisticId,
+      clientKey: optimisticId,
+      conversationId: selectedId,
+      senderType: "AGENT",
+      senderId: null,
+      senderName: null,
+      content: caption ?? "",
+      messageType: tipoDoArquivo(file),
+      // `previaLocal` é o endereço do arquivo AQUI, que a tela usa
+      // enquanto o servidor não devolve o dele. Some junto com o balão.
+      metadata: {
+        fileName: file.name,
+        mimeType: file.type,
+        previaLocal: URL.createObjectURL(file),
+      } as ConversationMessage["metadata"],
+      status: "PENDING",
+      reactions: null,
+      replyToId: null,
+      replyTo: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    setDetail((prev) => (prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev));
+
     // Sem travar o compositor: o upload pode levar segundos e prender o
     // botão de enviar fazia a tela parecer congelada. O andamento aparece
     // na conversa, e a pessoa já pode escrever a próxima mensagem.
@@ -592,9 +641,29 @@ export default function InboxPage() {
       const body = new FormData();
       body.append("file", file);
       if (caption) body.append("caption", caption);
-      await apiFetch(`/conversations/${selectedId}/attachments`, { method: "POST", body });
+      const salva = await apiFetch<ConversationMessage>(
+        `/conversations/${selectedId}/attachments`,
+        { method: "POST", body },
+      );
+
+      setDetail((prev) => {
+        if (!prev) return prev;
+        const jaChegouPeloSocket = prev.messages.some((m) => m.id === salva?.id);
+        const messages =
+          jaChegouPeloSocket || !salva?.id
+            ? prev.messages.filter((m) => m.id !== optimisticId)
+            : prev.messages.map((m) =>
+                m.id === optimisticId ? { ...salva, clientKey: optimisticId } : m,
+              );
+        return { ...prev, messages };
+      });
     } catch {
+      setDetail((prev) =>
+        prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev,
+      );
       toast.error("Não deu pra enviar o arquivo.");
+    } finally {
+      URL.revokeObjectURL(optimistic.metadata?.previaLocal as string);
     }
   }
 
