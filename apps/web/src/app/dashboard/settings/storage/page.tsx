@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SelectField } from "@/components/ui/select-field";
-import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
@@ -164,18 +163,13 @@ export default function StoragePage() {
             options={PRAZOS}
           />
 
-          <label className="flex items-start gap-3">
-            <Switch
-              checked={settings.autoPurgeOnFull}
-              onCheckedChange={(checked) => void patch({ autoPurgeOnFull: checked })}
-            />
-            <span className="text-sm">
-              <span className="font-medium">Liberar espaço sozinho quando encher</span>
-              <span className="block text-xs text-muted-foreground">
-                Desligado, o sistema apenas avisa e nada é perdido.
-              </span>
-            </span>
-          </label>
+          {/* Havia aqui um interruptor "Liberar espaço sozinho quando
+              encher". Ele gravava no banco e NADA no sistema lia esse
+              campo — nem a cota era aplicada em lugar nenhum, então
+              "encher" não acontecia. Um interruptor que não faz nada é
+              pior que a ausência dele: quem o liga passa a contar com uma
+              proteção que não existe. O campo continua no banco, esperando
+              a implementação de verdade. */}
 
           {settings.keepMessagesDays ? (
             <div className="flex flex-wrap items-center gap-3">

@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { RetentionSweepService } from './retention-sweep.service';
 
 /** Piso deliberado: menos de 7 dias apaga conversa que ainda está viva. */
 const MIN_KEEP_DAYS = 7;
@@ -16,12 +17,11 @@ export interface UsageReport {
 
 @Injectable()
 export class RetentionService {
-  private readonly logger = new Logger(RetentionService.name);
-
   constructor(
     private readonly prisma: TenantPrismaService,
-    /** Sem escopo de tenant: a varredura periódica roda pra todos. */
+    /** Sem escopo de tenant: a medição usa SQL cru com o tenantId explícito. */
     private readonly root: PrismaService,
+    private readonly sweep: RetentionSweepService,
   ) {}
 
   async getSettings() {
@@ -106,61 +106,16 @@ export class RetentionService {
   }
 
   /**
-   * Apaga mensagens mais antigas que o prazo do tenant. Só mensagens: a
-   * conversa e o cliente ficam, com o histórico esvaziado. Apagar a
-   * conversa inteira quebraria relatório e faria o cliente parecer novo na
-   * próxima vez que escrevesse.
+   * Limpeza sob demanda, disparada pelo dono na tela.
+   *
+   * O apagamento em si mora no RetentionSweepService, junto da varredura
+   * periódica. Duas cópias da mesma regra — uma pro botão, outra pro
+   * relógio — divergiriam na primeira vez que alguém mexesse em uma delas,
+   * e o jeito de descobrir seria pela diferença entre o que a tela apaga e
+   * o que a madrugada apaga.
    */
-  async purgeTenant(tenantId: string): Promise<number> {
-    const settings = await this.root.client.retentionSettings.findFirst({
-      where: { tenantId },
-    });
-    if (!settings?.keepMessagesDays) return 0;
-
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - settings.keepMessagesDays);
-
-    const { count } = await this.root.client.message.deleteMany({
-      where: { tenantId, createdAt: { lt: cutoff } },
-    });
-
-    if (count > 0) {
-      this.logger.log(`Tenant ${tenantId}: ${count} mensagens apagadas por retenção.`);
-    }
-
-    await this.root.client.retentionSettings.update({
-      where: { id: settings.id },
-      data: { lastPurgeAt: new Date(), lastPurgeDeleted: count },
-    });
-
-    return count;
-  }
-
-  /** Varredura de todos os tenants que configuraram prazo. */
-  async purgeAll(): Promise<{ tenants: number; deleted: number }> {
-    const alvos = await this.root.client.retentionSettings.findMany({
-      where: { keepMessagesDays: { not: null } },
-      select: { tenantId: true },
-    });
-
-    let deleted = 0;
-    for (const alvo of alvos) {
-      try {
-        deleted += await this.purgeTenant(alvo.tenantId);
-      } catch (error) {
-        // Um tenant com problema não pode parar a varredura dos outros.
-        this.logger.error(
-          `Falha na limpeza do tenant ${alvo.tenantId}: ${String(error)}`,
-        );
-      }
-    }
-
-    return { tenants: alvos.length, deleted };
-  }
-
-  /** Limpeza sob demanda, disparada pelo dono na tela. */
   async purgeNow() {
-    const deleted = await this.purgeTenant(this.prisma.tenantId);
+    const deleted = await this.sweep.purgarTenant(this.prisma.tenantId);
     const usage = await this.measureUsage();
     return { deleted, usage };
   }
