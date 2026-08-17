@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, ExternalLink, FileText, MapPin, Play } from "lucide-react";
+import { Download, ExternalLink, FileText, ImageOff, MapPin, Play } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { AudioMessage } from "./audio-message";
@@ -125,6 +125,28 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
         onError={() => setFailed(true)}
         className="max-h-64 w-auto max-w-full rounded-md"
       />
+    );
+  }
+
+  /*
+   * Foto ou vídeo que não carregou não vira "Arquivo".
+   *
+   * Este era o caminho de queda quando a imagem falhava, e ele mentia
+   * duas vezes: dizia que o cliente tinha mandado um arquivo quando ele
+   * mandou uma foto, e oferecia um download que também ia falhar. Quem
+   * atendia clicava e recebia um JSON de erro na cara.
+   *
+   * A verdade é curta: era uma imagem, e ela não está mais disponível.
+   */
+  if (failed) {
+    const oQueEra = message.messageType === "VIDEO" ? "vídeo" : "imagem";
+    return (
+      <span className="flex items-center gap-2 rounded-md bg-black/5 px-2.5 py-2 dark:bg-white/10">
+        <ImageOff className="size-4 shrink-0 opacity-70" />
+        <span className="min-w-0 text-xs opacity-80 text-pretty">
+          Esta {oQueEra} não está mais disponível no WhatsApp.
+        </span>
+      </span>
     );
   }
 

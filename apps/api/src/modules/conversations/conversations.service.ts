@@ -1030,6 +1030,41 @@ export class ConversationsService {
    * chegando depois de um "read" não pode apagar o tique azul.
    */
   /**
+   * Chegou outra mensagem do cliente depois desta?
+   *
+   * É a pergunta que evita responder pela metade. Ela aparece em dois
+   * momentos do mesmo atendimento:
+   *
+   * - ANTES de chamar o modelo, quando a Evolution entrega um lote — o
+   *   caso da sessão que ficou fora do ar e volta com as mensagens
+   *   acumuladas. Sem isto, o cliente recebia uma resposta para cada
+   *   mensagem de três horas atrás, todas de uma vez.
+   *
+   * - DEPOIS, porque gerar a resposta leva segundos, e é justamente nesse
+   *   intervalo que quem está digitando manda a próxima.
+   *
+   * Só conta mensagem do CLIENTE: a nossa própria resposta, ou uma nota do
+   * sistema, não são pergunta nova.
+   */
+  private async chegouOutraDepois(mensagem: {
+    id: string;
+    conversationId: string;
+    createdAt: Date;
+  }): Promise<boolean> {
+    const seguinte = await this.prisma.db.message.findFirst({
+      where: {
+        conversationId: mensagem.conversationId,
+        senderType: 'CUSTOMER',
+        id: { not: mensagem.id },
+        createdAt: { gte: mensagem.createdAt },
+      },
+      select: { id: true },
+    });
+
+    return Boolean(seguinte);
+  }
+
+  /**
    * A mensagem dona de um id externo, com uma rede embaixo.
    *
    * A busca exata resolve tudo no caminho oficial: o `wamid` da Meta é uma
@@ -2470,10 +2505,31 @@ export class ConversationsService {
 
     let latestConversation = inbound.conversation;
 
-    if (conversation.aiMode === 'AI_ACTIVE') {
+    if (conversation.aiMode === 'AI_ACTIVE' && !(await this.chegouOutraDepois(inbound.message))) {
       const resultado = await this.aiEngine.generateReply(conversation.id);
 
-      if (resultado.tipo === 'respondeu') {
+      /*
+       * O cliente escreveu de novo enquanto a IA pensava.
+       *
+       * A resposta que acabou de sair já nasceu velha: ela viu metade da
+       * pergunta. Mandar assim produz o diálogo torto de sempre — a pessoa
+       * digita "oi", "tudo bem?", "queria saber o horário", e recebe três
+       * respostas, a primeira delas cumprimentando quem já tinha
+       * perguntado.
+       *
+       * Descartar aqui custa uma chamada ao modelo que não vai ser usada,
+       * e é o preço certo: a mensagem seguinte está sendo processada agora
+       * e vai responder tudo de uma vez, com a pergunta inteira à vista.
+       */
+      const desatualizada =
+        resultado.tipo === 'respondeu' &&
+        (await this.chegouOutraDepois(inbound.message));
+
+      if (desatualizada) {
+        this.logger.log(
+          `Resposta descartada na conversa ${conversation.id}: o cliente escreveu de novo enquanto a IA pensava.`,
+        );
+      } else if (resultado.tipo === 'respondeu') {
         const aiTurn = await this.persistMessage(conversation.id, {
           senderType: 'AI',
           content: resultado.resposta.content,

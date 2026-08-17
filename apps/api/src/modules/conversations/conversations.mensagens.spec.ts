@@ -767,3 +767,106 @@ describe('a IA não conseguiu responder', () => {
     expect(criadas.filter((m) => m.senderType === 'AI')).toHaveLength(0);
   });
 });
+
+describe('cliente que escreve em rajada', () => {
+  /**
+   * Dois casos, o mesmo remédio.
+   *
+   * O cotidiano: a pessoa digita "oi", "tudo bem?", "queria saber o
+   * horário" em três mensagens seguidas e recebe três respostas — a
+   * primeira cumprimentando quem já tinha perguntado.
+   *
+   * O do reencontro: a sessão da Evolution fica fora do ar, o cliente
+   * manda cinco mensagens, e ao voltar o WhatsApp entrega tudo de uma vez.
+   * Sem isto, saíam cinco respostas para perguntas de horas atrás.
+   */
+  function montarComRajada(temMensagemMaisNova: boolean) {
+    const { service, criadas } = montar({
+      conversaAntes: { status: 'OPEN', aiMode: 'AI_ACTIVE' },
+      conversaAberta: {
+        id: 'conversa-1',
+        channel: 'WHATSAPP',
+        status: 'OPEN',
+        aiMode: 'AI_ACTIVE',
+        priority: 'NORMAL',
+        customer: { id: 'cliente-1', phone: '5527999998888', name: 'Ana' },
+        messages: [],
+      },
+    });
+
+    const gerou = jest.fn().mockResolvedValue({
+      tipo: 'respondeu',
+      resposta: {
+        content: 'Olá! Como posso ajudar?',
+        verificacao: { precisaHandoff: false },
+      },
+    });
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      aiEngine: { generateReply: gerou },
+      customers: {
+        findOrCreateByPhone: jest
+          .fn()
+          .mockResolvedValue({ id: 'cliente-1', phone: '5527999998888' }),
+      },
+      chegouOutraDepois: jest.fn().mockResolvedValue(temMensagemMaisNova),
+    });
+
+    return { service, criadas, gerou };
+  }
+
+  it('não responde a mensagem que já tem outra atrás dela', async () => {
+    const { service, criadas, gerou } = montarComRajada(true);
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'oi',
+      channel: 'WHATSAPP',
+    });
+
+    // Nem chega a gastar a chamada ao modelo: a pergunta ainda não
+    // terminou de ser feita.
+    expect(gerou).not.toHaveBeenCalled();
+    expect(criadas.filter((m) => m.senderType === 'AI')).toHaveLength(0);
+  });
+
+  it('responde normalmente quando a mensagem é a última', async () => {
+    const { service, criadas, gerou } = montarComRajada(false);
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'queria saber o horário',
+      channel: 'WHATSAPP',
+    });
+
+    expect(gerou).toHaveBeenCalled();
+    expect(criadas.filter((m) => m.senderType === 'AI')).toHaveLength(1);
+  });
+
+  it('descarta a resposta se o cliente escreveu enquanto a IA pensava', async () => {
+    // Gerar leva segundos, e é justamente nesse intervalo que quem está
+    // digitando manda a próxima. A resposta pronta já nasceu velha: ela
+    // viu metade da pergunta.
+    const { service, criadas } = montarComRajada(false);
+
+    let chamadas = 0;
+    Object.assign(service as unknown as Record<string, unknown>, {
+      chegouOutraDepois: jest.fn().mockImplementation(() => {
+        chamadas += 1;
+        // Nada antes de gerar; alguém chegou durante.
+        return Promise.resolve(chamadas > 1);
+      }),
+    });
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'oi',
+      channel: 'WHATSAPP',
+    });
+
+    expect(criadas.filter((m) => m.senderType === 'AI')).toHaveLength(0);
+  });
+});

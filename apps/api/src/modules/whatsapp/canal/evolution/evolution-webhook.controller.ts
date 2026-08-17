@@ -17,6 +17,7 @@ import { PrismaService } from '../../../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../../../auth/auth.types';
 import { ConversationsService } from '../../../conversations/conversations.service';
 import { RealtimeGateway } from '../../../realtime/realtime.gateway';
+import { WhatsappMediaService } from '../../whatsapp-media.service';
 import { empacotarId, telefoneDoJid } from './evolution-id';
 import {
   chaveDoEvento,
@@ -49,6 +50,7 @@ export class EvolutionWebhookController {
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
     private readonly realtime: RealtimeGateway,
+    private readonly media: WhatsappMediaService,
   ) {}
 
   @Public()
@@ -188,6 +190,23 @@ export class EvolutionWebhookController {
           evolutionPendente: undefined,
           mediaId: externalId,
         };
+
+        /*
+         * E o binário é guardado AGORA, enquanto ele existe.
+         *
+         * A Evolution não hospeda arquivo: ela pede ao WhatsApp usando a
+         * chave da mensagem, e consegue enquanto a mensagem ainda estiver
+         * no alcance dela. Depois disso o anexo simplesmente não volta
+         * mais — foi o que apareceu no painel como "não deu pra buscar
+         * este anexo", com a foto virando um cartão de arquivo genérico.
+         *
+         * Sem `await`: a Evolution reenvia a entrega se demorarmos a
+         * responder, e baixar um vídeo no meio do caminho estouraria esse
+         * orçamento. Falhar aqui não pode derrubar o recebimento da
+         * mensagem — no pior caso o anexo continua sendo buscado sob
+         * demanda, como antes.
+         */
+        void this.media.arquivar(externalId, traduzida.metadata.fileName as string | undefined);
       }
 
       // Mensagem escrita pelo celular da própria empresa. Sem tratar isto,

@@ -338,7 +338,26 @@ o aparelho. Os dois expiram em cerca de um minuto.
 Em nenhum dos dois há endereço ou chave para preencher: o sistema cria a
 sessão, registra o webhook e troca o canal da empresa sozinho.
 
-### 5.4 Quando der errado
+### 5.4 A variável que o anexo exige
+
+`DATABASE_SAVE_DATA_NEW_MESSAGE` precisa ser **`true`**.
+
+A Evolution não hospeda arquivo: para devolver o binário de uma foto, ela
+localiza a mensagem no banco DELA e pede ao WhatsApp. Com a gravação
+desligada, essa busca não acha nada e o painel mostra "não deu pra buscar
+este anexo" — com a foto virando um cartão de arquivo genérico.
+
+O custo é o banco da Evolution crescer com as mensagens. Ele é limitado do
+lado de cá: assim que uma mídia chega, a API baixa e guarda uma cópia
+própria (`S3_BUCKET`), e daí em diante o painel serve dessa cópia sem
+perguntar nada à Evolution. Ou seja, o banco dela só precisa segurar a
+mensagem por segundos — dá para podá-lo periodicamente sem perder anexo
+nenhum.
+
+As outras `DATABASE_SAVE_*` continuam em `false`: contatos, conversas e
+histórico são coisas que já vivem no nosso banco.
+
+### 5.5 Quando der errado
 
 | Sintoma | Causa quase sempre |
 |---|---|
@@ -348,6 +367,7 @@ sessão, registra o webhook e troca o canal da empresa sozinho.
 | "a sessão não existe mais no servidor" | O servidor foi recriado do zero — conecte de novo |
 | Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
 | "a conexão por QR code não está disponível nesta instalação" | Faltou `EVOLUTION_BASE_URL` ou `EVOLUTION_API_KEY` no serviço da API |
+| "não deu pra buscar este anexo no WhatsApp" | `DATABASE_SAVE_DATA_NEW_MESSAGE` em `false` — ver abaixo |
 | `failed to decrypt message` / `Invalid PreKey ID` | O pareamento nasceu quebrado, ou sobraram aparelhos vinculados antigos — ver abaixo |
 | A API começa a falhar com `P3009` | Uma migração ficou marcada como falha por disputa de cadeado — ver abaixo |
 | `EMAXCONNSESSION: max clients reached` | Quase sempre `DATABASE_SAVE_IS_ON_WHATSAPP` ligada — ver abaixo. Depois disso, `connection_limit` na string |

@@ -69,7 +69,15 @@ services:
       # vira tique de entrega que nunca chega.
       #
       # Desligado, ela manda o status sempre, sem consultar nada.
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      # PRECISA ser true, e não é preferência: pra devolver o binário de
+      # uma foto, a Evolution localiza a mensagem no banco DELA e pede ao
+      # WhatsApp. Desligada, o anexo nunca volta — o painel mostra "não deu
+      # pra buscar este anexo" e a foto vira um cartão de arquivo.
+      #
+      # O crescimento é contido do outro lado: a API baixa e guarda uma
+      # cópia própria assim que a mídia chega, e daí em diante nunca mais
+      # pergunta. O banco daqui só precisa segurar a mensagem por segundos.
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
       DATABASE_SAVE_MESSAGE_UPDATE: "false"
       DATABASE_SAVE_DATA_HISTORIC: "false"
       # Contato e conversa também ficam de fora: o sistema mantém os

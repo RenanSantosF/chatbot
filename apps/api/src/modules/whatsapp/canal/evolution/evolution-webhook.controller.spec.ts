@@ -31,15 +31,17 @@ function montar() {
   };
 
   const realtime = { emitToTenant: jest.fn() };
+  const media = { arquivar: jest.fn().mockResolvedValue(undefined) };
 
   const controller = new EvolutionWebhookController(
     prisma as unknown as PrismaService,
     conversations as unknown as ConversationsService,
     realtime as never,
+    media as never,
   );
 
   const req = {} as AuthenticatedRequest;
-  return { controller, conversations, prisma, req, realtime };
+  return { controller, conversations, prisma, req, realtime, media };
 }
 
 function mensagem(extra: Record<string, unknown> = {}) {
@@ -503,5 +505,41 @@ describe('a tela fica sabendo na hora', () => {
       'canal.estado',
       { estado: 'AGUARDANDO_QRCODE', qrCode: 'data:image/png;base64,AAA' },
     );
+  });
+});
+
+describe('o anexo é guardado enquanto ele existe', () => {
+  /**
+   * O relato: a foto chegava como cartão de arquivo genérico e, ao
+   * clicar, "não deu pra buscar este anexo no WhatsApp".
+   *
+   * A Evolution não hospeda arquivo — ela pede ao WhatsApp usando a chave
+   * da mensagem, e só consegue enquanto a mensagem estiver ao alcance
+   * dela. Buscar sob demanda, minutos depois, é tarde. A cópia própria
+   * tem que ser feita na chegada.
+   */
+  it('arquiva a mídia recebida, pelo mesmo handle que o balão usa', async () => {
+    const { controller, req, media } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        message: { imageMessage: { mimetype: 'image/jpeg', fileName: 'foto.jpg' } },
+      }),
+    );
+
+    expect(media.arquivar).toHaveBeenCalledWith(
+      '5511999999999@s.whatsapp.net|0|3EB0ABC',
+      'foto.jpg',
+    );
+  });
+
+  it('mensagem de texto não vira arquivamento à toa', async () => {
+    const { controller, req, media } = montar();
+
+    await controller.receber(SEGREDO, req, mensagem());
+
+    expect(media.arquivar).not.toHaveBeenCalled();
   });
 });
