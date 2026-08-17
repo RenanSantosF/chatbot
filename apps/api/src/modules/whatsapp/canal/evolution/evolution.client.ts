@@ -262,6 +262,34 @@ export function enviarMidia(
 }
 
 /**
+ * Envia uma FIGURINHA.
+ *
+ * Rota separada porque a diferença aparece no aparelho do cliente: por
+ * aqui o WebP chega como figurinha — fundo transparente, sem moldura, no
+ * tamanho de figurinha — e por `sendMedia` chegaria como uma foto comum
+ * com fundo branco. Era o que acontecia: o código mandava
+ * `tipo: 'sticker'` pra rota de imagem e o efeito se perdia no caminho.
+ *
+ * O corpo tem um campo só (`sticker`), e não os quatro do envio de mídia:
+ * a Evolution converte o que receber, e por isso não pergunta mimetype
+ * nem nome de arquivo. Confirmado em `SendStickerDto` na v2.
+ */
+export function enviarFigurinha(
+  credenciais: Credenciais,
+  envio: { numero: string; base64: string; citando?: string | null },
+): Promise<RespostaDaEvolution<EnvioAceito>> {
+  return chamar(credenciais, `/message/sendSticker/${credenciais.instance}`, {
+    method: 'POST',
+    tempoLimiteMs: TEMPO_LIMITE_MIDIA_MS,
+    body: {
+      number: envio.numero,
+      sticker: envio.base64,
+      ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
+    },
+  });
+}
+
+/**
  * Envia áudio como MENSAGEM DE VOZ.
  *
  * Rota separada de propósito, e a diferença é visível pro cliente: por

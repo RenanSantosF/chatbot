@@ -87,6 +87,56 @@ export class WhatsappMediaService {
   }
 
   /**
+   * As figurinhas que já passaram por esta conta.
+   *
+   * ISTO NÃO É A GAVETA DE FIGURINHAS DO CELULAR, e a diferença importa
+   * pra quem espera o WhatsApp Web: os pacotes salvos no aparelho não
+   * chegam até aqui. Nem a Evolution nem o Baileys expõem essa coleção —
+   * ela vive na sincronização de estado do aplicativo e não tem rota. O
+   * que existe, e é o que esta lista devolve, são as figurinhas que a
+   * empresa já mandou ou recebeu em alguma conversa.
+   *
+   * Na prática é a lista que se usa: figurinha de atendimento é quase
+   * sempre a mesma meia dúzia, e a que o cliente mandou primeiro é
+   * justamente a que se quer devolver.
+   *
+   * O recorte é por `messageType: 'IMAGE'` com mídia, e o WebP é
+   * conferido depois, em memória. O mimetype mora dentro do JSON de
+   * metadados, e filtrar por caminho de Json não usa índice — seria uma
+   * varredura da maior tabela do sistema pra montar um painelzinho.
+   */
+  async figurinhas(limite = 40): Promise<{ mediaId: string }[]> {
+    const candidatas = await this.prisma.db.message.findMany({
+      where: { messageType: 'IMAGE', mediaId: { not: null }, deletedAt: null },
+      select: { mediaId: true, metadata: true },
+      orderBy: { createdAt: 'desc' },
+      // Teto sobre as CANDIDATAS, e não sobre o resultado: numa conta que
+      // troca muita foto e pouca figurinha, sem ele a consulta varreria o
+      // histórico inteiro atrás de completar a lista.
+      take: 400,
+    });
+
+    const vistas = new Set<string>();
+    const figurinhas: { mediaId: string }[] = [];
+
+    for (const mensagem of candidatas) {
+      const metadata = (mensagem.metadata ?? {}) as { mimeType?: string };
+      // Toda figurinha do WhatsApp é WebP — está no protocolo, e é o
+      // mesmo acordo que o painel usa pra desenhá-las sem moldura.
+      if (!metadata.mimeType?.startsWith('image/webp')) continue;
+
+      const mediaId = mensagem.mediaId;
+      if (!mediaId || vistas.has(mediaId)) continue;
+
+      vistas.add(mediaId);
+      figurinhas.push({ mediaId });
+      if (figurinhas.length >= limite) break;
+    }
+
+    return figurinhas;
+  }
+
+  /**
    * Guarda uma mídia recebida no armazenamento próprio.
    *
    * Chamado sem `await` pelo webhook: a Meta reenvia (e chega a desativar o

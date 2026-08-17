@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -746,6 +747,33 @@ export function ChatPanel({
     setPendingFile(file);
   }
 
+  /**
+   * Reenvia uma figurinha que já passou por esta conta.
+   *
+   * Baixa o binário e o manda pelo MESMO caminho de qualquer anexo, em vez
+   * de uma rota de "reenviar por id". Um segundo caminho de envio teria
+   * que repetir o balão otimista, o tique de entrega e o tempo real — e
+   * envelheceria sozinho na primeira vez que o de cima mudasse.
+   *
+   * O nome do arquivo termina em `.webp` porque é o mimetype que decide,
+   * dos dois lados, que aquilo é figurinha e não foto.
+   */
+  async function reenviarFigurinha(mediaId: string) {
+    try {
+      const resposta = await fetch(
+        `/api/whatsapp/media/${encodeURIComponent(mediaId)}`,
+      );
+      if (!resposta.ok) throw new Error(String(resposta.status));
+
+      const blob = await resposta.blob();
+      await onSendFile(
+        new File([blob], "figurinha.webp", { type: "image/webp" }),
+      );
+    } catch {
+      toast.error("Não deu pra enviar a figurinha. Tente de novo.");
+    }
+  }
+
   async function handleSubmit(event?: React.SyntheticEvent) {
     event?.preventDefault();
     const content = draft.trim();
@@ -1180,6 +1208,7 @@ export function ChatPanel({
         <EmojiPicker
           disabled={composicaoTravada || sending}
           onPick={(emoji) => setDraft((atual) => atual + emoji)}
+          onPickFigurinha={(mediaId) => void reenviarFigurinha(mediaId)}
         />
         <Input
           value={draft}

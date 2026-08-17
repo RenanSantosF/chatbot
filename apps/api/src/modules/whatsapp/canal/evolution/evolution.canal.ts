@@ -149,25 +149,37 @@ export class EvolutionCanal implements CanalDeMensagem {
       ? (desempacotarId(opcoes.citando)?.id ?? opcoes.citando)
       : null;
 
-    // Figurinha não tem rota própria aqui: vai como imagem, que é como a
-    // Evolution a trata. Áudio gravado tem, e é o que separa a bolha de
-    // voz de um arquivo de música anexado.
+    /*
+     * Três rotas, porque são três coisas diferentes no aparelho de quem
+     * recebe.
+     *
+     * Figurinha e áudio gravado têm rota própria, e sem elas o efeito se
+     * perde no caminho: a figurinha chega como foto de fundo branco, e o
+     * áudio como arquivo de música anexado em vez da bolha de voz. Só o
+     * resto — imagem, vídeo, documento — vai pela rota comum de mídia.
+     */
     const resposta =
-      arquivo.tipo === 'audio' && arquivo.voice
-        ? await evolution.enviarAudioDeVoz(credenciais, {
+      arquivo.tipo === 'sticker'
+        ? await evolution.enviarFigurinha(credenciais, {
             numero,
             base64,
             citando,
           })
-        : await evolution.enviarMidia(credenciais, {
-            numero,
-            tipo: arquivo.tipo === 'sticker' ? 'image' : arquivo.tipo,
-            base64,
-            mimetype: arquivo.mimetype,
-            filename: arquivo.filename,
-            legenda: opcoes.caption,
-            citando,
-          });
+        : arquivo.tipo === 'audio' && arquivo.voice
+          ? await evolution.enviarAudioDeVoz(credenciais, {
+              numero,
+              base64,
+              citando,
+            })
+          : await evolution.enviarMidia(credenciais, {
+              numero,
+              tipo: arquivo.tipo,
+              base64,
+              mimetype: arquivo.mimetype,
+              filename: arquivo.filename,
+              legenda: opcoes.caption,
+              citando,
+            });
 
     if (!resposta.ok) {
       this.ultimaFalha = resposta.erro ?? 'o envio do anexo foi recusado';

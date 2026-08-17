@@ -264,13 +264,23 @@ describe('anexo', () => {
     expect(rede.chamadas[0].url).toContain('/message/sendMedia/');
   });
 
-  it('figurinha vai como imagem — a Evolution não tem rota própria', async () => {
+  /*
+   * A rota própria não é detalhe: por `sendMedia` a figurinha chega ao
+   * cliente como uma foto de fundo branco, com moldura e tamanho de
+   * imagem. É o que acontecia enquanto o código mapeava sticker pra
+   * `mediatype: 'image'`.
+   */
+  it('figurinha vai pela rota de figurinha, não pela de imagem', async () => {
     const rede = servidor();
     const canal = montar({});
 
     await canal.enviarMidia('5511999998888', { ...foto, tipo: 'sticker' });
 
-    expect(rede.chamadas[0].corpo).toMatchObject({ mediatype: 'image' });
+    expect(rede.chamadas[0].url).toContain('/message/sendSticker/');
+    expect(rede.chamadas[0].corpo).toMatchObject({
+      number: '5511999998888',
+      sticker: expect.any(String),
+    });
   });
 
   it('sessão caída não vira erro de protocolo ilegível', async () => {

@@ -12,6 +12,20 @@ import { WhatsappMediaService } from './whatsapp-media.service';
 export class WhatsappMediaController {
   constructor(private readonly media: WhatsappMediaService) {}
 
+  /**
+   * As figurinhas que já passaram por esta conta, pro seletor do
+   * compositor. Devolve só os identificadores: o binário de cada uma vem
+   * pela rota de baixo, que já sabe achar e servir com cache.
+   *
+   * ANTES da rota de `:mediaId`, e isso não é estilo: o Nest casa na ordem
+   * de declaração, e depois dela "figurinhas" seria lido como o id de uma
+   * mídia que não existe.
+   */
+  @Get('figurinhas')
+  figurinhas() {
+    return this.media.figurinhas();
+  }
+
   @Get(':mediaId')
   async download(
     @Param('mediaId') mediaId: string,
