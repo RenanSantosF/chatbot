@@ -1,12 +1,13 @@
 "use client";
 
-import { MessageSquarePlus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { MessageSquarePlus, Send } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SelectField } from "@/components/ui/select-field";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Sheet,
   SheetContent,
@@ -18,76 +19,67 @@ import {
 } from "@/components/ui/sheet";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
-
-interface Template {
-  name: string;
-  language: string;
-  body: string;
-  placeholders: number;
-}
+import type { ConversationDetail } from "@/lib/types";
 
 /**
- * Iniciar conversa só existe via template aprovado. Não é escolha de
- * design: fora da janela de 24 horas desde a última mensagem do cliente, a
- * Meta recusa texto livre. Como quem nunca escreveu nunca abriu janela
- * nenhuma, template é o único caminho — e a tela diz isso em vez de deixar
- * a pessoa descobrir com um erro.
+ * Puxar conversa com quem ainda não escreveu.
+ *
+ * Isto aqui exigia escolher um modelo aprovado pela Meta, e a explicação
+ * na tela dizia que o WhatsApp não deixa mandar texto livre fora da
+ * janela de 24 horas. Era verdade — do canal oficial. No canal por QR
+ * code não existe janela nenhuma: o aparelho manda uma mensagem comum,
+ * igual a qualquer pessoa mandando pelo celular.
+ *
+ * Como a empresa conecta por QR code, a tela que existia era uma porta
+ * trancada: ela pedia um modelo que essa conta nunca teria.
+ *
+ * Serve pros dois casos. Com `customer`, é o botão de mensagem do
+ * contato. Sem ele, é a conversa nova pra um número que ainda não é
+ * cliente — e aí o telefone também é digitado aqui.
  */
 export function StartConversationDialog({
   customer,
   onStarted,
+  gatilho,
 }: {
-  customer: { id: string; name: string; phone: string } | null;
+  customer?: { id: string; name: string; phone: string } | null;
   onStarted: (id: string) => void;
+  /** Troca o botão que abre o painel, quando ele não é o padrão. */
+  gatilho?: React.ReactElement;
 }) {
   const [open, setOpen] = useState(false);
-  const [templates, setTemplates] = useState<Template[] | null>(null);
-  const [erroTemplates, setErroTemplates] = useState<string | null>(null);
-  const [chosen, setChosen] = useState("");
-  const [params, setParams] = useState<string[]>([]);
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
 
-  useEffect(() => {
-    if (!open || templates) return;
-    apiFetch<Template[]>("/conversations/templates")
-      .then((list) => {
-        setTemplates(list);
-        setChosen(list[0] ? `${list[0].name}|${list[0].language}` : "");
-      })
-      .catch((error) =>
-        setErroTemplates(
-          error instanceof ApiError ? error.message : "Não deu pra carregar os templates.",
-        ),
-      );
-  }, [open, templates]);
-
-  const template = templates?.find((item) => `${item.name}|${item.language}` === chosen);
+  // Com contato escolhido, o telefone é o dele e não se digita nada.
+  const paraNumeroNovo = !customer;
+  const destino = customer?.phone ?? phone;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!template || !customer) return;
+    if (sending || !content.trim() || !destino.trim()) return;
+
     setSending(true);
     try {
-      const { conversationId } = await apiFetch<{ conversationId: string }>(
-        "/conversations/start",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            phone: customer.phone,
-            name: customer.name,
-            templateName: template.name,
-            templateLanguage: template.language,
-            bodyParams: params.slice(0, template.placeholders),
-          }),
-        },
-      );
-      toast.success("Conversa iniciada.");
+      const conversa = await apiFetch<ConversationDetail>("/conversations/iniciar", {
+        method: "POST",
+        body: JSON.stringify({
+          phone: destino,
+          name: customer?.name ?? name.trim() ?? undefined,
+          content: content.trim(),
+        }),
+      });
+      toast.success("Mensagem enviada.");
       setOpen(false);
-      setParams([]);
-      onStarted(conversationId);
+      setContent("");
+      setPhone("");
+      setName("");
+      onStarted(conversa.id);
     } catch (error) {
       toast.error(
-        error instanceof ApiError ? error.message : "Não deu pra iniciar a conversa.",
+        error instanceof ApiError ? error.message : "Não deu pra enviar a mensagem.",
       );
     } finally {
       setSending(false);
@@ -98,81 +90,81 @@ export function StartConversationDialog({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={
-          <Button size="sm" variant="outline" disabled={!customer}>
-            <MessageSquarePlus className="size-4" />
-            Iniciar conversa
-          </Button>
+          gatilho ?? (
+            <Button size="sm" variant="outline">
+              <MessageSquarePlus className="size-4" />
+              Mensagem
+            </Button>
+          )
         }
       />
       <SheetContent className="gap-0 overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Nova conversa</SheetTitle>
+          <SheetTitle>{paraNumeroNovo ? "Nova conversa" : "Mandar mensagem"}</SheetTitle>
           <SheetDescription>
-            O WhatsApp não deixa mandar mensagem livre pra quem não escreveu nas últimas 24
-            horas — só um modelo aprovado antes pela Meta. Escolha qual usar. Assim que a pessoa
-            responder, a conversa segue normal.
+            {paraNumeroNovo
+              ? "Escreva pra um número que ainda não está no painel. Ele vira cliente assim que a mensagem sai, e a conversa aparece no Inbox."
+              : "A conversa abre no Inbox já com esta mensagem enviada, atribuída a você."}
           </SheetDescription>
         </SheetHeader>
 
-        {erroTemplates ? (
-          <p className="px-4 py-6 text-sm text-destructive">{erroTemplates}</p>
-        ) : !templates ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">Carregando templates...</p>
-        ) : templates.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">
-            Nenhum template aprovado nesta conta. Crie um no Gerenciador do WhatsApp e volte aqui
-            quando a Meta aprovar.
-          </p>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 py-2">
-            <p className="rounded-md bg-muted px-3 py-2 text-sm">
-              Para <strong>{customer?.name}</strong> · {customer?.phone}
-            </p>
-
-            <SelectField
-              label="Template"
-              value={chosen}
-              onChange={(next) => {
-                setChosen(next);
-                setParams([]);
-              }}
-              options={templates.map((item) => ({
-                value: `${item.name}|${item.language}`,
-                label: `${item.name} (${item.language})`,
-              }))}
-            />
-
-            {template ? (
-              <p className="rounded-md bg-muted p-2.5 text-xs leading-relaxed whitespace-pre-wrap">
-                {template.body}
-              </p>
-            ) : null}
-
-            {Array.from({ length: template?.placeholders ?? 0 }).map((_, index) => (
-              <div key={index} className="flex flex-col gap-1.5">
-                <Label htmlFor={`param-${index}`}>{`Valor de {{${index + 1}}}`}</Label>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 py-2">
+          {paraNumeroNovo ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="nova-conversa-telefone">Telefone</Label>
                 <Input
-                  id={`param-${index}`}
-                  value={params[index] ?? ""}
-                  onChange={(event) =>
-                    setParams((prev) => {
-                      const next = [...prev];
-                      next[index] = event.target.value;
-                      return next;
-                    })
-                  }
-                  required
+                  id="nova-conversa-telefone"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder="5527999998888"
+                  inputMode="tel"
+                  autoComplete="off"
+                />
+                <span className="text-xs text-muted-foreground">
+                  Com DDI e DDD. Pode digitar com parênteses e traço — a gente limpa.
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="nova-conversa-nome">Nome (opcional)</Label>
+                <Input
+                  id="nova-conversa-nome"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Como essa pessoa aparece no painel"
+                  autoComplete="off"
                 />
               </div>
-            ))}
+            </>
+          ) : (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              Para <strong>{customer.name}</strong> · {customer.phone}
+            </p>
+          )}
 
-            <SheetFooter className="px-0">
-              <Button type="submit" disabled={sending || !template}>
-                {sending ? "Enviando..." : "Iniciar conversa"}
-              </Button>
-            </SheetFooter>
-          </form>
-        )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nova-conversa-texto">Mensagem</Label>
+            <Textarea
+              id="nova-conversa-texto"
+              rows={5}
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="Escreva a primeira mensagem..."
+              maxLength={4000}
+            />
+          </div>
+
+          <SheetFooter className="px-0">
+            <Button
+              type="submit"
+              disabled={sending || !content.trim() || !destino.trim()}
+            >
+              {sending ? <Spinner /> : <Send className="size-4" />}
+              Enviar
+            </Button>
+          </SheetFooter>
+        </form>
       </SheetContent>
     </Sheet>
   );

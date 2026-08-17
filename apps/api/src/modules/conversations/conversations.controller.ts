@@ -30,6 +30,7 @@ import {
   type OrdemDoInbox,
   type StatusGroup,
 } from './conversations.service';
+import { IniciarConversaDto } from './dto/iniciar-conversa.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetPriorityDto } from './dto/set-priority.dto';
@@ -164,6 +165,33 @@ export class ConversationsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.conversationsService.startConversation(dto, user.userId);
+  }
+
+  /**
+   * Puxar conversa com quem nunca escreveu, escrevendo de verdade.
+   *
+   * Fica antes de `:id` de propósito: o Nest casa na ordem de
+   * declaração, e `:id` engoliria "iniciar" como se fosse um id.
+   */
+  @Post('iniciar')
+  @RequiresPermission('conversations.send')
+  async iniciar(
+    @Body() dto: IniciarConversaDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const conversa = await this.conversationsService.iniciarConversa(
+      dto,
+      user.userId,
+    );
+    if (conversa) {
+      await this.registrar(
+        user,
+        'CONVERSA_ATRIBUIDA',
+        conversa.id,
+        `Iniciou uma conversa com ${this.nomeDoCliente(conversa)}.`,
+      );
+    }
+    return conversa;
   }
 
   @Get(':id')

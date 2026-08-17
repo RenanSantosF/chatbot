@@ -1923,6 +1923,80 @@ export class ConversationsService {
     }
   }
 
+  /**
+   * Puxar conversa com quem nunca escreveu.
+   *
+   * Existe ao lado de `startConversation` porque os dois canais têm
+   * regras opostas. Na Cloud API da Meta, falar primeiro exige um modelo
+   * aprovado — fora da janela de 24 horas ela recusa texto livre, e quem
+   * nunca escreveu nunca abriu janela nenhuma. No canal por QR code não
+   * há janela: o aparelho manda uma mensagem comum, igual a qualquer
+   * pessoa mandando pelo celular.
+   *
+   * Como a empresa hoje conecta por QR code, este é o caminho que a tela
+   * usa. O outro fica de pé pra quando o canal oficial voltar a ser
+   * oferecido — apagá-lo agora seria jogar fora a única implementação
+   * correta daquele lado.
+   *
+   * Reaproveita a conversa aberta quando ela existe: abrir uma segunda
+   * partiria o histórico do mesmo cliente em dois lugares no painel.
+   */
+  async iniciarConversa(
+    input: { phone: string; name?: string; content: string },
+    agentId: string,
+  ) {
+    const phone = input.phone.replace(/\D/g, '');
+    if (phone.length < 12) {
+      throw new BadRequestException(
+        'Informe o telefone com DDI e DDD, por exemplo 5527999998888.',
+      );
+    }
+
+    const texto = input.content.trim();
+    if (!texto) {
+      throw new BadRequestException('Escreva a mensagem antes de enviar.');
+    }
+
+    const customer = await this.customers.findOrCreateByPhone({
+      phone,
+      name: input.name?.trim() || phone,
+    });
+
+    const existente = await this.prisma.db.conversation.findFirst({
+      where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
+      orderBy: { lastMessageAt: 'desc' },
+    });
+
+    const conversation =
+      existente ??
+      (await this.prisma.db.conversation.create({
+        data: {
+          tenantId: this.prisma.tenantId,
+          customerId: customer.id,
+          channel: 'WHATSAPP',
+          // Nasce HUMANA e com dono: quem puxou a conversa é quem está
+          // falando. Deixar a IA responder por cima de uma abordagem que
+          // uma pessoa começou é o oposto do que se quer aqui.
+          aiMode: 'HUMAN_ACTIVE',
+          status: 'WAITING_CUSTOMER',
+          assignedUserId: agentId,
+          assignmentAccepted: true,
+        },
+      }));
+
+    /*
+     * O envio passa pelo caminho normal de resposta.
+     *
+     * É o que garante que esta mensagem receba o mesmo tratamento de
+     * qualquer outra: sai pelo canal, ganha tique de entrega, aparece na
+     * tela em tempo real e entra no histórico. Duplicar o envio aqui
+     * criaria um segundo caminho que envelheceria sozinho.
+     */
+    await this.sendAgentMessage(conversation.id, agentId, texto);
+
+    return this.getById(conversation.id);
+  }
+
   async startConversation(
     input: {
       phone: string;

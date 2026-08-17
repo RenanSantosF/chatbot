@@ -1,10 +1,13 @@
 "use client";
 
-import { Search, Users } from "lucide-react";
+import { MessageSquarePlus, Search, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StartConversationDialog } from "@/components/customers/start-conversation-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CustomerDetailSheet } from "@/components/customers/customer-detail-sheet";
 import { EmptyState } from "@/components/empty-state";
@@ -23,6 +26,7 @@ function initials(name: string) {
 }
 
 export default function CustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -73,7 +77,23 @@ export default function CustomersPage() {
       <PageHeader
         title="Clientes"
         description="Cadastro e histórico dos clientes finais."
-        action={<ImportContactsDialog onImported={() => void load(query)} />}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Pra um número que ainda NÃO é cliente. O botão de mensagem
+                do contato resolve quem já está na lista; este resolve
+                quem a empresa acabou de anotar num papel. */}
+            <StartConversationDialog
+              onStarted={(id) => router.push(`/dashboard/inbox?c=${id}`)}
+              gatilho={
+                <Button size="sm" variant="outline">
+                  <MessageSquarePlus className="size-4" />
+                  Nova conversa
+                </Button>
+              }
+            />
+            <ImportContactsDialog onImported={() => void load(query)} />
+          </div>
+        }
       />
 
       <div className="relative max-w-sm">
