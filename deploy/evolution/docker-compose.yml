@@ -80,6 +80,17 @@ services:
       DATABASE_SAVE_DATA_CONTACTS: "false"
       DATABASE_SAVE_DATA_CHATS: "false"
       DATABASE_SAVE_DATA_LABELS: "false"
+      # O cache de "este número existe no WhatsApp".
+      #
+      # É a variável que mais dói esquecer: ela grava uma linha por
+      # contato, e o código dispara TODOS em paralelo. Quatrocentos
+      # contatos viram quatrocentas consultas simultâneas no instante da
+      # conexão — nenhum limite de conexão sobrevive a isso num pooler
+      # pequeno, e o banco inteiro para com EMAXCONNSESSION.
+      #
+      # O sistema não usa esse cache: quem sabe se o número existe é o
+      # próprio envio, que falha com motivo legível quando não existe.
+      DATABASE_SAVE_IS_ON_WHATSAPP: "false"
 
       # --- Cache --------------------------------------------------------
       # Redis aqui porque o compose já sobe um. Onde subir um serviço a
@@ -117,6 +128,12 @@ services:
       # Inteliwa, na tela de desconectar. Apagar por conta própria faria a
       # empresa perder a sessão numa oscilação de rede.
       DEL_INSTANCE: "false"
+
+      # ATENÇÃO: a imagem embute um `.env` com TODOS estes padrões ligados
+      # (ela copia o próprio .env.example na construção). O que você define
+      # aqui ganha; o que você NÃO define fica no padrão dela, que é
+      # sempre "true". Por isso cada um está escrito por extenso acima,
+      # inclusive os que parecem redundantes.
 
       # --- Log ----------------------------------------------------------
       # Sem WEBHOOKS na lista: o log de webhook despeja a mensagem inteira

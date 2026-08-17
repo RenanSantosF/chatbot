@@ -316,8 +316,27 @@ sozinho. Você não configura webhook em lugar nenhum.
 | Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
 | Anexo não envia | Esperado: mídia pela Evolution ainda não existe |
 | A API começa a falhar com `P3009` | Uma migração ficou marcada como falha por disputa de cadeado — ver abaixo |
-| `EMAXCONNSESSION: max clients reached` | Falta `connection_limit` na string da Evolution, e/ou ela está dividindo o banco com a API |
+| `EMAXCONNSESSION: max clients reached` | Quase sempre `DATABASE_SAVE_IS_ON_WHATSAPP` ligada — ver abaixo. Depois disso, `connection_limit` na string |
+| Variável que você definiu parece ignorada | A imagem embute um `.env` com os padrões dela. O que você define no painel ganha; o que você não define NÃO fica vazio, fica no padrão — que é `true` |
 | A API para de responder junto com isso | Mesma causa: a Evolution consumiu as 15 conexões do pooler e não sobrou nenhuma |
+
+### `EMAXCONNSESSION` logo depois de ler o QR code
+
+`DATABASE_SAVE_IS_ON_WHATSAPP` grava uma linha por contato, e o código
+dispara todos em paralelo: quatrocentos contatos viram quatrocentas
+consultas simultâneas no instante da conexão. Num pooler gratuito (15
+clientes) isso estoura na hora, e derruba junto quem mais estiver naquele
+banco.
+
+Ela vem ligada por padrão pela imagem, então precisa ser desligada por
+extenso:
+
+```
+DATABASE_SAVE_IS_ON_WHATSAPP=false
+```
+
+O sistema não usa esse cache — quem descobre se o número existe é o
+próprio envio, que já falha com motivo legível.
 
 ### Migração travada em `P3009`
 
