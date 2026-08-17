@@ -51,6 +51,16 @@ interface RealtimeContextValue {
   connected: boolean;
   /** Nulo até o servidor dizer alguma coisa. */
   canal: EstadoDoCanal | null;
+  /**
+   * Corrige o estado do canal a partir de quem acabou de consultá-lo.
+   *
+   * A faixa de aviso nasce com o estado do login e depois só muda por
+   * evento. Quem abre a tela de Configurações consulta o servidor e
+   * descobre a verdade ANTES de qualquer evento chegar — sem um caminho
+   * de volta, o cartão dizia "Conectado" e a faixa vermelha continuava
+   * mandando ler o QR code logo acima dele.
+   */
+  informarCanal: (estado: Omit<EstadoDoCanal, "em">) => void;
   /** Nulo enquanto não se sabe — canal oficial nunca importa nada. */
   historico: HistoricoDoCanal | null;
   unreadCounts: Record<string, number>;
@@ -256,6 +266,10 @@ export function RealtimeProvider({
     [clearUnread],
   );
 
+  const informarCanal = useCallback((estado: Omit<EstadoDoCanal, "em">) => {
+    setCanal({ ...estado, em: Date.now() });
+  }, []);
+
   const enableNotifications = useCallback(async () => {
     if (!("Notification" in window)) return;
     setNotifPermission(await Notification.requestPermission());
@@ -266,6 +280,7 @@ export function RealtimeProvider({
       socket,
       connected,
       canal,
+      informarCanal,
       historico,
       unreadCounts,
       totalUnread,
@@ -278,6 +293,7 @@ export function RealtimeProvider({
       socket,
       connected,
       canal,
+      informarCanal,
       historico,
       unreadCounts,
       totalUnread,

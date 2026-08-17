@@ -2,7 +2,7 @@
 
 import { QrCode, RefreshCw, Smartphone, Unplug } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,7 +66,7 @@ export function ConectarEvolution() {
       : "QRCODE",
   );
   const [numero, setNumero] = useState("");
-  const { canal, historico } = useRealtime();
+  const { canal, historico, informarCanal } = useRealtime();
 
   /** Relê o estado depois de uma ação de quem está olhando a tela. */
   const carregar = useCallback(async () => {
@@ -74,19 +74,27 @@ export function ConectarEvolution() {
       () => null,
     );
     setStatus(atual);
-  }, []);
+    // A faixa de aviso do topo nasce com o estado do login e depois só
+    // muda por evento. Esta consulta acabou de descobrir a verdade — sem
+    // devolvê-la, o cartão dizia "Conectado" enquanto a faixa vermelha
+    // logo acima mandava ler o QR code.
+    if (atual) informarCanal(atual);
+  }, [informarCanal]);
 
   useEffect(() => {
     // A busca fica escrita aqui, e não numa chamada a `carregar`, porque o
     // estado precisa mudar DENTRO da resposta da promessa — mudá-lo no
     // corpo do efeito faria a tela renderizar duas vezes a cada montagem.
     apiFetch<StatusDaEvolution | null>("/whatsapp/evolution")
-      .then(setStatus)
+      .then((atual) => {
+        setStatus(atual);
+        if (atual) informarCanal(atual);
+      })
       // Silêncio de propósito: esta é a tela de quem AINDA não conectou, e
       // um erro vermelho na primeira visita assusta sem informar nada.
       .catch(() => undefined)
       .finally(() => setCarregando(false));
-  }, []);
+  }, [informarCanal]);
 
   /**
    * A trazida das conversas quem conta é o SERVIDOR.
@@ -124,38 +132,47 @@ export function ConectarEvolution() {
    * Só mexe no que o evento traz: um aviso de conexão não apaga o QR code
    * que está na tela, e um QR code novo não muda o telefone conectado.
    */
+  //
+  // O que o evento traz é MESCLADO na hora de desenhar, e não copiado pro
+  // estado por um efeito. Copiar obrigava uma renderização a mais a cada
+  // notícia e era o que fazia a tela brigar consigo mesma; derivar deixa
+  // uma fonte só e some com o efeito.
+  const exibido = useMemo<StatusDaEvolution | null>(() => {
+    if (!status) return null;
+    if (!canal) return status;
+
+    return {
+      ...status,
+      estado: canal.estado,
+      ...(canal.qrCode !== undefined ? { qrCode: canal.qrCode } : {}),
+      ...(canal.pairingCode !== undefined ? { pairingCode: canal.pairingCode } : {}),
+      ...(canal.lastError !== undefined ? { lastError: canal.lastError } : {}),
+    };
+  }, [status, canal]);
+
   useEffect(() => {
-    if (!canal) return;
+    if (canal?.estado !== "CONECTADO") return;
 
-    setStatus((atual) =>
-      atual
-        ? {
-            ...atual,
-            estado: canal.estado,
-            ...(canal.qrCode !== undefined ? { qrCode: canal.qrCode } : {}),
-            ...(canal.pairingCode !== undefined
-              ? { pairingCode: canal.pairingCode }
-              : {}),
-            ...(canal.lastError !== undefined
-              ? { lastError: canal.lastError }
-              : {}),
-          }
-        : atual,
-    );
+    avisarConectado();
 
-    if (canal.estado === "CONECTADO") {
-      avisarConectado();
-      // Uma leitura só, pra buscar o que o evento não carrega — o telefone
-      // conectado, que é o que a tela mostra pra pessoa conferir se
-      // vinculou o aparelho certo.
-      void carregar();
-    }
-  }, [canal, carregar, avisarConectado]);
+    // Uma leitura só, pra buscar o que o evento não carrega — o telefone
+    // conectado, que é o que a tela mostra pra pessoa conferir se
+    // vinculou o aparelho certo.
+    //
+    // A busca fica escrita aqui, e não numa chamada a `carregar`: o estado
+    // precisa mudar DENTRO da resposta da promessa, nunca no corpo do
+    // efeito.
+    apiFetch<StatusDaEvolution | null>("/whatsapp/evolution")
+      .then((atual) => {
+        if (atual) setStatus(atual);
+      })
+      .catch(() => undefined);
+  }, [canal?.estado, avisarConectado]);
 
   // Rede de segurança pro caso de a conexão de tempo real ter caído
   // justamente durante a leitura do código.
   useEffect(() => {
-    if (status?.estado !== "AGUARDANDO_QRCODE") return;
+    if (exibido?.estado !== "AGUARDANDO_QRCODE") return;
 
     const timer = setInterval(() => {
       void apiFetch<{ estado: Estado }>("/whatsapp/evolution/conferir")
@@ -169,7 +186,7 @@ export function ConectarEvolution() {
     }, INTERVALO_MS);
 
     return () => clearInterval(timer);
-  }, [status?.estado, carregar, avisarConectado]);
+  }, [exibido?.estado, carregar, avisarConectado]);
 
   /** Só os dígitos — é o que a API valida e o que o WhatsApp entende. */
   const digitos = numero.replace(/\D/g, "");
@@ -223,12 +240,12 @@ export function ConectarEvolution() {
 
   if (carregando) return null;
 
-  const conectado = status?.estado === "CONECTADO";
+  const conectado = exibido?.estado === "CONECTADO";
   const sincronizando = conectado && Boolean(historico?.importando);
-  const aguardando = status?.estado === "AGUARDANDO_QRCODE";
+  const aguardando = exibido?.estado === "AGUARDANDO_QRCODE";
   // Já existe sessão: o botão deixa de ser "conectar" e passa a ser
   // "gerar novo QR code", que é o que ele de fato faz nesse ponto.
-  const jaConfigurado = Boolean(status?.instance);
+  const jaConfigurado = Boolean(exibido?.instance);
 
   return (
     <Card>
@@ -253,7 +270,7 @@ export function ConectarEvolution() {
               {sincronizando ? <Spinner className="size-4 shrink-0" /> : null}
               <span className="min-w-0">
               <span className="block text-sm font-medium">
-                Conectado{status?.connectedPhone ? ` · ${status.connectedPhone}` : ""}
+                Conectado{exibido?.connectedPhone ? ` · ${exibido.connectedPhone}` : ""}
               </span>
               <span className="block text-xs text-muted-foreground">
                 {sincronizando
@@ -273,16 +290,16 @@ export function ConectarEvolution() {
 
         {aguardando ? (
           <div className="flex flex-col items-center gap-3 rounded-md border p-4">
-            {status?.pairingCode ? (
+            {exibido?.pairingCode ? (
               /* O código é para ser LIDO EM VOZ ALTA e digitado noutro
                  aparelho, então é grande, espaçado e monoespaçado — zero e
                  O, 1 e I precisam ser distinguíveis à primeira vista. */
               <p className="font-mono text-3xl font-semibold tracking-[0.2em] select-all">
-                {status.pairingCode}
+                {exibido.pairingCode}
               </p>
-            ) : status?.qrCode ? (
+            ) : exibido?.qrCode ? (
               <Image
-                src={status.qrCode}
+                src={exibido.qrCode}
                 alt="QR code para conectar o WhatsApp"
                 width={240}
                 height={240}
@@ -301,7 +318,7 @@ export function ConectarEvolution() {
               </div>
             )}
             <p className="text-center text-xs text-muted-foreground text-pretty">
-              {status?.pairingCode
+              {exibido?.pairingCode
                 ? "No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho → Conectar com número de telefone. O código expira em cerca de um minuto."
                 : "No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. O código expira em cerca de um minuto."}
             </p>
@@ -312,8 +329,8 @@ export function ConectarEvolution() {
           </div>
         ) : null}
 
-        {status?.lastError ? (
-          <p className="text-xs text-destructive text-pretty">{status.lastError}</p>
+        {exibido?.lastError ? (
+          <p className="text-xs text-destructive text-pretty">{exibido.lastError}</p>
         ) : null}
 
         {!conectado ? (
