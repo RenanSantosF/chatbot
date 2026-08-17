@@ -2063,6 +2063,17 @@ export class ConversationsService {
           channel: 'WHATSAPP',
           status: 'WAITING_CUSTOMER',
           assignedUserId: agentId,
+          /*
+           * Nasce HUMANA, como o `iniciarConversa` ao lado.
+           *
+           * Sem isto ela caía no padrão do banco (AI_ACTIVE) e a IA
+           * assumia por cima de uma abordagem que uma PESSOA acabou de
+           * fazer — o cliente responderia ao atendente e seria atendido
+           * pelo robô. É a mesma armadilha que já custou o defeito da
+           * saudação automática: um padrão de coluna decidindo
+           * comportamento em vez de quem cria a linha.
+           */
+          aiMode: 'HUMAN_ACTIVE',
         },
       }));
 

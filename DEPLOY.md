@@ -472,6 +472,16 @@ uma mensagem antes de considerar feito.
 
 ## Coisas pra saber antes de escalar de verdade
 
+### ⚠️ A API roda em UMA réplica. Não aumente esse número sem ler isto.
+
+O botão de escalar horizontalmente no Railway parece inofensivo e não é: hoje o sistema tem duas coisas que assumem um único processo, e nenhuma delas dá erro ao ser violada — as duas simplesmente passam a se comportar errado, em silêncio.
+
+- **Tempo real quebra pela metade.** O socket.io guarda as conexões na memória do processo, sem adaptador externo (Redis). Com duas réplicas, quem estiver conectado na réplica A não recebe a mensagem que chegou pelo webhook na réplica B: o balão não aparece, o contador não sobe, a notificação não toca. Recarregar a página resolve — e é exatamente por isso que o defeito demora a ser diagnosticado.
+
+- **O cliente recebe a despedida duas vezes.** O encerramento automático (`AutoCloseService`) e a varredura de retenção (`RetentionSweepService`) rodam num `setInterval` dentro de cada processo. Duas réplicas, dois relógios: a mensagem de "vou encerrar por aqui" sai duplicada pro mesmo cliente.
+
+Para escalar de verdade seria preciso, no mínimo, um adaptador de Redis no gateway e mover os dois trabalhos periódicos pra fora do processo web (um serviço próprio, ou um agendador externo chamando uma rota). Enquanto isso não existe: **uma réplica**.
+
 - **Custo do Gemini**: cada empresa paga a própria conta do Google AI Studio — a plataforma não intermedia cobrança de IA.
 - **Números de teste da Meta**: por padrão, um app novo só manda mensagem pra até 5 números cadastrados como testadores, até passar pela revisão do Meta (App Review) pedindo a permissão `whatsapp_business_messaging` pra produção.
 - **Backup do `ENCRYPTION_KEY`**: se rotacionar essa chave sem migrar os dados já criptografados, toda API key e token de WhatsApp salvos ficam ilegíveis. Guarde em um cofre de senhas separado do resto.
