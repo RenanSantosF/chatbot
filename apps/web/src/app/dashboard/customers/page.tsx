@@ -28,17 +28,35 @@ export default function CustomersPage() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
 
-  const load = useCallback(() => {
-    apiFetch<Customer[]>("/customers")
+  /**
+   * A busca acontece no SERVIDOR.
+   *
+   * Era no navegador, sobre a lista inteira baixada de uma vez. Isso
+   * funcionava enquanto os clientes vinham um a um, pelas conversas — e
+   * parou de funcionar quando a agenda do aparelho passou a ser
+   * importada: são milhares de contatos, e quem estivesse fora da
+   * primeira leva simplesmente não existia pra quem procurava.
+   */
+  const load = useCallback((termo = "") => {
+    const busca = termo.trim();
+    return apiFetch<Customer[]>(
+      busca ? `/customers?search=${encodeURIComponent(busca)}` : "/customers",
+    )
       .then(setCustomers)
       .catch(() => toast.error("Não deu pra carregar os clientes."))
       .finally(() => setLoading(false));
   }, []);
 
+  // Espera a digitação parar: sem isso, "richard" dispara sete consultas
+  // e a resposta da quarta pode chegar depois da sétima.
   useEffect(() => {
-    load();
-  }, [load]);
+    const timer = setTimeout(() => void load(query), query ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [query, load]);
 
+  // O e-mail continua sendo filtrado aqui: ele não entra na busca do
+  // servidor (quase nenhum cliente do WhatsApp tem e-mail) e refinar o
+  // que já veio é de graça.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return customers;
@@ -55,7 +73,7 @@ export default function CustomersPage() {
       <PageHeader
         title="Clientes"
         description="Cadastro e histórico dos clientes finais."
-        action={<ImportContactsDialog onImported={load} />}
+        action={<ImportContactsDialog onImported={() => void load(query)} />}
       />
 
       <div className="relative max-w-sm">

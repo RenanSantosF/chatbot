@@ -16,6 +16,7 @@ import { Public } from '../../../../common/auth/public.decorator';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../../../auth/auth.types';
 import { ConversationsService } from '../../../conversations/conversations.service';
+import { CustomersService } from '../../../customers/customers.service';
 import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { WhatsappMediaService } from '../../whatsapp-media.service';
 import { empacotarId, telefoneDoJid } from './evolution-id';
@@ -29,6 +30,23 @@ import {
   type DadosDaMensagem,
   type EventoDaEvolution,
 } from './evolution-mensagem';
+
+/**
+ * Um contato da agenda, do jeito que a Evolution entrega.
+ *
+ * Os quatro nomes existem e querem dizer coisas diferentes: `name` é o
+ * que está salvo na agenda do aparelho, `verifiedName` é o nome
+ * comercial verificado, e `notify`/`pushName` são o apelido que a própria
+ * pessoa escolheu.
+ */
+interface ContatoDaEvolution {
+  id?: string;
+  remoteJid?: string;
+  name?: string;
+  notify?: string;
+  pushName?: string;
+  verifiedName?: string;
+}
 
 /** Uma linha do histórico, no formato que `importarHistorico` espera. */
 type MensagemImportada = Parameters<
@@ -57,7 +75,62 @@ export class EvolutionWebhookController {
     private readonly conversations: ConversationsService,
     private readonly realtime: RealtimeGateway,
     private readonly media: WhatsappMediaService,
+    private readonly customers: CustomersService,
   ) {}
+
+  /**
+   * A agenda do aparelho virando o nome que aparece no painel.
+   *
+   * Sem isto, o nome de um cliente era o apelido que ele mesmo escolheu
+   * no WhatsApp — quando escolheu. Quem não pôs nada virava um telefone
+   * na tela, e não havia como achar ninguém pesquisando por nome.
+   *
+   * A ordem de preferência importa: o nome SALVO na agenda ganha do
+   * apelido público, porque é assim que a empresa chama aquela pessoa no
+   * dia a dia — e é por ele que alguém vai procurar.
+   *
+   * Nada aqui lança: uma agenda que não veio é um painel com menos nomes,
+   * não um webhook quebrado.
+   */
+  private async salvarContatos(contatos?: ContatoDaEvolution[]) {
+    if (!Array.isArray(contatos) || contatos.length === 0) return;
+
+    let salvos = 0;
+    for (const contato of contatos) {
+      const telefone = telefoneDoJid(contato.id ?? contato.remoteJid ?? '');
+      // Grupo e transmissão não são pessoa; o próprio número da empresa
+      // também não é cliente dela.
+      if (!telefone) continue;
+
+      const nome = (
+        contato.name ??
+        contato.verifiedName ??
+        contato.notify ??
+        contato.pushName ??
+        ''
+      ).trim();
+      if (!nome) continue;
+
+      try {
+        await this.customers.upsertFromAddressBook({
+          phone: telefone,
+          name: nome,
+          // Veio da agenda: ganha do que estiver gravado. É o que
+          // conserta quem foi batizado de "Você" pela importação.
+          daAgenda: Boolean(contato.name ?? contato.verifiedName),
+        });
+        salvos += 1;
+      } catch (erro) {
+        this.logger.warn(
+          `Não deu pra salvar o contato ${telefone}: ${erro instanceof Error ? erro.message : erro}`,
+        );
+      }
+    }
+
+    if (salvos > 0) {
+      this.logger.log(`${salvos} contatos da agenda salvos.`);
+    }
+  }
 
   @Public()
   @Post(':secret')
@@ -115,6 +188,12 @@ export class EvolutionWebhookController {
         break;
       case 'CONNECTION_UPDATE':
         await this.conexao(body, config);
+        break;
+      // A agenda do aparelho, na conexão e a cada vez que ela muda.
+      case 'CONTACTS_SET':
+      case 'CONTACTS_UPSERT':
+      case 'CONTACTS_UPDATE':
+        await this.salvarContatos(body.data as ContatoDaEvolution[] | undefined);
         break;
       case 'MESSAGES_SET':
       case 'MESSAGING_HISTORY_SET':
@@ -319,9 +398,25 @@ export class EvolutionWebhookController {
     },
   ) {
     const dados = body.data as
-      | { messages?: DadosDaMensagem[]; isLatest?: boolean; progress?: number }
+      | {
+          messages?: DadosDaMensagem[];
+          contacts?: ContatoDaEvolution[];
+          isLatest?: boolean;
+          progress?: number;
+        }
       | DadosDaMensagem[]
       | undefined;
+
+    /*
+     * A agenda vem no MESMO lote das mensagens.
+     *
+     * Descartá-la era jogar fora, de graça, a única fonte do nome de
+     * verdade das pessoas: o que sobra é o apelido que cada um escolheu
+     * pra si, e ele nem sempre existe.
+     */
+    if (!Array.isArray(dados)) {
+      await this.salvarContatos(dados?.contacts);
+    }
 
     /*
      * O lote vem de dois jeitos, e o andamento vem de fora.
@@ -393,10 +488,20 @@ export class EvolutionWebhookController {
           }
         : undefined;
 
-      const registro = porContato.get(telefone) ?? {
-        nome: mensagem.pushName ?? undefined,
-        mensagens: [],
-      };
+      const registro = porContato.get(telefone) ?? { nome: undefined, mensagens: [] };
+      /*
+       * O nome sai só das mensagens do CLIENTE.
+       *
+       * Em toda mensagem vem o nome de exibição de quem a escreveu — e
+       * nas que a empresa mandou esse nome é o dela, que o WhatsApp
+       * costuma entregar como "Você". Pegar dali batizava o cliente de
+       * "Você" no painel inteiro, e era o que mais aparecia: numa
+       * conversa que a empresa começou, a primeira mensagem do lote é
+       * dela.
+       */
+      if (!chave.fromMe && !registro.nome && mensagem.pushName) {
+        registro.nome = mensagem.pushName;
+      }
       registro.mensagens.push({
         daEmpresa: Boolean(chave.fromMe),
         content: traduzida.content,

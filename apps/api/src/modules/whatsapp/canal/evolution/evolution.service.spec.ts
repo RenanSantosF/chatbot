@@ -365,7 +365,65 @@ describe('troca de canal', () => {
       'QRCODE_UPDATED',
       'MESSAGES_SET',
       'MESSAGES_DELETE',
+      // A agenda do aparelho. É dela que sai o nome de verdade do
+      // cliente — sem ela, o painel mostra o apelido que a pessoa
+      // escolheu, ou o telefone cru quando ela não escolheu nada.
+      'CONTACTS_SET',
+      'CONTACTS_UPSERT',
+      'CONTACTS_UPDATE',
     ]);
+  });
+
+  it('desiste dos contatos antes de desistir das mensagens', async () => {
+    /*
+     * O servidor confere a lista contra um enum e recusa a chamada
+     * INTEIRA quando encontra um nome que não conhece. Como esse conjunto
+     * muda entre versões da Evolution, insistir nos eventos de contato
+     * trocaria "o painel mostra telefone em vez de nome" por "o painel
+     * não recebe mensagem nenhuma".
+     *
+     * O servidor de mentira aqui recusa só a primeira tentativa, que é o
+     * que uma versão antiga faria.
+     */
+    let tentativas = 0;
+    const chamadas: { url: string; corpo: Record<string, unknown> }[] = [];
+    global.fetch = jest.fn(async (url: unknown, init: unknown) => {
+      const opcoes = init as { body?: string };
+      const endereco = String(url);
+      const corpo = opcoes.body
+        ? (JSON.parse(opcoes.body) as Record<string, unknown>)
+        : {};
+      chamadas.push({ url: endereco, corpo });
+
+      if (endereco.includes('/webhook/set/')) {
+        tentativas += 1;
+        if (tentativas === 1) {
+          return {
+            ok: false,
+            status: 400,
+            text: async () =>
+              JSON.stringify({ message: 'events must be a valid enum value' }),
+          } as Response;
+        }
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ qrcode: { base64: 'data:image/png;base64,AA' } }),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    const { service } = montar();
+    await expect(service.conectar()).resolves.toBeDefined();
+
+    // A segunda tentativa sobe SEM os contatos, e é ela que vale.
+    const registros = chamadas.filter((c) => c.url.includes('/webhook/set/'));
+    expect(registros).toHaveLength(2);
+    const eventos = (registros[1].corpo as { webhook?: { events?: string[] } })
+      .webhook?.events;
+    expect(eventos).not.toContain('CONTACTS_UPSERT');
+    expect(eventos).toContain('MESSAGES_UPSERT');
   });
 
   it('pede o histórico completo, e não só as mensagens novas', async () => {

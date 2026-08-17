@@ -40,16 +40,18 @@ function montar() {
 
   const realtime = { emitToTenant: jest.fn() };
   const media = { arquivar: jest.fn().mockResolvedValue(undefined) };
+  const customers = { upsertFromAddressBook: jest.fn().mockResolvedValue({}) };
 
   const controller = new EvolutionWebhookController(
     prisma as unknown as PrismaService,
     conversations as unknown as ConversationsService,
     realtime as never,
     media as never,
+    customers as never,
   );
 
   const req = {} as AuthenticatedRequest;
-  return { controller, conversations, prisma, req, realtime, media };
+  return { controller, conversations, prisma, req, realtime, media, customers };
 }
 
 function mensagem(extra: Record<string, unknown> = {}) {
@@ -913,5 +915,157 @@ describe('estado torto se conserta sozinho', () => {
     await controller.receber(SEGREDO, req, mensagem());
 
     expect(prisma.client.evolutionSettings.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * O nome que aparece no painel.
+ *
+ * Duas fontes, e a diferença entre elas é a causa de um defeito real: em
+ * TODA mensagem vem o nome de exibição de quem a escreveu, e nas que a
+ * empresa mandou esse nome é o dela — que o WhatsApp entrega como
+ * "Você". A agenda do aparelho é a outra fonte, e é a boa.
+ */
+describe('nome do cliente', () => {
+  const doHistorico = (
+    telefone: string,
+    texto: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    key: {
+      remoteJid: `${telefone}@s.whatsapp.net`,
+      fromMe: false,
+      id: `id-${texto.replace(/\W/g, '')}`,
+    },
+    messageTimestamp: 1755300000,
+    message: { conversation: texto },
+    ...extra,
+  });
+
+  it('não batiza o cliente de "Você" com o nome que veio de mensagem NOSSA', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'messaging-history.set',
+      instance: 'inteliwa-1',
+      data: {
+        messages: [
+          // A primeira do lote é da empresa — e é aqui que vinha "Você".
+          doHistorico('5511999999999', 'bom dia, em que posso ajudar?', {
+            key: {
+              remoteJid: '5511999999999@s.whatsapp.net',
+              fromMe: true,
+              id: 'id-nossa',
+            },
+            pushName: 'Você',
+          }),
+          doHistorico('5511999999999', 'oi, queria um orçamento', {
+            pushName: 'Richard',
+          }),
+        ],
+      },
+    });
+
+    const chamada = conversations.importarHistorico.mock.calls[0][0];
+    expect(chamada.customerName).toBe('Richard');
+  });
+
+  it('salva a agenda que vem junto do histórico', async () => {
+    const { controller, customers, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'messaging-history.set',
+      instance: 'inteliwa-1',
+      data: {
+        messages: [],
+        contacts: [
+          { id: '5511999999999@s.whatsapp.net', name: 'Richard Oliveira' },
+        ],
+      },
+    });
+
+    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith({
+      phone: '5511999999999',
+      name: 'Richard Oliveira',
+      daAgenda: true,
+    });
+  });
+
+  it('o nome SALVO na agenda ganha do apelido público', async () => {
+    const { controller, customers, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'contacts.upsert',
+      instance: 'inteliwa-1',
+      data: [
+        {
+          id: '5511999999999@s.whatsapp.net',
+          name: 'Richard do Mercado',
+          notify: 'Rick 🔥',
+        },
+      ] as never,
+    });
+
+    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Richard do Mercado', daAgenda: true }),
+    );
+  });
+
+  it('sem nome salvo, aceita o apelido — mas sem autoridade pra sobrescrever', async () => {
+    const { controller, customers, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'contacts.upsert',
+      instance: 'inteliwa-1',
+      data: [{ id: '5511999999999@s.whatsapp.net', notify: 'Rick' }] as never,
+    });
+
+    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Rick', daAgenda: false }),
+    );
+  });
+
+  it('grupo não vira cliente', async () => {
+    const { controller, customers, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'contacts.upsert',
+      instance: 'inteliwa-1',
+      data: [{ id: '120363000000000000@g.us', name: 'Fornecedores' }] as never,
+    });
+
+    expect(customers.upsertFromAddressBook).not.toHaveBeenCalled();
+  });
+
+  it('contato sem nome nenhum é ignorado em vez de virar linha vazia', async () => {
+    const { controller, customers, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'contacts.upsert',
+      instance: 'inteliwa-1',
+      data: [{ id: '5511999999999@s.whatsapp.net' }] as never,
+    });
+
+    expect(customers.upsertFromAddressBook).not.toHaveBeenCalled();
+  });
+
+  it('um contato problemático não derruba a agenda inteira', async () => {
+    const { controller, customers, req } = montar();
+    customers.upsertFromAddressBook
+      .mockRejectedValueOnce(new Error('telefone impossível'))
+      .mockResolvedValueOnce({});
+
+    await expect(
+      controller.receber(SEGREDO, req, {
+        event: 'contacts.upsert',
+        instance: 'inteliwa-1',
+        data: [
+          { id: '5511999999999@s.whatsapp.net', name: 'Um' },
+          { id: '5527888888888@s.whatsapp.net', name: 'Dois' },
+        ] as never,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(customers.upsertFromAddressBook).toHaveBeenCalledTimes(2);
   });
 });

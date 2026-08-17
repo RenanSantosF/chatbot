@@ -66,6 +66,24 @@ const EVENTOS = [
   'MESSAGES_DELETE',
 ];
 
+/**
+ * A agenda do aparelho. Assinada à parte, e não junto da lista acima.
+ *
+ * O motivo é a regra explicada ali em cima: o servidor confere a lista
+ * contra um enum e RECUSA A CHAMADA INTEIRA quando encontra um nome que
+ * não conhece. Como o conjunto de eventos varia entre versões da
+ * Evolution, um nome que não exista na versão do cliente não deixaria
+ * apenas os contatos de fora — derrubaria o registro do endereço de
+ * retorno, e com ele o recebimento de TODA mensagem.
+ *
+ * Separados, dá pra tentar com eles e cair pra lista essencial se o
+ * servidor recusar. Perder os nomes é ruim; perder as mensagens é o
+ * produto parado.
+ */
+const EVENTOS_DE_CONTATO = ['CONTACTS_SET', 'CONTACTS_UPSERT', 'CONTACTS_UPDATE'];
+
+const EVENTOS_COM_CONTATOS = [...EVENTOS, ...EVENTOS_DE_CONTATO];
+
 export interface RespostaDaEvolution<T = unknown> {
   ok: boolean;
   /** O corpo já convertido, quando deu certo. */
@@ -399,9 +417,10 @@ export function criarInstancia(
  * Também é o que faz uma troca de domínio da API se resolver sozinha na
  * próxima conexão.
  */
-export function definirWebhook(
+function registrar(
   credenciais: Credenciais,
   webhookUrl: string,
+  events: string[],
 ): Promise<RespostaDaEvolution> {
   return chamar(credenciais, `/webhook/set/${credenciais.instance}`, {
     method: 'POST',
@@ -411,10 +430,36 @@ export function definirWebhook(
         url: webhookUrl,
         byEvents: false,
         base64: false,
-        events: EVENTOS,
+        events,
       },
     },
   });
+}
+
+export async function definirWebhook(
+  credenciais: Credenciais,
+  webhookUrl: string,
+): Promise<RespostaDaEvolution> {
+  const comContatos = await registrar(
+    credenciais,
+    webhookUrl,
+    EVENTOS_COM_CONTATOS,
+  );
+  if (comContatos.ok) return comContatos;
+
+  /*
+   * O servidor recusou a lista inteira. Tenta sem os contatos.
+   *
+   * A recusa é tudo-ou-nada (ver EVENTOS_DE_CONTATO), e a versão da
+   * Evolution do cliente pode não conhecer esses nomes. Insistir seria
+   * trocar "o painel mostra telefone em vez de nome" por "o painel não
+   * recebe mensagem nenhuma" — e o segundo é o produto parado.
+   *
+   * Quem chama continua recebendo o resultado desta segunda tentativa,
+   * então uma falha de verdade (endereço errado, chave recusada) segue
+   * subindo como antes.
+   */
+  return registrar(credenciais, webhookUrl, EVENTOS);
 }
 
 /**

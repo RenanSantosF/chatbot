@@ -1,4 +1,5 @@
 import {
+  Query,
   BadRequestException,
   Body,
   Controller,
@@ -35,8 +36,14 @@ export class CustomersController {
   ) {}
 
   @Get()
-  list() {
-    return this.customersService.list();
+  list(
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.customersService.list({
+      search,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   /**

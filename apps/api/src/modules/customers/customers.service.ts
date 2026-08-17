@@ -9,12 +9,79 @@ interface FindOrCreateInput {
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
+/**
+ * Nomes que não nomeiam ninguém.
+ *
+ * "Você" é o caso real: o histórico do aparelho traz, em cada mensagem, o
+ * nome de exibição de quem a escreveu — e nas que a EMPRESA mandou esse
+ * nome é o dela mesma, que o WhatsApp costuma entregar como "Você". Quando
+ * a importação pegava esse valor, o cliente passava a se chamar "Você" no
+ * painel inteiro.
+ *
+ * Tratá-los como vazio, em vez de sair apagando, é o que faz o registro se
+ * consertar sozinho: no próximo contato — ou na próxima sincronização da
+ * agenda — o nome de verdade entra por cima sem ninguém precisar mexer.
+ */
+const NOMES_QUE_NAO_SAO_NOME = new Set([
+  'voce',
+  'you',
+  'eu',
+  'me',
+  'null',
+  'undefined',
+]);
+
+/** O que está gravado serve pra chamar a pessoa pelo nome? */
+export function temNomeDeVerdade(
+  nome: string | null | undefined,
+  telefone: string,
+): boolean {
+  const limpo = nome?.trim();
+  if (!limpo) return false;
+  // O telefone é o padrão de quem chegou sem se identificar.
+  if (limpo === telefone) return false;
+
+  const simples = limpo
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+  return !NOMES_QUE_NAO_SAO_NOME.has(simples);
+}
+
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: TenantPrismaService) {}
 
-  async list() {
-    return this.prisma.db.customer.findMany({ orderBy: { createdAt: 'desc' } });
+  /**
+   * A lista de clientes, com busca e teto.
+   *
+   * O teto não é detalhe: a agenda importada do aparelho traz TODO mundo
+   * que a empresa já teve no celular — milhares de linhas. Devolver a
+   * tabela inteira pra o navegador filtrar no braço fazia a tela demorar
+   * segundos pra abrir e a busca só encontrar quem tivesse cabido na
+   * resposta.
+   *
+   * Por isso a procura é aqui, no banco: quem digita "richard" quer achar
+   * o Richard mesmo que ele seja o cliente número 4.000.
+   */
+  async list(filtros: { search?: string; limit?: number } = {}) {
+    const busca = filtros.search?.trim();
+    const limite = Math.min(Math.max(filtros.limit ?? 100, 1), 200);
+
+    return this.prisma.db.customer.findMany({
+      where: busca
+        ? {
+            OR: [
+              { name: { contains: busca, mode: 'insensitive' } },
+              // Sem `mode` no telefone: são só dígitos, e a comparação
+              // insensível a maiúsculas custaria sem mudar resultado.
+              { phone: { contains: busca } },
+            ],
+          }
+        : {},
+      orderBy: { createdAt: 'desc' },
+      take: limite,
+    });
   }
 
   async getById(id: string) {
@@ -85,7 +152,21 @@ export class CustomersService {
    * atendimento, e sumir com a conversa por causa de uma faxina na agenda do
    * celular seria perda de dado.
    */
-  async upsertFromAddressBook(input: { phone: string; name?: string }) {
+  async upsertFromAddressBook(input: {
+    phone: string;
+    name?: string;
+    /**
+     * O nome veio da AGENDA do aparelho, e não de um apelido que a pessoa
+     * escolheu pra si.
+     *
+     * Quando vem de lá, ele ganha de qualquer coisa que já esteja
+     * gravada: é o nome que a empresa usa pra falar dessa pessoa no dia a
+     * dia, e é o único que conserta um registro que nasceu torto.
+     */
+    daAgenda?: boolean;
+  }) {
+    const nome = input.name?.trim();
+
     const existing = await this.prisma.db.customer.findFirst({
       where: { phone: input.phone },
     });
@@ -95,16 +176,15 @@ export class CustomersService {
         data: {
           tenantId: this.prisma.tenantId,
           phone: input.phone,
-          name: input.name?.trim() || input.phone,
+          name: nome || input.phone,
         },
       });
     }
 
-    const semNomeDeVerdade = !existing.name?.trim() || existing.name === existing.phone;
-    if (input.name?.trim() && semNomeDeVerdade) {
+    if (nome && (input.daAgenda || !temNomeDeVerdade(existing.name, existing.phone))) {
       return this.prisma.db.customer.update({
         where: { id: existing.id },
-        data: { name: input.name.trim() },
+        data: { name: nome },
       });
     }
 
