@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { ffmpegDisponivel } from './modules/whatsapp/audio-container';
@@ -9,7 +10,28 @@ async function bootstrap() {
   // rawBody: true preserva o corpo bruto da requisição (além do JSON já
   // parseado) — necessário pra validar a assinatura X-Hub-Signature-256 do
   // webhook do WhatsApp, que é calculada sobre os bytes exatos recebidos.
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+
+  /*
+   * O corpo do webhook precisa caber.
+   *
+   * O padrão do Express é 100 KB, generoso pra tudo o que este sistema
+   * recebe — menos por uma coisa: o lote de conversas antigas que o
+   * aparelho manda ao parear. Cada um chega com milhares de mensagens e
+   * passa de cinco megabytes.
+   *
+   * Sem isto não sobrava rastro no nosso código: a requisição era recusada
+   * com 413 ANTES de chegar ao controlador, o histórico nunca aparecia, e
+   * o log só mostrava um `PayloadTooLargeError` solto. De fora, a
+   * impressão era de que a Evolution não mandava nada.
+   *
+   * Vinte e cinco megabytes cobre o maior lote observado com folga larga e
+   * continua longe de ser um corpo que valha a pena aceitar por engano.
+   */
+  app.useBodyParser('json', { limit: '25mb' });
+  app.useBodyParser('urlencoded', { limit: '25mb', extended: true });
 
   /**
    * Deploy não pode cortar requisição no meio.
