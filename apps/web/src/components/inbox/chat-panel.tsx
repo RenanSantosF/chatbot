@@ -316,6 +316,8 @@ export function ChatPanel({
    * exato do que o botão pede.
    */
   const pularIdaAoFimRef = useRef(false);
+  /** A pessoa já rolou nesta conversa? Zera a cada conversa aberta. */
+  const jaRolouRef = useRef(false);
   const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
 
   /**
@@ -396,7 +398,20 @@ export function ChatPanel({
   useEffect(() => {
     const topo = topoRef.current;
     const area = scrollAreaRef.current;
-    if (!topo || !area || !hasOlder) return;
+    /*
+     * Só depois de a pessoa sair do fim.
+     *
+     * Ao abrir, a conversa ainda está sendo posicionada e o topo passa
+     * pela área visível por um instante — com a margem folgada, isso
+     * bastava pra disparar a busca. As mensagens antigas entravam, a
+     * âncora recolocava a tela "onde estava", e a conversa que tinha
+     * acabado de descer aparecia no meio do histórico. Era o pulo de dois
+     * segundos depois de abrir.
+     *
+     * `pertoDoFim` resolve pelo significado, não por tempo: quem está no
+     * rodapé não está lendo o passado, então não há o que carregar.
+     */
+    if (!topo || !area || !hasOlder || pertoDoFim) return;
 
     const observer = new IntersectionObserver(
       ([entrada]) => {
@@ -410,7 +425,27 @@ export function ChatPanel({
     // `carregandoAnteriores` entra de propósito: terminada uma busca, o
     // observador é refeito e, se o topo ainda estiver à vista, pede a
     // página seguinte — que é o que faz a rolagem contínua funcionar.
-  }, [hasOlder, carregarAnteriores, conversation?.id]);
+  }, [hasOlder, carregarAnteriores, conversation?.id, pertoDoFim]);
+
+  useEffect(() => {
+    jaRolouRef.current = false;
+
+    const area = scrollAreaRef.current;
+    if (!area) return;
+
+    // `wheel` e `touchmove`, não `scroll`: o posicionamento da abertura é
+    // programático e dispara `scroll` sozinho, o que marcaria como se a
+    // pessoa tivesse rolado antes mesmo de a conversa aparecer.
+    const marcar = () => {
+      jaRolouRef.current = true;
+    };
+    area.addEventListener("wheel", marcar, { passive: true });
+    area.addEventListener("touchmove", marcar, { passive: true });
+    return () => {
+      area.removeEventListener("wheel", marcar);
+      area.removeEventListener("touchmove", marcar);
+    };
+  }, [conversation?.id]);
 
   /*
    * Digitar em qualquer lugar escreve no campo de mensagem.
@@ -585,7 +620,11 @@ export function ChatPanel({
     // que era exatamente o que incomodava. Aqui a primeira pintura salta
     // seco pro fim e só mensagem nova desliza.
     const irAoFim = () => {
-      if (primeira) area.scrollTop = area.scrollHeight;
+      // Enquanto ninguém rolou nesta conversa, o salto é seco: abrir é
+      // chegar, não assistir a viagem. A janela de tempo sozinha não dava
+      // conta — a reconciliação com o servidor às vezes cai depois dela, e
+      // aí a abertura deslizava.
+      if (primeira || !jaRolouRef.current) area.scrollTop = area.scrollHeight;
       else area.scrollTo({ top: area.scrollHeight, behavior: "smooth" });
     };
 
