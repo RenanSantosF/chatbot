@@ -49,16 +49,32 @@ function montar(config: Record<string, unknown> | null = null) {
   return { service, prisma, global };
 }
 
-/** O servidor Evolution de mentira: guarda o que recebeu e diz que deu certo. */
-function servidor() {
+/**
+ * O servidor Evolution de mentira.
+ *
+ * `sessaoJaExiste` reproduz o 403 de "instance already exists", que é o
+ * que acontece em TODA reconexão — e é justamente onde o registro do
+ * webhook se perdia.
+ */
+function servidor({ sessaoJaExiste = false } = {}) {
   const chamadas: { url: string; corpo: Record<string, unknown> }[] = [];
 
   global.fetch = jest.fn(async (url: unknown, init: unknown) => {
     const opcoes = init as { body?: string };
+    const endereco = String(url);
     chamadas.push({
-      url: String(url),
+      url: endereco,
       corpo: opcoes.body ? JSON.parse(opcoes.body) : {},
     });
+
+    if (sessaoJaExiste && endereco.includes('/instance/create')) {
+      return {
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ message: 'instance already exists' }),
+      } as Response;
+    }
+
     return {
       ok: true,
       status: 200,
@@ -67,6 +83,12 @@ function servidor() {
   }) as unknown as typeof fetch;
 
   return chamadas;
+}
+
+/** O endereço registrado, venha ele da criação ou da chamada própria. */
+function webhookRegistrado(chamadas: { url: string; corpo: Record<string, unknown> }[]) {
+  const set = chamadas.find((c) => c.url.includes('/webhook/set/'));
+  return (set?.corpo as { webhook?: { url?: string; events?: string[] } })?.webhook;
 }
 
 describe('endereço do webhook', () => {
@@ -85,9 +107,43 @@ describe('endereço do webhook', () => {
 
     await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
 
-    expect(chamadas[0].corpo.webhook).toMatchObject({
+    expect(webhookRegistrado(chamadas)).toMatchObject({
       url: `https://api.exemplo.com/api/webhooks/evolution/${'a'.repeat(48)}`,
     });
+  });
+
+  it('registra o endereço também quando a sessão já existe', async () => {
+    // O caso de TODA reconexão. Criar leva o webhook junto; reconectar
+    // numa sessão existente só pede o QR code — e sem uma chamada
+    // própria, o endereço ficava o de antes, ou nenhum. Sintoma: tudo
+    // conectado e silêncio absoluto no painel.
+    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+    const chamadas = servidor({ sessaoJaExiste: true });
+    const { service } = montar({ instance: 'inteliwa-1' });
+
+    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+
+    expect(chamadas.some((c) => c.url.includes('/instance/connect/'))).toBe(true);
+    expect(webhookRegistrado(chamadas)).toMatchObject({
+      enabled: true,
+      url: `https://api.exemplo.com/api/webhooks/evolution/${'a'.repeat(48)}`,
+    });
+  });
+
+  it('recusa a conexão quando o endereço não foi aceito', async () => {
+    // Uma sessão de pé sem endereço de retorno é pior que nenhuma: ela
+    // conecta, recebe, e some com tudo em silêncio.
+    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+    global.fetch = jest.fn(async (url: unknown) =>
+      String(url).includes('/webhook/set/')
+        ? ({ ok: false, status: 400, text: async () => '{"message":"invalid url"}' } as Response)
+        : ({ ok: true, status: 200, text: async () => '{}' } as Response),
+    ) as unknown as typeof fetch;
+    const { service } = montar();
+
+    await expect(
+      service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' }),
+    ).rejects.toThrow(/endereço de retorno/);
   });
 
   it('não deixa barra dobrada quando o endereço termina em barra', async () => {
@@ -97,7 +153,7 @@ describe('endereço do webhook', () => {
 
     await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
 
-    expect(chamadas[0].corpo.webhook).toMatchObject({
+    expect(webhookRegistrado(chamadas)).toMatchObject({
       url: expect.not.stringContaining('com//'),
     });
   });
@@ -145,7 +201,7 @@ describe('troca de canal', () => {
 
     await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
 
-    expect((chamadas[0].corpo.webhook as { events: string[] }).events).toEqual([
+    expect(webhookRegistrado(chamadas)?.events).toEqual([
       'MESSAGES_UPSERT',
       'MESSAGES_UPDATE',
       'CONNECTION_UPDATE',

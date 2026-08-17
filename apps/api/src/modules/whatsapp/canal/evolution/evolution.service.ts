@@ -121,7 +121,8 @@ export class EvolutionService {
     // está reconectando depois de uma queda, e aí o caminho é pedir o QR
     // code da sessão que já está lá.
     let resposta = await evolution.criarInstancia(credenciais, url);
-    if (!resposta.ok && resposta.status === 403) {
+    const jaExistia = !resposta.ok && resposta.status === 403;
+    if (jaExistia) {
       resposta = await evolution.conectar(credenciais);
     }
 
@@ -132,6 +133,27 @@ export class EvolutionService {
       });
       throw new BadRequestException(
         resposta.erro ?? 'Não deu pra criar a sessão no servidor de mensagens.',
+      );
+    }
+
+    // O endereço é registrado SEMPRE, e não só quando a sessão nasce.
+    //
+    // Criar leva o webhook junto; reconectar numa sessão que já existe,
+    // não — aquele caminho só pede o QR code. Sem esta chamada, a segunda
+    // conexão em diante ficava com o endereço de antes, ou sem endereço
+    // nenhum, e o sintoma era o pior que existe: sessão conectada,
+    // mensagem chegando no servidor, e silêncio absoluto no painel.
+    //
+    // Como é sempre, uma troca de domínio da API também se conserta
+    // sozinha na próxima conexão.
+    const registro = await evolution.definirWebhook(credenciais, url);
+    if (!registro.ok) {
+      await this.prisma.db.evolutionSettings.update({
+        where: { id: config.id },
+        data: { estado: 'DESCONECTADO', lastError: registro.erro },
+      });
+      throw new BadRequestException(
+        `A sessão subiu, mas o servidor não aceitou o endereço de retorno: ${registro.erro}. Sem ele, nenhuma mensagem chega no painel.`,
       );
     }
 

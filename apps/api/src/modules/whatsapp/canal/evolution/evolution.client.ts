@@ -22,6 +22,20 @@
  */
 const TEMPO_LIMITE_MS = 10_000;
 
+/**
+ * Os eventos que assinamos, num lugar só.
+ *
+ * Assinar tudo faria o servidor despejar presença, digitação e cada
+ * atualização de foto de perfil no nosso webhook — tráfego que só custa e
+ * nunca é lido.
+ */
+const EVENTOS = [
+  'MESSAGES_UPSERT',
+  'MESSAGES_UPDATE',
+  'CONNECTION_UPDATE',
+  'QRCODE_UPDATED',
+];
+
 export interface RespostaDaEvolution<T = unknown> {
   ok: boolean;
   /** O corpo já convertido, quando deu certo. */
@@ -202,17 +216,55 @@ export function criarInstancia(
         url: webhookUrl,
         byEvents: false,
         base64: false,
-        // Só o que o sistema realmente processa. Assinar tudo faria o
-        // servidor despejar presença, digitação e cada atualização de foto
-        // de perfil no nosso webhook — tráfego que só custa e nunca é lido.
-        events: [
-          'MESSAGES_UPSERT',
-          'MESSAGES_UPDATE',
-          'CONNECTION_UPDATE',
-          'QRCODE_UPDATED',
-        ],
+        enabled: true,
+        events: EVENTOS,
       },
     },
+  });
+}
+
+/**
+ * Registra (ou corrige) o endereço que o servidor deve chamar.
+ *
+ * Separado da criação da sessão porque criar só acontece UMA vez, e o
+ * endereço precisa valer sempre. Sem uma chamada própria, reconectar
+ * numa sessão que já existe deixava o webhook com o endereço de antes —
+ * ou sem endereço nenhum — e o sintoma era o pior possível: tudo
+ * conectado, mensagem chegando no servidor, e silêncio no painel.
+ *
+ * Também é o que faz uma troca de domínio da API se resolver sozinha na
+ * próxima conexão.
+ */
+export function definirWebhook(
+  credenciais: Credenciais,
+  webhookUrl: string,
+): Promise<RespostaDaEvolution> {
+  return chamar(credenciais, `/webhook/set/${credenciais.instance}`, {
+    method: 'POST',
+    body: {
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        byEvents: false,
+        base64: false,
+        events: EVENTOS,
+      },
+    },
+  });
+}
+
+export interface WebhookRegistrado {
+  enabled?: boolean;
+  url?: string;
+  events?: string[];
+}
+
+/** O que está registrado hoje. Serve pra tela dizer a verdade. */
+export function consultarWebhook(
+  credenciais: Credenciais,
+): Promise<RespostaDaEvolution<WebhookRegistrado>> {
+  return chamar(credenciais, `/webhook/find/${credenciais.instance}`, {
+    method: 'GET',
   });
 }
 
