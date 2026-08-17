@@ -51,7 +51,20 @@ export interface HistoricoDoCanal {
    * teto. É o percentual que transforma a espera em algo que se acompanha.
    */
   progresso: number;
+  /**
+   * Quando esta espera começou.
+   *
+   * O servidor desiste de esperar depois de alguns minutos, mas essa
+   * conta só é refeita quando a página carrega. No navegador a espera era
+   * re-armada a cada aviso de conexão — e como a sessão reconecta várias
+   * vezes por hora, o "trazendo as conversas" girava pra sempre, mesmo
+   * sem importação nenhuma acontecendo.
+   */
+  desde: number;
 }
+
+/** Até quando dizer que as conversas estão vindo, sem notícia de lote nenhum. */
+const PACIENCIA_MS = 10 * 60_000;
 
 interface RealtimeContextValue {
   socket: Socket | null;
@@ -124,8 +137,29 @@ export function RealtimeProvider({
       : null,
   );
   const [historico, setHistorico] = useState<HistoricoDoCanal | null>(
-    canalInicial?.historico ?? null,
+    // Função de inicialização: `Date.now()` no corpo do componente seria
+    // lido a cada renderização, e a regra de pureza barra — com razão.
+    () => (canalInicial?.historico ? { ...canalInicial.historico, desde: Date.now() } : null),
   );
+
+  /*
+   * A espera tem fim mesmo sem notícia.
+   *
+   * Sem isto, uma importação que nunca manda o primeiro lote — porque o
+   * aparelho não tinha o que mandar, ou porque o evento se perdeu — deixa
+   * o aviso girando indefinidamente. Girar pra sempre é pior que dizer
+   * que acabou: quem olha conclui que o sistema travou.
+   */
+  useEffect(() => {
+    if (!historico?.importando) return;
+
+    const restante = PACIENCIA_MS - (Date.now() - historico.desde);
+    const timer = setTimeout(
+      () => setHistorico((atual) => (atual ? { ...atual, importando: false } : atual)),
+      Math.max(0, restante),
+    );
+    return () => clearTimeout(timer);
+  }, [historico?.importando, historico?.desde]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
   const activeConversationRef = useRef<string | null>(null);
@@ -170,8 +204,14 @@ export function RealtimeProvider({
       // aparelho do outro lado pra mandar lote nenhum.
       setHistorico(
         evento.estado === "CONECTADO"
-          ? { importando: true, mensagens: 0, progresso: 0 }
-          : { importando: false, mensagens: 0, progresso: 0 },
+          ? // Só re-arma se não havia espera em andamento: reconectar não
+            // recomeça importação nenhuma, e tratar como se recomeçasse é
+            // o que fazia o aviso não terminar nunca.
+            (atual) =>
+              atual?.importando
+                ? atual
+                : { importando: true, mensagens: 0, progresso: 0, desde: Date.now() }
+          : { importando: false, mensagens: 0, progresso: 0, desde: Date.now() },
       );
     });
 
@@ -187,11 +227,14 @@ export function RealtimeProvider({
     instance.on(
       "canal.historico",
       (evento: { estado: string; mensagens: number; progresso?: number }) => {
-        setHistorico({
+        setHistorico((atual) => ({
           importando: evento.estado === "IMPORTANDO",
           mensagens: evento.mensagens,
           progresso: evento.progresso ?? 0,
-        });
+          // Lote que chega renova a paciência: há importação de verdade
+          // acontecendo, e ela pode demorar mais que a janela.
+          desde: evento.estado === "IMPORTANDO" ? Date.now() : (atual?.desde ?? Date.now()),
+        }));
       },
     );
 
