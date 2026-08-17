@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { SquarePen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,7 @@ function buildQuery(
 
 export default function InboxPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { user } = useSession();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -132,6 +133,51 @@ export default function InboxPage() {
 
   const selectedIdRef = useRef<string | null>(null);
   const { socket, unreadCounts, clearUnread, setActiveConversationId } = useRealtime();
+
+  /*
+   * O `?c=` da URL abre a conversa TODA VEZ que muda, não só na primeira.
+   *
+   * O estado acima nasce de um inicializador preguiçoso, que por definição
+   * roda uma vez só. Isso bastava pra quem chegava de fora com o link
+   * pronto, e não bastava pro caso que mais importa: clicar na notificação
+   * do navegador com o Inbox JÁ aberto. Ali o `router.push` troca a
+   * querystring sem remontar a página — a barra de endereço mudava, a
+   * conversa não abria, e a notificação parecia não fazer nada.
+   *
+   * Só entra quando o valor é diferente do que já está selecionado: sem
+   * essa comparação, clicar numa conversa da lista (que não mexe na URL)
+   * seria desfeito no render seguinte, e a tela voltaria pra conversa da
+   * notificação sozinha.
+   */
+  const conversaDaUrl = searchParams.get("c");
+  useEffect(() => {
+    if (!conversaDaUrl || conversaDaUrl === selectedIdRef.current) return;
+    setSelectedId(conversaDaUrl);
+  }, [conversaDaUrl]);
+
+  /**
+   * Abrir uma conversa também escreve na URL.
+   *
+   * Não é enfeite de endereço: sem isso o `?c=` congelava no valor com que
+   * a página nasceu, e a notificação da conversa que estava lá parava de
+   * funcionar — o `router.push` escreveria o mesmo valor que já estava
+   * escrito, nada mudaria, e o efeito acima não teria por que rodar. Com a
+   * URL acompanhando, ela sempre reflete o que está aberto, e qualquer
+   * push que aponte pra outra conversa é diferente por construção.
+   *
+   * `replace` e não `push`: cada conversa aberta virando uma entrada no
+   * histórico faria o botão Voltar caminhar por vinte atendimentos antes
+   * de sair do Inbox.
+   */
+  const abrirConversa = useCallback(
+    (id: string | null) => {
+      setSelectedId(id);
+      router.replace(id ? `/dashboard/inbox?c=${id}` : "/dashboard/inbox", {
+        scroll: false,
+      });
+    },
+    [router],
+  );
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -778,7 +824,7 @@ export default function InboxPage() {
               onStarted={(id) => {
                 // Abre a conversa na hora e recarrega a lista: a conversa
                 // acabou de nascer e ainda não está no recorte carregado.
-                setSelectedId(id);
+                abrirConversa(id);
                 void loadConversations(filters);
                 loadCounts(filters);
               }}
@@ -804,7 +850,7 @@ export default function InboxPage() {
           hasMore={Boolean(cursor)}
           loadingMore={loadingMore}
           onLoadMore={loadMore}
-          onSelect={setSelectedId}
+          onSelect={abrirConversa}
           relogio={relogio}
         />
       </div>
@@ -824,7 +870,7 @@ export default function InboxPage() {
         onRead={() => selectedId && marcarLida(selectedId)}
         onDelete={handleDelete}
         podeEnviarEncerrada={podeEnviarEncerrada}
-        onClose={() => setSelectedId(null)}
+        onClose={() => abrirConversa(null)}
         onSend={handleSend}
         onSendFile={handleSendFile}
         onRefresh={refreshCurrent}

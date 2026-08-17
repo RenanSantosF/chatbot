@@ -11,6 +11,7 @@ import type {
   EstadoDoCanalSessao,
 } from "@/lib/types";
 import { SITE_NAME } from "@/lib/site";
+import { resumoDaMensagem } from "@/lib/mensagem";
 
 /**
  * O estado do WhatsApp da empresa, empurrado pelo servidor.
@@ -269,9 +270,29 @@ export function RealtimeProvider({
           [conversationId]: (prev[conversationId] ?? 0) + 1,
         }));
 
-        if (typeof document !== "undefined" && document.hidden && Notification.permission === "granted") {
+        /*
+         * Quando avisar: sempre que o painel não estiver NA MÃO da pessoa.
+         *
+         * `document.hidden` sozinho não era isso. Ele só é verdadeiro com a
+         * aba trocada ou a janela minimizada — quem estava com o navegador
+         * aberto atrás da planilha, que é a maior parte do expediente de
+         * quem atende, continuava com a aba "visível" e não recebia aviso
+         * nenhum. Era o "não funciona 100%": funcionava exatamente nos
+         * casos em que a pessoa já ia ver.
+         *
+         * `hasFocus()` cobre esse buraco: a janela existe na tela, mas o
+         * teclado está em outro programa.
+         */
+        const foraDeVista =
+          typeof document !== "undefined" &&
+          (document.hidden || !document.hasFocus());
+
+        if (foraDeVista && Notification.permission === "granted") {
           const notification = new Notification(namesRef.current[conversationId] ?? "Nova mensagem", {
-            body: message.content,
+            // Anexo tem `content` vazio, e um balão de notificação sem
+            // texto parece defeito. O mesmo resumo que a lista de
+            // conversas usa ("Imagem", "Áudio") vale aqui.
+            body: resumoDaMensagem(message.content, message.messageType),
             tag: conversationId,
           });
           notification.onclick = () => {

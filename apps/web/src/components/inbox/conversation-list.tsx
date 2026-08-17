@@ -9,19 +9,10 @@ import { EmptyState } from "@/components/empty-state";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META } from "@/lib/priority";
 import { descreverEspera, type Relogio } from "@/lib/espera";
+import { resumoDaMensagem } from "@/lib/mensagem";
 import { cn } from "@/lib/utils";
 import { TagChip } from "./tag-picker";
 import type { ConversationStatus, ConversationSummary } from "@/lib/types";
-
-/** Prévia de mídia na lista, no espírito do "📷 Foto" do WhatsApp. */
-const MEDIA_PREVIEW: Record<string, string> = {
-  IMAGE: "Imagem",
-  AUDIO: "Áudio",
-  VIDEO: "Vídeo",
-  DOCUMENT: "Documento",
-  LOCATION: "Localização",
-  OTHER: "Anexo",
-};
 
 const STATUS_LABEL: Record<ConversationStatus, string> = {
   OPEN: "Aberta",
@@ -133,9 +124,10 @@ export function ConversationList({
         const showPriority = conversation.priority === "URGENT" || conversation.priority === "HIGH";
         const last = conversation.lastMessage;
         const preview = last
-          ? `${last.senderType === "CUSTOMER" ? "" : "Você: "}${
-              last.messageType === "TEXT" ? last.content : MEDIA_PREVIEW[last.messageType] ?? "Anexo"
-            }`
+          ? `${last.senderType === "CUSTOMER" ? "" : "Você: "}${resumoDaMensagem(
+              last.content,
+              last.messageType,
+            )}`
           : "Sem mensagens ainda";
 
         return (

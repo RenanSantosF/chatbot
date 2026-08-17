@@ -944,15 +944,30 @@ export class ConversationsService {
     // quando a conversa fosse recarregada.
     const [comNome] = await this.comNomeDeQuemEnviou([message]);
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
-      conversationId,
-      message: comNome,
-    });
+    /*
+     * A conversa vai ANTES da mensagem, e a ordem tem consequência.
+     *
+     * O painel guarda o nome do cliente de cada conversa ao receber
+     * `conversation.updated`, e usa esse nome como TÍTULO da notificação do
+     * navegador ao receber `message.created`. Emitindo a mensagem primeiro,
+     * a primeira mensagem de um cliente novo chegava antes de existir nome
+     * guardado — e a notificação que mais importa, a de quem escreve pela
+     * primeira vez, era a única a sair como "Nova mensagem".
+     *
+     * Inverter é seguro porque o resumo já sai daqui com o `unreadCount`
+     * incrementado (o update acima): o painel só zera o contador local
+     * quando ele chega em zero, o que não é o caso de uma mensagem de
+     * cliente entrando.
+     */
     this.realtime.emitToTenant(
       this.prisma.tenantId,
       'conversation.updated',
       toSummary(conversation),
     );
+    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+      conversationId,
+      message: comNome,
+    });
 
     // Só ecoa pro WhatsApp respostas da empresa (IA ou atendente) — mensagens
     // do próprio cliente óbvio não, e mensagens SYSTEM (ex: aviso de
