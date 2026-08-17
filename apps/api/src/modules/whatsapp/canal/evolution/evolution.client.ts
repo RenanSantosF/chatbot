@@ -428,9 +428,21 @@ export function definirWebhook(
 export function pedirHistoricoCompleto(
   credenciais: Credenciais,
 ): Promise<RespostaDaEvolution> {
+  // O servidor exige a configuração INTEIRA, não um campo só: mandar
+  // apenas `syncFullHistory` é recusado com "instance requires property"
+  // pra cada um dos que faltam. Os valores abaixo são os padrões dele —
+  // o único que muda de fato é o histórico.
   return chamar(credenciais, `/settings/set/${credenciais.instance}`, {
     method: 'POST',
-    body: { syncFullHistory: true },
+    body: {
+      rejectCall: false,
+      msgCall: '',
+      groupsIgnore: false,
+      alwaysOnline: false,
+      readMessages: false,
+      readStatus: false,
+      syncFullHistory: true,
+    },
   });
 }
 

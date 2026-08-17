@@ -26,6 +26,16 @@ import {
  * celular, abrir o menu certo), e uma requisição HTTP pendurada esse tempo
  * todo é uma requisição que o balanceador derruba no meio.
  */
+/**
+ * Por quanto tempo um pareamento recém-emitido continua valendo.
+ *
+ * O código do WhatsApp dura cerca de um minuto, e o QR um pouco menos.
+ * Enquanto estiver dentro disso, pedir "de novo" devolve o mesmo — é o
+ * que impede que um segundo clique, ou a tela consultando o estado,
+ * derrube o pareamento que a pessoa está no meio de digitar.
+ */
+const VALIDADE_DO_PAREAMENTO_MS = 60_000;
+
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
@@ -169,6 +179,37 @@ export class EvolutionService {
      * Só quando NÃO está conectada: apagar uma sessão viva mataria um
      * atendimento que está funcionando.
      */
+    /*
+     * Um pareamento em andamento não pode ser recriado por baixo.
+     *
+     * Recriar zera o socket, e com ele o código de oito caracteres ou o
+     * QR que a pessoa está justamente digitando ou lendo. O WhatsApp
+     * responde "não foi possível conectar o dispositivo" — não porque o
+     * código estava errado, mas porque a sessão a que ele pertencia
+     * deixou de existir enquanto ela olhava pro celular.
+     *
+     * Acontecia sozinho: trocar de modo pede pareamento, "gerar outro"
+     * pede pareamento, e a tela consulta o estado a cada poucos segundos.
+     * Enquanto houver material recém-emitido, o certo é devolver o que já
+     * está valendo em vez de começar de novo.
+     */
+    const emitidoAgora =
+      existente?.updatedAt &&
+      Date.now() - existente.updatedAt.getTime() < VALIDADE_DO_PAREAMENTO_MS &&
+      Boolean(existente.qrCode || existente.pairingCode);
+
+    if (emitidoAgora) {
+      this.logger.log(
+        `Sessão ${config.instance}: pareamento ainda válido, devolvido sem recriar.`,
+      );
+      return {
+        instance: config.instance,
+        qrCode: existente.qrCode,
+        pairingCode: existente.pairingCode,
+        estado: 'AGUARDANDO_QRCODE' as const,
+      };
+    }
+
     if (existente && existente.estado !== 'CONECTADO') {
       await evolution.desconectar(credenciais);
       await evolution.apagarInstancia(credenciais);
