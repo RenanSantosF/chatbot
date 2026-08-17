@@ -54,7 +54,7 @@ export class EvolutionCanal implements CanalDeMensagem {
   private async credenciais(): Promise<evolution.Credenciais | null> {
     const config = await this.prisma.db.evolutionSettings.findFirst();
     if (!config) {
-      this.ultimaFalha = 'o WhatsApp não está conectado nesta empresa';
+      this.ultimaFalha = 'o WhatsApp desta empresa ainda não foi conectado';
       return null;
     }
 

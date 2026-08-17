@@ -100,7 +100,7 @@ describe('envio de texto', () => {
     const canal = montar(null);
 
     expect(await canal.enviarTexto('5511999', 'oi')).toBeNull();
-    expect(canal.motivoDaUltimaFalha).toContain('não está conectado');
+    expect(canal.motivoDaUltimaFalha).toContain('ainda não foi conectado');
   });
 
   it('guarda o motivo que o servidor deu', async () => {

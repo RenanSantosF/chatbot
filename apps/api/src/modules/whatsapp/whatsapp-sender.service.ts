@@ -102,7 +102,12 @@ export class WhatsappSenderService implements CanalDeMensagem {
       // O motivo é guardado, e não só registrado no log: canal
       // desconectado é a falha que mais engana quem atende, porque tudo do
       // lado de cá parece ter funcionado.
-      this.ultimaFalha = 'o WhatsApp não está conectado nesta empresa';
+      // O texto nomeia o CAMINHO de propósito. O provedor da Evolution
+      // tem uma recusa equivalente, e enquanto as duas diziam a mesma
+      // frase era impossível saber, pelo balão, se a empresa estava no
+      // canal errado ou se era a sessão que tinha caído.
+      this.ultimaFalha =
+        'esta empresa está no WhatsApp oficial e ele não está configurado';
       this.logger.warn(
         `Tenant ${this.prisma.tenantId} sem WhatsApp conectado — mensagem não enviada.`,
       );
