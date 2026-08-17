@@ -15,6 +15,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Sidebar,
   SidebarContent,
@@ -140,6 +141,36 @@ function CanalCaido() {
       <Link href="/dashboard/settings/whatsapp" className="font-medium underline underline-offset-2">
         Reconectar
       </Link>
+    </div>
+  );
+}
+
+/**
+ * As conversas do aparelho estão a caminho.
+ *
+ * Fica na faixa do topo, e não escondida na tela de Configurações do
+ * WhatsApp, porque quem precisa dessa informação está no Inbox: sem ela, o
+ * painel parece simplesmente vazio ou incompleto, e a pessoa vai procurar
+ * defeito numa conversa que ainda está chegando.
+ *
+ * Não é alarme — nada está errado, só demorando —, então usa a cor de
+ * aviso e não a de erro, e não pede ação nenhuma.
+ */
+function HistoricoChegando() {
+  const { historico } = useRealtime();
+  if (!historico?.importando) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs">
+      <Spinner className="size-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
+      <span className="font-medium text-amber-800 dark:text-amber-300">
+        Trazendo as conversas do aparelho.
+      </span>
+      <span className="text-amber-800/80 dark:text-amber-300/80">
+        {historico.mensagens > 0
+          ? `${historico.mensagens.toLocaleString("pt-BR")} mensagens até agora — pode levar alguns minutos.`
+          : "Isso pode levar alguns minutos. Elas vão aparecendo sozinhas."}
+      </span>
     </div>
   );
 }
@@ -283,6 +314,7 @@ function Shell({
           </Button>
         </header>
         <CanalCaido />
+        <HistoricoChegando />
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
             <span className="text-amber-800 dark:text-amber-300">

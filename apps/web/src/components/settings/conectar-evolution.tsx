@@ -66,7 +66,7 @@ export function ConectarEvolution() {
       : "QRCODE",
   );
   const [numero, setNumero] = useState("");
-  const { canal } = useRealtime();
+  const { canal, historico } = useRealtime();
 
   /** Relê o estado depois de uma ação de quem está olhando a tela. */
   const carregar = useCallback(async () => {
@@ -89,43 +89,28 @@ export function ConectarEvolution() {
   }, []);
 
   /**
-   * Quando esta aba viu a conexão acontecer.
+   * A trazida das conversas quem conta é o SERVIDOR.
    *
-   * É o que sustenta o aviso de sincronização: assim que o aparelho é
-   * vinculado, o WhatsApp entrega o histórico em lote, e isso leva de
-   * segundos a alguns minutos. Sem dizer nada, a tela mostrava "Conectado"
-   * sobre um Inbox vazio, e a leitura natural era que não estava
-   * funcionando — quando estava, só ainda não tinha chegado.
+   * Aqui havia um cronômetro de três minutos no navegador, e ele mentia
+   * dos dois lados. Dizia "trazendo as conversas" sem que houvesse
+   * importação nenhuma acontecendo — o sistema nem assinava o evento que
+   * traz o histórico —, e numa aba de celular em segundo plano, onde o
+   * Chrome congela o temporizador, ele nunca terminava: o giro passava
+   * quase uma hora na tela.
    *
-   * Nulo enquanto a conexão não acontece NESTA aba: quem abre a tela com
-   * o WhatsApp já ligado há dias não tem nada a sincronizar.
+   * Agora o estado vem de `useRealtime`, alimentado pelos lotes que
+   * chegam de verdade e por um limite de paciência calculado no servidor
+   * a cada leitura (ver EstadoDoCanalService). Sobrevive a recarregar a
+   * página e a aba nenhuma estar acordada.
    */
-  const [sincronizandoAte, setSincronizandoAte] = useState(false);
   const jaAvisou = useRef(false);
 
   /** O aviso de conectado sai UMA vez, venha ele do socket ou da consulta. */
   const avisarConectado = useCallback(() => {
     if (jaAvisou.current) return;
     jaAvisou.current = true;
-    setSincronizandoAte(true);
     toast.success("WhatsApp conectado.");
   }, []);
-
-  /**
-   * O aviso se apaga sozinho depois de três minutos.
-   *
-   * Um relógio, e não uma comparação na hora de desenhar: nada re-renderiza
-   * esta tela quando o tempo passa, então a conta só mudaria de resultado
-   * por acaso, no próximo evento que chegasse. Três minutos é estimativa
-   * honesta — ninguém nos avisa que a sincronização terminou, e é por isso
-   * que a frase na tela diz "pode levar alguns minutos" em vez de prometer
-   * um prazo.
-   */
-  useEffect(() => {
-    if (!sincronizandoAte) return;
-    const timer = setTimeout(() => setSincronizandoAte(false), 3 * 60_000);
-    return () => clearTimeout(timer);
-  }, [sincronizandoAte]);
 
   /**
    * O que o servidor empurrou vale na hora.
@@ -239,7 +224,7 @@ export function ConectarEvolution() {
   if (carregando) return null;
 
   const conectado = status?.estado === "CONECTADO";
-  const sincronizando = conectado && sincronizandoAte;
+  const sincronizando = conectado && Boolean(historico?.importando);
   const aguardando = status?.estado === "AGUARDANDO_QRCODE";
   // Já existe sessão: o botão deixa de ser "conectar" e passa a ser
   // "gerar novo QR code", que é o que ele de fato faz nesse ponto.
@@ -272,7 +257,9 @@ export function ConectarEvolution() {
               </span>
               <span className="block text-xs text-muted-foreground">
                 {sincronizando
-                  ? "Trazendo as conversas do aparelho — isso pode levar alguns minutos."
+                  ? historico && historico.mensagens > 0
+                    ? `Trazendo as conversas do aparelho — ${historico.mensagens.toLocaleString("pt-BR")} mensagens até agora.`
+                    : "Trazendo as conversas do aparelho — isso pode levar alguns minutos."
                   : "As mensagens desta empresa saem por este aparelho."}
               </span>
               </span>

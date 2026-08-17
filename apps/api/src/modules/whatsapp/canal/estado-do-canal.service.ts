@@ -23,6 +23,22 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
  *
  * Uma pergunta, uma resposta, e ela sabe dos dois provedores.
  */
+/**
+ * Até quando faz sentido dizer "trazendo as conversas".
+ *
+ * Ninguém garante que o aparelho vá mandar o lote final: ele pode ter
+ * pouca coisa, pode estar sem bateria, o servidor pode ter reiniciado no
+ * meio. Sem um limite, "importando" fica pra sempre — foi exatamente o
+ * que aconteceu: quase uma hora girando.
+ *
+ * A conta é feita na LEITURA, e não por um cronômetro no navegador. Um
+ * `setTimeout` de três minutos era o que existia antes, e ele falha de
+ * dois jeitos que este não falha: some ao recarregar a página, e numa aba
+ * de celular em segundo plano o Chrome congela o temporizador — ele nunca
+ * dispara, e o giro fica eterno mesmo com a importação encerrada.
+ */
+const HISTORICO_PACIENCIA_MS = 10 * 60_000;
+
 @Injectable()
 export class EstadoDoCanalService {
   constructor(private readonly prisma: PrismaService) {}
@@ -36,7 +52,13 @@ export class EstadoDoCanalService {
     if (tenant?.canal === 'EVOLUTION') {
       const config = await this.prisma.client.evolutionSettings.findFirst({
         where: { tenantId },
-        select: { estado: true, lastError: true },
+        select: {
+          estado: true,
+          lastError: true,
+          historicoEstado: true,
+          historicoMensagens: true,
+          historicoIniciadoEm: true,
+        },
       });
 
       return {
@@ -47,6 +69,10 @@ export class EstadoDoCanalService {
         estado: config?.estado ?? 'DESCONECTADO',
         motivo: config?.lastError ?? null,
         jaConectou: Boolean(config),
+        historico: {
+          importando: sincronizando(config),
+          mensagens: config?.historicoMensagens ?? 0,
+        },
       };
     }
 
@@ -71,8 +97,31 @@ export class EstadoDoCanalService {
       estado: oficial ? 'CONECTADO' : 'DESCONECTADO',
       motivo: null,
       jaConectou: Boolean(oficial),
+      // A Cloud API não tem aparelho de onde puxar conversa antiga: o
+      // histórico dela, quando existe, vem por outro caminho e já está
+      // gravado. Nada a esperar.
+      historico: { importando: false, mensagens: 0 },
     };
   }
+}
+
+/**
+ * Ainda vale dizer que as conversas estão vindo?
+ *
+ * Só enquanto o estado é IMPORTANDO **e** a janela de paciência não
+ * venceu. As duas condições precisam existir: a primeira some quando o
+ * aparelho avisa que mandou o último lote, e a segunda cobre o caso — que
+ * é o comum — em que esse aviso nunca chega.
+ */
+function sincronizando(
+  config: {
+    historicoEstado: 'NUNCA' | 'IMPORTANDO' | 'CONCLUIDO';
+    historicoIniciadoEm: Date | null;
+  } | null,
+): boolean {
+  if (config?.historicoEstado !== 'IMPORTANDO') return false;
+  if (!config.historicoIniciadoEm) return false;
+  return Date.now() - config.historicoIniciadoEm.getTime() < HISTORICO_PACIENCIA_MS;
 }
 
 export interface EstadoDoCanal {
@@ -82,4 +131,10 @@ export interface EstadoDoCanal {
   motivo: string | null;
   /** Já houve conexão alguma vez? Separa "nunca configurou" de "caiu". */
   jaConectou: boolean;
+  /** As conversas do aparelho ainda estão chegando? */
+  historico: {
+    importando: boolean;
+    /** Quantas vieram até agora, pra tela ter o que mostrar de progresso. */
+    mensagens: number;
+  };
 }

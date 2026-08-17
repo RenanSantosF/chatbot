@@ -45,6 +45,11 @@ const EVENTOS = [
   'MESSAGES_UPDATE',
   'CONNECTION_UPDATE',
   'QRCODE_UPDATED',
+  // Por onde chegam as conversas que JÁ existiam no aparelho. Sem assinar
+  // este, o pareamento trazia o telefone e mais nada: conversa antiga não
+  // aparecia, e a que aconteceu pelo celular enquanto o painel estava
+  // desconectado sumia pra sempre.
+  'MESSAGING_HISTORY_SET',
 ];
 
 export interface RespostaDaEvolution<T = unknown> {
@@ -349,6 +354,10 @@ export function criarInstancia(
     body: {
       instanceName: credenciais.instance,
       qrcode: true,
+      // Sem isto o aparelho manda só o punhado de mensagens mais recente,
+      // que é o padrão do protocolo de aparelho vinculado. É esta linha
+      // que faz a conversa inteira vir.
+      syncFullHistory: true,
       // Com número, a criação já nasce pedindo código em vez de imagem —
       // evita uma segunda viagem só pra trocar o modo de pareamento.
       ...(so ? { number: so } : {}),
@@ -391,6 +400,27 @@ export function definirWebhook(
         events: EVENTOS,
       },
     },
+  });
+}
+
+/**
+ * Pede ao servidor que o aparelho mande o histórico ao parear.
+ *
+ * Separado da criação pelo mesmo motivo do webhook: criar acontece UMA
+ * vez, e quem já pareou antes desta linha existir tem uma sessão gravada
+ * com o pedido desligado. Sem esta chamada, essas empresas continuariam
+ * recebendo só as mensagens novas pra sempre — e o defeito se
+ * consertaria apenas pra quem conectasse do zero.
+ *
+ * Falhar aqui não é motivo pra derrubar a conexão: sem histórico o painel
+ * funciona, só começa vazio.
+ */
+export function pedirHistoricoCompleto(
+  credenciais: Credenciais,
+): Promise<RespostaDaEvolution> {
+  return chamar(credenciais, `/settings/set/${credenciais.instance}`, {
+    method: 'POST',
+    body: { syncFullHistory: true },
   });
 }
 

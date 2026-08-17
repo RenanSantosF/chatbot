@@ -193,6 +193,23 @@ export class EvolutionService {
       );
     }
 
+    /*
+     * O pedido de histórico, também sempre.
+     *
+     * Sem `await` no resultado a ponto de travar a conexão: se o servidor
+     * recusar (versão antiga, rota diferente), o painel continua
+     * funcionando — só começa sem as conversas antigas. Derrubar o
+     * pareamento inteiro por causa disso seria trocar um defeito grande
+     * por um maior.
+     */
+    const historico = await evolution.pedirHistoricoCompleto(credenciais);
+    if (!historico.ok) {
+      this.logger.warn(
+        `O servidor não aceitou o pedido de histórico completo: ${historico.erro}. ` +
+          'A conexão segue; as conversas antigas do aparelho podem não vir.',
+      );
+    }
+
     // O estado sai do SERVIDOR, e não de um palpite.
     //
     // Reconectar numa sessão que já está de pé não devolve QR code nenhum

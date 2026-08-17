@@ -32,11 +32,27 @@ export interface EstadoDoCanal {
   em: number;
 }
 
+/**
+ * A trazida das conversas do aparelho.
+ *
+ * Estado separado do da conexão porque os dois andam em ritmos
+ * diferentes: a sessão fica de pé num instante, e o histórico leva
+ * minutos chegando em lotes. Misturar os dois foi o que produziu um
+ * "Conectado" com um giro do lado que ninguém sabia quando parava.
+ */
+export interface HistoricoDoCanal {
+  importando: boolean;
+  /** Quantas já vieram. Serve de sinal de vida durante a espera. */
+  mensagens: number;
+}
+
 interface RealtimeContextValue {
   socket: Socket | null;
   connected: boolean;
   /** Nulo até o servidor dizer alguma coisa. */
   canal: EstadoDoCanal | null;
+  /** Nulo enquanto não se sabe — canal oficial nunca importa nada. */
+  historico: HistoricoDoCanal | null;
   unreadCounts: Record<string, number>;
   totalUnread: number;
   clearUnread: (conversationId: string) => void;
@@ -90,6 +106,9 @@ export function RealtimeProvider({
         }
       : null,
   );
+  const [historico, setHistorico] = useState<HistoricoDoCanal | null>(
+    canalInicial?.historico ?? null,
+  );
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
   const activeConversationRef = useRef<string | null>(null);
@@ -130,7 +149,33 @@ export function RealtimeProvider({
     // expira em cerca de um minuto.
     instance.on("canal.estado", (evento: Omit<EstadoDoCanal, "em">) => {
       setCanal({ ...evento, em: Date.now() });
+      // Parear recomeça a importação; cair encerra a espera — não há
+      // aparelho do outro lado pra mandar lote nenhum.
+      setHistorico(
+        evento.estado === "CONECTADO"
+          ? { importando: true, mensagens: 0 }
+          : { importando: false, mensagens: 0 },
+      );
     });
+
+    /*
+     * Os lotes do histórico chegando.
+     *
+     * É o que substitui o cronômetro de três minutos que existia no
+     * navegador. Aquele mentia dos dois lados: dizia "trazendo as
+     * conversas" quando não havia importação nenhuma acontecendo, e —
+     * numa aba de celular em segundo plano, onde o Chrome congela o
+     * temporizador — nunca terminava.
+     */
+    instance.on(
+      "canal.historico",
+      (evento: { estado: string; mensagens: number }) => {
+        setHistorico({
+          importando: evento.estado === "IMPORTANDO",
+          mensagens: evento.mensagens,
+        });
+      },
+    );
 
     // Guarda o nome do cliente de cada conversa pra a notificação ter um
     // título decente sem precisar buscar na API na hora que chega.
@@ -221,6 +266,7 @@ export function RealtimeProvider({
       socket,
       connected,
       canal,
+      historico,
       unreadCounts,
       totalUnread,
       clearUnread,
@@ -232,6 +278,7 @@ export function RealtimeProvider({
       socket,
       connected,
       canal,
+      historico,
       unreadCounts,
       totalUnread,
       clearUnread,

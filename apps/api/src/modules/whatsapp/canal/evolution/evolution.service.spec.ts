@@ -56,7 +56,11 @@ function montar(config: Record<string, unknown> | null = null) {
  * que acontece em TODA reconexão — e é justamente onde o registro do
  * webhook se perdia.
  */
-function servidor({ sessaoJaExiste = false } = {}) {
+function servidor({
+  sessaoJaExiste = false,
+  /** Trecho de URL que o servidor de mentira vai recusar com 404. */
+  recusa = '',
+} = {}) {
   const chamadas: { url: string; corpo: Record<string, unknown> }[] = [];
 
   global.fetch = jest.fn(async (url: unknown, init: unknown) => {
@@ -66,6 +70,14 @@ function servidor({ sessaoJaExiste = false } = {}) {
       url: endereco,
       corpo: opcoes.body ? JSON.parse(opcoes.body) : {},
     });
+
+    if (recusa && endereco.includes(recusa)) {
+      return {
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({ message: 'not found' }),
+      } as Response;
+    }
 
     if (sessaoJaExiste && endereco.includes('/instance/create')) {
       return {
@@ -294,7 +306,36 @@ describe('troca de canal', () => {
       'MESSAGES_UPDATE',
       'CONNECTION_UPDATE',
       'QRCODE_UPDATED',
+      // Por onde vêm as conversas que já estavam no aparelho. Ficar de
+      // fora desta lista foi o que fazia o pareamento trazer o telefone e
+      // nenhuma conversa — inclusive as que aconteceram pelo celular
+      // enquanto o painel estava desconectado.
+      'MESSAGING_HISTORY_SET',
     ]);
+  });
+
+  it('pede o histórico completo, e não só as mensagens novas', async () => {
+    // O padrão do protocolo de aparelho vinculado é mandar só um punhado
+    // das mais recentes. Sem este pedido, "trazendo as conversas" era uma
+    // promessa que o servidor nunca tinha sido instruído a cumprir.
+    const chamadas = servidor();
+    const { service } = montar();
+
+    await service.conectar();
+
+    const ajuste = chamadas.find((c) => c.url.includes('/settings/set/'));
+    expect(ajuste?.corpo).toMatchObject({ syncFullHistory: true });
+  });
+
+  it('a conexão sobe mesmo se o servidor recusar o pedido de histórico', async () => {
+    // Versão antiga do servidor, rota diferente, o que for: sem histórico
+    // o painel funciona e só começa vazio. Derrubar o pareamento inteiro
+    // por causa disso trocaria um defeito por um maior.
+    const chamadas = servidor({ recusa: '/settings/set/' });
+    const { service } = montar();
+
+    await expect(service.conectar()).resolves.toBeDefined();
+    expect(chamadas.some((c) => c.url.includes('/settings/set/'))).toBe(true);
   });
 });
 

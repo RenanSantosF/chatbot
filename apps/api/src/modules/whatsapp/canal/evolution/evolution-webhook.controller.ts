@@ -26,8 +26,14 @@ import {
   horaDaMensagem,
   traduzirMensagem,
   traduzirStatus,
+  type DadosDaMensagem,
   type EventoDaEvolution,
 } from './evolution-mensagem';
+
+/** Uma linha do histórico, no formato que `importarHistorico` espera. */
+type MensagemImportada = Parameters<
+  ConversationsService['importarHistorico']
+>[0]['mensagens'][number];
 
 /**
  * Onde a Evolution entrega o que chega no WhatsApp.
@@ -88,7 +94,12 @@ export class EvolutionWebhookController {
       name: 'WhatsApp',
     };
 
-    const evento = body.event?.toUpperCase().replace(/\./g, '_');
+    // Ponto E hífen viram sublinhado: os eventos chegam em duas grafias
+    // conforme a versão do servidor ("messages.upsert", "MESSAGES_UPSERT"),
+    // e o do histórico usa as duas de uma vez — `messaging-history.set`.
+    // Trocar só o ponto deixava esse de fora sem nenhum aviso: ele caía no
+    // `default` e virava uma linha de log em nível debug.
+    const evento = body.event?.toUpperCase().replace(/[.-]/g, '_');
     switch (evento) {
       case 'MESSAGES_UPSERT':
         await this.mensagens(body, config);
@@ -98,6 +109,9 @@ export class EvolutionWebhookController {
         break;
       case 'CONNECTION_UPDATE':
         await this.conexao(body, config);
+        break;
+      case 'MESSAGING_HISTORY_SET':
+        await this.historico(body, config);
         break;
       case 'QRCODE_UPDATED':
         await this.qrCode(body, config);
@@ -264,6 +278,134 @@ export class EvolutionWebhookController {
     }
   }
 
+  /**
+   * As conversas que já estavam no aparelho.
+   *
+   * O pareamento não traz só o telefone: o aparelho despeja o que já
+   * existia nele, em lotes, por este evento. Sem tratá-lo, o painel
+   * nascia vazio e — pior — tudo que a empresa conversasse pelo celular
+   * enquanto o painel estivesse desconectado sumia pra sempre, porque na
+   * volta ninguém ia buscar.
+   *
+   * A importação é agrupada POR CONTATO antes de gravar: os lotes vêm
+   * misturados, e chamar `importarHistorico` uma vez por mensagem faria
+   * uma consulta de cliente e uma de conversa para cada linha de um lote
+   * que costuma ter milhares.
+   */
+  private async historico(
+    body: EventoDaEvolution,
+    config: { id: string; tenantId: string; instance: string },
+  ) {
+    const dados = body.data as
+      | { messages?: DadosDaMensagem[]; isLatest?: boolean; progress?: number }
+      | undefined;
+
+    const lote = Array.isArray(dados?.messages) ? dados.messages : [];
+    // O lote final costuma vir vazio, só pra avisar que acabou.
+    const ultimo = dados?.isLatest === true;
+
+    const porContato = new Map<
+      string,
+      { nome?: string; mensagens: MensagemImportada[] }
+    >();
+
+    for (const mensagem of lote) {
+      const chave = chaveDoEvento(mensagem);
+      if (!chave) continue;
+
+      const telefone = telefoneDoJid(chave.remoteJid);
+      // Grupo, transmissão e status ficam de fora, como no caminho ao
+      // vivo: nenhum deles é atendimento individual.
+      if (!telefone) continue;
+
+      const traduzida = traduzirMensagem(mensagem);
+      if (!traduzida) continue;
+
+      /*
+       * Sem hora, a mensagem não entra.
+       *
+       * No caminho ao vivo, hora ausente cai pra "agora" e não faz mal —
+       * a mensagem chegou agora mesmo. Aqui faria: uma conversa de três
+       * meses atrás entraria carimbada de hoje, subiria pro topo do Inbox
+       * e apareceria como atendimento novo. Perder uma linha sem data é
+       * mais barato que embaralhar a linha do tempo inteira.
+       */
+      const createdAt = horaDaMensagem(mensagem);
+      if (!createdAt) continue;
+
+      const externalId = empacotarId(chave);
+      const metadata = traduzida.metadata
+        ? {
+            ...traduzida.metadata,
+            // O anexo antigo NÃO é arquivado aqui: seriam milhares de
+            // downloads numa importação, e o WhatsApp já não devolve o
+            // binário de mensagem velha na maior parte das vezes. O
+            // handle fica gravado e a busca acontece sob demanda, se
+            // alguém abrir aquele balão.
+            evolutionPendente: undefined,
+            ...(traduzida.metadata.evolutionPendente
+              ? { mediaId: externalId }
+              : {}),
+          }
+        : undefined;
+
+      const registro = porContato.get(telefone) ?? {
+        nome: mensagem.pushName ?? undefined,
+        mensagens: [],
+      };
+      registro.mensagens.push({
+        daEmpresa: Boolean(chave.fromMe),
+        content: traduzida.content,
+        messageType: traduzida.messageType,
+        metadata: metadata as Prisma.InputJsonValue | undefined,
+        externalId,
+        createdAt,
+      });
+      porContato.set(telefone, registro);
+    }
+
+    let importadas = 0;
+    for (const [telefone, registro] of porContato) {
+      try {
+        importadas += await this.conversations.importarHistorico({
+          customerPhone: telefone,
+          customerName: registro.nome ?? telefone,
+          mensagens: registro.mensagens,
+        });
+      } catch (erro) {
+        // Um contato problemático não pode levar o lote inteiro junto: o
+        // que já foi gravado continua valendo, e o resto segue.
+        this.logger.warn(
+          `Não deu pra importar o histórico de ${telefone}: ${erro instanceof Error ? erro.message : erro}`,
+        );
+      }
+    }
+
+    const settings = await this.prisma.client.evolutionSettings.update({
+      where: { id: config.id },
+      data: {
+        historicoMensagens: { increment: importadas },
+        ...(ultimo
+          ? {
+              historicoEstado: 'CONCLUIDO' as const,
+              historicoConcluidoEm: new Date(),
+            }
+          : { historicoEstado: 'IMPORTANDO' as const }),
+      },
+      select: { historicoMensagens: true, historicoEstado: true },
+    });
+
+    this.realtime.emitToTenant(config.tenantId, 'canal.historico', {
+      estado: settings.historicoEstado,
+      mensagens: settings.historicoMensagens,
+    });
+
+    this.logger.log(
+      `Histórico da sessão ${config.instance}: ${importadas} mensagens de ` +
+        `${porContato.size} contatos${ultimo ? ' (último lote)' : ''}.`,
+    );
+  }
+
   private async conexao(
     body: EventoDaEvolution,
     config: { id: string; tenantId: string; instance: string },
@@ -298,6 +440,18 @@ export class EvolutionWebhookController {
               qrCode: null,
               pairingCode: null,
               lastError: null,
+              /*
+               * Parear abre uma janela de importação.
+               *
+               * A marca é feita aqui e não quando o primeiro lote chega
+               * porque é aqui que dá pra saber que ela COMEÇOU. Se o
+               * aparelho não mandar nada, `historicoIniciadoEm` é o que
+               * permite desistir de esperar — ver `sincronizando()`.
+               */
+              historicoEstado: 'IMPORTANDO' as const,
+              historicoMensagens: 0,
+              historicoIniciadoEm: new Date(),
+              historicoConcluidoEm: null,
             }
           : {}),
         ...(estado === 'DESCONECTADO' ? { lastError } : {}),

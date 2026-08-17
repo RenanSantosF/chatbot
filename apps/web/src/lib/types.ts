@@ -29,6 +29,14 @@ export interface EstadoDoCanalSessao {
   motivo: string | null;
   /** Já houve conexão alguma vez? Separa "nunca configurou" de "caiu". */
   jaConectou: boolean;
+  /**
+   * As conversas que já estavam no aparelho ainda estão chegando?
+   *
+   * Vem do servidor, e não de um cronômetro no navegador: só ele sabe se
+   * um lote chegou, e a conta dele sobrevive a recarregar a página e a
+   * uma aba de celular congelada em segundo plano.
+   */
+  historico: { importando: boolean; mensagens: number };
 }
 
 export interface MeResponse {

@@ -186,6 +186,22 @@ enum EvolutionEstado {
   CONECTADO
 }
 
+/// Em que pé está a trazida das conversas do aparelho.
+///
+/// Não é enfeite de tela: sem um estado gravado no servidor, a única
+/// forma de a tela mostrar "trazendo as conversas" era um cronômetro no
+/// navegador — que mente quando não há importação nenhuma acontecendo, e
+/// que numa aba de celular congelada nunca dispara e fica girando pra
+/// sempre.
+enum EvolutionHistorico {
+  /// Nunca houve pareamento, ou o servidor não mandou histórico nenhum.
+  NUNCA
+  /// O aparelho está mandando; os lotes chegam por MESSAGING_HISTORY_SET.
+  IMPORTANDO
+  /// O aparelho avisou que mandou o último lote.
+  CONCLUIDO
+}
+
 /// A ligação com um servidor Evolution.
 ///
 /// A Evolution fala com o WhatsApp pelo protocolo de aparelho vinculado —
@@ -238,6 +254,19 @@ model EvolutionSettings {
   lastSeenAt     DateTime?
   /// O motivo da última queda, pra tela dizer o que aconteceu.
   lastError      String?
+
+  /// Em que pé está a importação das conversas que já estavam no aparelho.
+  historicoEstado      EvolutionHistorico @default(NUNCA)
+  /// Quantas mensagens vieram do aparelho na importação atual.
+  historicoMensagens   Int                @default(0)
+  /// Quando o pareamento pediu o histórico.
+  ///
+  /// É o que permite desistir de esperar: ninguém garante que o aparelho
+  /// vá mandar o lote final, e sem uma hora de início "importando" não
+  /// tem como acabar. Ver `HISTORICO_PACIENCIA_MS`.
+  historicoIniciadoEm  DateTime?
+  /// Quando o aparelho avisou que mandou tudo.
+  historicoConcluidoEm DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

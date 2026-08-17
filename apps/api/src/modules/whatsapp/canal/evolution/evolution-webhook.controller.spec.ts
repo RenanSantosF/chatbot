@@ -12,6 +12,7 @@ function montar() {
     recordOutboundEcho: jest.fn().mockResolvedValue({}),
     applyDeliveryStatus: jest.fn().mockResolvedValue({}),
     applyReaction: jest.fn().mockResolvedValue({}),
+    importarHistorico: jest.fn().mockResolvedValue(2),
   };
 
   const config = {
@@ -25,7 +26,9 @@ function montar() {
     client: {
       evolutionSettings: {
         findFirst: jest.fn().mockResolvedValue(config),
-        update: jest.fn().mockResolvedValue(config),
+        update: jest
+          .fn()
+          .mockResolvedValue({ ...config, historicoEstado: 'IMPORTANDO', historicoMensagens: 2 }),
       },
     },
   };
@@ -541,5 +544,189 @@ describe('o anexo é guardado enquanto ele existe', () => {
     await controller.receber(SEGREDO, req, mensagem());
 
     expect(media.arquivar).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * O lote de histórico, no formato que a Evolution entrega ao parear.
+ *
+ * Este evento existir é a diferença entre o painel nascer com as
+ * conversas do aparelho e nascer vazio — e, pior, entre a conversa que a
+ * empresa teve pelo celular enquanto o painel estava desconectado voltar
+ * ou sumir pra sempre.
+ */
+function loteDeHistorico(
+  mensagens: Record<string, unknown>[],
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    event: 'messaging-history.set',
+    instance: 'inteliwa-1',
+    data: { messages: mensagens, ...extra },
+  };
+}
+
+function doHistorico(
+  telefone: string,
+  texto: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    key: {
+      remoteJid: `${telefone}@s.whatsapp.net`,
+      fromMe: false,
+      id: `id-${texto.replace(/\W/g, '')}`,
+    },
+    pushName: 'Richard',
+    messageTimestamp: 1755300000,
+    message: { conversation: texto },
+    ...extra,
+  };
+}
+
+describe('as conversas que já estavam no aparelho', () => {
+  it('importa o lote agrupado por contato', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([
+        doHistorico('5511999999999', 'oi Richard'),
+        doHistorico('5511999999999', 'tudo certo?'),
+        doHistorico('5527888888888', 'e aí barbeiro'),
+      ]),
+    );
+
+    // Uma chamada por CONTATO, não uma por mensagem: o lote real tem
+    // milhares de linhas, e uma ida ao banco por linha inviabilizaria.
+    expect(conversations.importarHistorico).toHaveBeenCalledTimes(2);
+
+    const richard = conversations.importarHistorico.mock.calls.find(
+      ([arg]) => arg.customerPhone === '5511999999999',
+    )?.[0];
+    expect(richard.mensagens).toHaveLength(2);
+    expect(richard.mensagens[0].content).toBe('oi Richard');
+  });
+
+  it('traz também o que a EMPRESA mandou pelo celular', async () => {
+    // O caso que motivou tudo: a conversa continuou pelo aparelho com o
+    // painel desconectado. Se só o que o cliente escreveu voltasse, o
+    // histórico contaria metade da conversa.
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([
+        doHistorico('5511999999999', 'respondi pelo celular', {
+          key: {
+            remoteJid: '5511999999999@s.whatsapp.net',
+            fromMe: true,
+            id: 'id-minha',
+          },
+        }),
+      ]),
+    );
+
+    const chamada = conversations.importarHistorico.mock.calls[0][0];
+    expect(chamada.mensagens[0].daEmpresa).toBe(true);
+  });
+
+  it('descarta grupo e transmissão, como o caminho ao vivo', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([
+        doHistorico('5511999999999', 'individual'),
+        {
+          key: {
+            remoteJid: '120363000000000000@g.us',
+            fromMe: false,
+            id: 'id-grupo',
+          },
+          messageTimestamp: 1755300000,
+          message: { conversation: 'mensagem de grupo' },
+        },
+      ]),
+    );
+
+    expect(conversations.importarHistorico).toHaveBeenCalledTimes(1);
+    expect(
+      conversations.importarHistorico.mock.calls[0][0].customerPhone,
+    ).toBe('5511999999999');
+  });
+
+  it('mensagem sem data fica de fora', async () => {
+    // Carimbá-la de "agora" jogaria uma conversa de meses atrás pro topo
+    // do Inbox como se fosse atendimento novo.
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([
+        doHistorico('5511999999999', 'sem hora', { messageTimestamp: 0 }),
+      ]),
+    );
+
+    expect(conversations.importarHistorico).not.toHaveBeenCalled();
+  });
+
+  it('um contato problemático não derruba o lote inteiro', async () => {
+    const { controller, conversations, req } = montar();
+    conversations.importarHistorico
+      .mockRejectedValueOnce(new Error('telefone impossível'))
+      .mockResolvedValueOnce(1);
+
+    await expect(
+      controller.receber(
+        SEGREDO,
+        req,
+        loteDeHistorico([
+          doHistorico('5511999999999', 'primeiro'),
+          doHistorico('5527888888888', 'segundo'),
+        ]),
+      ),
+    ).resolves.toEqual({ ok: true });
+
+    expect(conversations.importarHistorico).toHaveBeenCalledTimes(2);
+  });
+
+  it('o último lote encerra a importação', async () => {
+    const { controller, prisma, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([], { isLatest: true }),
+    );
+
+    expect(prisma.client.evolutionSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ historicoEstado: 'CONCLUIDO' }),
+      }),
+    );
+  });
+
+  it('parear abre a janela de importação', async () => {
+    const { controller, prisma, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'connection.update',
+      instance: 'inteliwa-1',
+      data: { state: 'open' },
+    });
+
+    expect(prisma.client.evolutionSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          historicoEstado: 'IMPORTANDO',
+          historicoMensagens: 0,
+        }),
+      }),
+    );
   });
 });
