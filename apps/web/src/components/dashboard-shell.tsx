@@ -35,7 +35,12 @@ import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import type { SessionTenant, SessionUser, UserRole } from "@/lib/types";
+import type {
+  EstadoDoCanalSessao,
+  SessionTenant,
+  SessionUser,
+  UserRole,
+} from "@/lib/types";
 import { SITE_NAME } from "@/lib/site";
 
 // `roles` ausente = todo mundo vê. As telas de configuração da empresa
@@ -326,11 +331,16 @@ function Shell({
 export function DashboardShell(props: {
   user: SessionUser;
   tenant: SessionTenant;
+  canal: EstadoDoCanalSessao;
   children: React.ReactNode;
 }) {
   return (
     <SessionProvider user={props.user} tenant={props.tenant}>
-      <RealtimeProvider>
+      {/* O estado do WhatsApp entra já conhecido, e não em branco à espera
+          de um evento que pode nunca chegar — quem abre o painel com a
+          sessão caída não recebeu evento nenhum, ele passou antes de a
+          página existir. */}
+      <RealtimeProvider canalInicial={props.canal}>
         <Shell {...props} />
       </RealtimeProvider>
     </SessionProvider>

@@ -985,6 +985,21 @@ export class ConversationsService {
         // apareceria na próxima vez que a conversa fosse aberta.
         await this.emitirMensagemCriada(conversationId, gravada);
       }
+
+      /*
+       * E quem chamou recebe a versão ATUALIZADA, não a de antes.
+       *
+       * Este `return` devolvia o objeto criado no início — o de antes de
+       * saber se a mensagem saiu. Com o WhatsApp desconectado, a API
+       * respondia "enviada" ao painel enquanto gravava "falhou" no banco.
+       *
+       * O balão nascia com o tique de sempre e só contava a verdade depois
+       * de recarregar a página, que foi exatamente o relato. O aviso de
+       * tempo real acima corrigia a tela às vezes: quando ele chegava
+       * DEPOIS da resposta HTTP, o painel substituía a versão certa pela
+       * errada de volta.
+       */
+      return { message: gravada, conversation };
     }
 
     return { message, conversation };

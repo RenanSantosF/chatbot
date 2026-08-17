@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { EstadoDoCanalService } from '../whatsapp/canal/estado-do-canal.service';
 import type { SalvarPerfilDto } from './dto/onboarding.dto';
 
 /**
@@ -28,6 +29,7 @@ export class OnboardingService {
   constructor(
     private readonly global: PrismaService,
     private readonly prisma: TenantPrismaService,
+    private readonly estadoDoCanal: EstadoDoCanalService,
   ) {}
 
   async salvarPerfil(dto: SalvarPerfilDto) {
@@ -67,7 +69,11 @@ export class OnboardingService {
    */
   async progresso() {
     const [whatsapp, ia, equipe, conversas, tenant] = await Promise.all([
-      this.prisma.db.whatsAppSettings.findFirst({ select: { id: true } }),
+      // Os DOIS provedores contam. Antes só a configuração da Meta era
+      // consultada, e empresa conectada por QR code nunca cria aquela
+      // linha — o item ficava eternamente por fazer com o WhatsApp
+      // funcionando e conversando.
+      this.estadoDoCanal.doTenant(this.prisma.tenantId),
       this.prisma.db.aiSettings.findFirst({
         select: { active: true, apiKeyEncrypted: true },
       }),
@@ -85,7 +91,7 @@ export class OnboardingService {
         titulo: 'Conectar o WhatsApp',
         descricao: 'Sem isso o painel não recebe nem envia mensagem nenhuma.',
         destino: '/dashboard/settings/whatsapp',
-        feito: Boolean(whatsapp),
+        feito: whatsapp.jaConectou,
       },
       {
         chave: 'ia',

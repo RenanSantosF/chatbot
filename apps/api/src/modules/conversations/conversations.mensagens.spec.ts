@@ -109,10 +109,19 @@ function montar(estado: Estado = {}) {
         }),
         update: jest
           .fn()
-          .mockImplementation((args: { data: Record<string, unknown> }) => {
-            atualizacoesDeMensagem.push(args.data);
-            return { id: 'msg-1', senderType: 'AGENT', senderId: null };
-          }),
+          .mockImplementation(
+            (args: { where: { id: string }; data: Record<string, unknown> }) => {
+              atualizacoesDeMensagem.push(args.data);
+              // Devolve a linha ATUALIZADA, como o Prisma faz. Importa
+              // porque o serviço passou a devolver o resultado do update
+              // a quem chamou: com um objeto fixo aqui, o teste não veria
+              // a diferença entre a versão de antes e a de depois — que é
+              // justamente o defeito que ele guarda.
+              const antes =
+                criadas.find((m) => m.id === args.where.id) ?? criadas[0] ?? {};
+              return { ...antes, ...args.data };
+            },
+          ),
         findFirst: jest
           .fn()
           .mockResolvedValue(
@@ -868,5 +877,46 @@ describe('cliente que escreve em rajada', () => {
     });
 
     expect(criadas.filter((m) => m.senderType === 'AI')).toHaveLength(0);
+  });
+});
+
+describe('o que o painel recebe quando o envio falha', () => {
+  /**
+   * O relato: com o WhatsApp desconectado, o balão nascia com o tique de
+   * enviado e só contava a verdade depois de recarregar a página.
+   *
+   * A causa era o retorno: a API respondia com o objeto criado ANTES de
+   * saber se a mensagem saiu, enquanto gravava a falha no banco. As duas
+   * versões existiam ao mesmo tempo, e o painel ficava com a errada.
+   */
+  it('a resposta já vem marcada como falha', async () => {
+    const { service } = montar({
+      falhaNoEnvio: 'o WhatsApp desta empresa está desconectado',
+    });
+
+    const mensagem = await service.sendAgentMessage('conversa-1', 'user-1', 'Oi');
+
+    expect(mensagem.status).toBe('FAILED');
+  });
+
+  it('e traz o motivo junto, que é o que a tela mostra em vermelho', async () => {
+    const { service } = montar({
+      falhaNoEnvio: 'o WhatsApp desta empresa está desconectado',
+    });
+
+    const mensagem = await service.sendAgentMessage('conversa-1', 'user-1', 'Oi');
+
+    expect((mensagem.metadata as { falha?: string })?.falha).toContain(
+      'desconectado',
+    );
+  });
+
+  it('envio que deu certo continua devolvendo o id externo', async () => {
+    const { service } = montar();
+
+    const mensagem = await service.sendAgentMessage('conversa-1', 'user-1', 'Oi');
+
+    expect(mensagem.status).not.toBe('FAILED');
+    expect(mensagem.externalId).toBe('wamid.NOVO');
   });
 });

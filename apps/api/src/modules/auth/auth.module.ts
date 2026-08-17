@@ -5,9 +5,12 @@ import { TenantsModule } from '../tenants/tenants.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
   imports: [
+    WhatsappModule,
+
     PassportModule,
     TenantsModule,
     JwtModule.register({

@@ -8,6 +8,7 @@ import { AuthService, type AuthResult } from './auth.service';
 import type { RequestUser } from './auth.types';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { EstadoDoCanalService } from '../whatsapp/canal/estado-do-canal.service';
 
 const ACCESS_TOKEN_COOKIE = 'access_token';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -17,6 +18,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
+    private readonly estadoDoCanal: EstadoDoCanalService,
   ) {}
 
   private setSessionCookie(res: Response, token: string) {
@@ -86,12 +88,18 @@ export class AuthController {
 
   @Get('me')
   async me(@CurrentUser() user: RequestUser) {
-    const [tenant, account] = await Promise.all([
+    const [tenant, account, canal] = await Promise.all([
       this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } }),
       this.prisma.client.user.findUnique({
         where: { id: user.userId },
         select: { name: true, mustChangePassword: true },
       }),
+      // O estado do WhatsApp vem JUNTO com a sessão, e não só por evento
+      // de tempo real. Sem isto, quem abria o painel com a sessão já caída
+      // não via aviso nenhum — o evento tinha passado antes de a página
+      // existir, e a faixa só aparecia por acaso, se a sessão oscilasse
+      // com a aba aberta.
+      this.estadoDoCanal.doTenant(user.tenantId),
     ]);
     if (!tenant || !account) {
       throw new UnauthorizedException();
@@ -109,6 +117,7 @@ export class AuthController {
         mustChangePassword: account.mustChangePassword,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+      canal,
     };
   }
 }

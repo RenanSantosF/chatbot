@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import type { Socket } from "socket.io-client";
 import { apiFetch } from "@/lib/api-client";
 import { connectRealtime } from "@/lib/socket";
-import type { ConversationMessage, ConversationSummary } from "@/lib/types";
+import type {
+  ConversationMessage,
+  ConversationSummary,
+  EstadoDoCanalSessao,
+} from "@/lib/types";
 import { SITE_NAME } from "@/lib/site";
 
 /**
@@ -59,10 +63,33 @@ export function useRealtime(): RealtimeContextValue {
  * etc. As telas que precisam reagir a eventos específicos pegam o socket
  * daqui e escutam por conta própria.
  */
-export function RealtimeProvider({ children }: { children: React.ReactNode }) {
+export function RealtimeProvider({
+  canalInicial,
+  children,
+}: {
+  /**
+   * O estado do WhatsApp no momento em que a página carregou.
+   *
+   * Sem ele, `canal` nascia nulo e a faixa de aviso só existia depois que
+   * um evento chegasse — o que não acontece pra quem abre o painel com a
+   * sessão JÁ caída. A queda tinha ocorrido antes de a aba existir, e o
+   * aviso aparecia por acaso, quando calhava de a sessão oscilar com a
+   * página aberta.
+   */
+  canalInicial?: EstadoDoCanalSessao;
+  children: React.ReactNode;
+}) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(true);
-  const [canal, setCanal] = useState<EstadoDoCanal | null>(null);
+  const [canal, setCanal] = useState<EstadoDoCanal | null>(() =>
+    canalInicial
+      ? {
+          estado: canalInicial.estado,
+          lastError: canalInicial.motivo,
+          em: Date.now(),
+        }
+      : null,
+  );
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
   const activeConversationRef = useRef<string | null>(null);

@@ -27,7 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <DashboardShell user={session.user} tenant={session.tenant}>
+    <DashboardShell user={session.user} tenant={session.tenant} canal={session.canal}>
       {children}
     </DashboardShell>
   );

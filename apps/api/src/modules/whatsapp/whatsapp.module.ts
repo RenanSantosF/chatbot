@@ -7,6 +7,7 @@ import { EmbeddedSignupController } from './embedded-signup.controller';
 import { EmbeddedSignupService } from './embedded-signup.service';
 import { WhatsappMediaController } from './whatsapp-media.controller';
 import { WhatsappMediaService } from './whatsapp-media.service';
+import { EstadoDoCanalService } from './canal/estado-do-canal.service';
 import { WhatsappSenderService } from './whatsapp-sender.service';
 import { WhatsappSettingsController } from './whatsapp-settings.controller';
 import { WhatsappSettingsService } from './whatsapp-settings.service';
@@ -22,6 +23,7 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
     WhatsappSettingsService,
     WhatsappSenderService,
     WhatsappMediaService,
+    EstadoDoCanalService,
     EmbeddedSignupService,
     CanalService,
     EvolutionCanal,
@@ -30,6 +32,11 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
   // O `WhatsappSenderService` continua exportado porque a mídia ainda passa
   // por ele. Quem só manda texto, reação ou modelo deve pedir o
   // `CanalService` — é ele que respeita a escolha de provedor da empresa.
-  exports: [CanalService, WhatsappSenderService, WhatsappMediaService],
+  exports: [
+    CanalService,
+    WhatsappSenderService,
+    WhatsappMediaService,
+    EstadoDoCanalService,
+  ],
 })
 export class WhatsappModule {}

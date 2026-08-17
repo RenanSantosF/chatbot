@@ -15,9 +15,26 @@ export interface SessionTenant {
   slug: string;
 }
 
+/**
+ * O estado do WhatsApp da empresa, vindo JUNTO com a sessão.
+ *
+ * Vem daqui, e não só de evento de tempo real, porque quem abre o painel
+ * com a sessão já caída não recebeu evento nenhum — ele passou antes de a
+ * página existir. Era isso que fazia a faixa de aviso aparecer "só às
+ * vezes, raramente".
+ */
+export interface EstadoDoCanalSessao {
+  provedor: "META_CLOUD" | "EVOLUTION";
+  estado: "CONECTADO" | "AGUARDANDO_QRCODE" | "DESCONECTADO";
+  motivo: string | null;
+  /** Já houve conexão alguma vez? Separa "nunca configurou" de "caiu". */
+  jaConectou: boolean;
+}
+
 export interface MeResponse {
   user: SessionUser;
   tenant: SessionTenant;
+  canal: EstadoDoCanalSessao;
 }
 
 export interface TeamMember {
