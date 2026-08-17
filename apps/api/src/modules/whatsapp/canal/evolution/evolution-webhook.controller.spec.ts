@@ -329,6 +329,22 @@ describe('estado da conexão', () => {
     );
   });
 
+  it('não marca desconectado no reinício que o protocolo exige', async () => {
+    // Depois de parear, o WhatsApp EXIGE que o socket caia e volte, e
+    // avisa isso com um `close` de motivo 515. É a regra no pareamento
+    // por código. Gravar "desconectado" aqui punha a faixa vermelha de
+    // "as mensagens não vão chegar" numa sessão recém-conectada.
+    const { controller, prisma, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'connection.update',
+      instance: 'inteliwa-1',
+      data: { state: 'close', statusReason: 515 },
+    });
+
+    expect(prisma.client.evolutionSettings.update).not.toHaveBeenCalled();
+  });
+
   it('separa "sem internet" de "aparelho desvinculado"', async () => {
     // Só o segundo exige ler o QR code de novo; mandar todo mundo
     // reconectar por qualquer oscilação seria fazer a empresa correr atrás

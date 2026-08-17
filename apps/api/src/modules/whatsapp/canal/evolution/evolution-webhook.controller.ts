@@ -490,6 +490,23 @@ export class EvolutionWebhookController {
      */
     const jaPareado = Boolean(config.lastSeenAt);
 
+    /*
+     * 515 não é queda: é "reinicie o socket".
+     *
+     * O protocolo EXIGE que a conexão seja derrubada e refeita logo depois
+     * de um pareamento bem-sucedido, e o WhatsApp comunica isso com um
+     * `close` de motivo 515. Ele aparece nos dois caminhos, mas no
+     * pareamento por CÓDIGO é a regra — e como o `open` seguinte pode
+     * chegar antes, depois ou se perder, gravar "desconectado" aqui deixa
+     * a faixa vermelha de "as mensagens não vão chegar" numa sessão que
+     * acabou de conectar e está funcionando.
+     *
+     * Só o 401 (desvinculado no aparelho) é queda de verdade. O resto o
+     * servidor reconecta sozinho — mas continua sendo avisado, porque uma
+     * sessão realmente caída precisa aparecer.
+     */
+    const reinicioDoProtocolo = dados?.statusReason === 515;
+
     const estado =
       bruto === 'open'
         ? ('CONECTADO' as const)
@@ -497,11 +514,15 @@ export class EvolutionWebhookController {
           ? jaPareado
             ? null
             : ('AGUARDANDO_QRCODE' as const)
-          : ('DESCONECTADO' as const);
+          : reinicioDoProtocolo
+            ? null
+            : ('DESCONECTADO' as const);
 
     if (estado === null) {
       this.logger.log(
-        `Sessão ${config.instance}: reconectando (já pareada) — estado mantido.`,
+        `Sessão ${config.instance}: ${
+          reinicioDoProtocolo ? 'reinício exigido pelo protocolo' : 'reconectando (já pareada)'
+        } — estado mantido.`,
       );
       return;
     }
