@@ -255,6 +255,22 @@ export function MessageBubble({
   }
 
   const fromCustomer = message.senderType === "CUSTOMER";
+  /*
+   * Figurinha não usa balão.
+   *
+   * É como o WhatsApp faz, e não é capricho: figurinha tem fundo
+   * transparente, e o retângulo colorido atrás dela anulava a
+   * transparência inteira — a carinha vinha recortada num quadrado verde.
+   * Sem o balão, o papel de parede aparece através dela, que é o efeito
+   * que ela foi desenhada pra ter.
+   *
+   * A hora e os tiques continuam, soltos embaixo: sem eles não dá pra
+   * saber se a figurinha saiu.
+   */
+  const figurinha =
+    message.messageType === "IMAGE" &&
+    !message.deletedAt &&
+    (message.metadata?.mimeType?.startsWith("image/webp") ?? false);
   const reactions = Object.entries(message.reactions ?? {}).filter(
     ([, who]) => Array.isArray(who) && who.length > 0,
   );
@@ -340,10 +356,15 @@ export function MessageBubble({
         // cursor-text: a linha em volta é clicável pra responder e usa
         // cursor-pointer; dentro do balão o cursor volta ao de texto pra não
         // parecer que o texto não pode ser selecionado.
-        "flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-[0_1px_1px_oklch(0_0_0/6%)]",
-        fromCustomer
-          ? "rounded-bl-sm bg-bubble-in text-bubble-in-foreground"
-          : "rounded-br-sm bg-bubble-out text-bubble-out-foreground",
+        "flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden text-[15px] leading-relaxed",
+        figurinha
+          ? "items-start"
+          : cn(
+              "rounded-2xl px-3.5 py-2.5 shadow-[0_1px_1px_oklch(0_0_0/6%)]",
+              fromCustomer
+                ? "rounded-bl-sm bg-bubble-in text-bubble-in-foreground"
+                : "rounded-br-sm bg-bubble-out text-bubble-out-foreground",
+            ),
         animar &&
           (fromCustomer
             ? "duration-200 ease-out animate-in fade-in slide-in-from-left-2"
@@ -388,7 +409,13 @@ export function MessageBubble({
       <span
         className={cn(
           "flex items-center justify-end gap-1 text-[11px] leading-none",
-          fromCustomer ? "text-muted-foreground" : "text-bubble-out-foreground/70",
+          // Sem balão atrás, a hora precisa do próprio contraste contra o
+          // papel de parede.
+          figurinha
+            ? "w-full text-muted-foreground"
+            : fromCustomer
+              ? "text-muted-foreground"
+              : "text-bubble-out-foreground/70",
         )}
       >
         {message.senderType === "AI" ? <span className="font-medium">IA</span> : null}
