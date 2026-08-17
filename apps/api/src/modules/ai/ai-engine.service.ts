@@ -97,6 +97,24 @@ export class AiEngineService {
   ) {}
 
   /**
+   * A IA desta empresa tem condição de atender AGORA?
+   *
+   * Ligada E com credencial. As duas coisas, porque "ligada sem chave" é o
+   * estado mais comum de uma conta nova e é indistinguível de desligada
+   * do ponto de vista do cliente — em nenhum dos dois casos vai sair
+   * resposta.
+   *
+   * Serve pra decidir o `aiMode` da conversa no momento em que ela nasce
+   * (ver ConversationsService.receiveInbound). Sem esta pergunta, toda
+   * conversa nascia AI_ACTIVE pelo padrão do banco, inclusive numa empresa
+   * que nunca configurou IA nenhuma.
+   */
+  async podeAtender(): Promise<boolean> {
+    const { active, credentials } = await this.credentials.resolve();
+    return active && Boolean(credentials);
+  }
+
+  /**
    * Decide se responde e, se sim, o quê. Quando não responde, diz por quê —
    * quem chama precisa saber se deve chamar um humano (ver ResultadoDaIa).
    * Erro de provedor nunca estoura daqui: quebrar o recebimento da mensagem

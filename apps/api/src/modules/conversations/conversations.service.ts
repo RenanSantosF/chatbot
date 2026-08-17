@@ -2563,11 +2563,27 @@ export class ConversationsService {
     let conversaNova = false;
     if (!conversation) {
       conversaNova = true;
+      /*
+       * A conversa nasce no modo que a empresa REALMENTE tem.
+       *
+       * O padrão do banco é AI_ACTIVE, e ele valia mesmo pra empresa que
+       * nunca configurou IA. O estrago era duplo e silencioso: a saudação
+       * automática nunca saía (ela só fala quando a IA não vai falar), e o
+       * caminho da IA rodava assim mesmo, batia em "sem credencial" e
+       * mandava ao cliente o aviso de indisponibilidade — "Só um instante,
+       * vou chamar alguém da equipe".
+       *
+       * Do lado de fora isso parecia uma primeira resposta automática
+       * funcionando com o interruptor desligado. Não era: era a IA
+       * fracassando com educação.
+       */
+      const comIa = await this.aiEngine.podeAtender();
       conversation = await this.prisma.db.conversation.create({
         data: {
           tenantId: this.prisma.tenantId,
           customerId: customer.id,
           channel: input.channel ?? 'INTERNAL',
+          aiMode: comIa ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
         },
       });
     }

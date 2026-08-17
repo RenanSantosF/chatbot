@@ -13,6 +13,8 @@ function montar(estado: {
   greetingMessage?: string;
   aiMode?: string;
   conversaAberta?: Record<string, unknown> | null;
+  /** A IA da empresa está ligada E com chave? */
+  iaPodeAtender?: boolean;
 } = {}) {
   const conversa = {
     id: 'conversa-1',
@@ -24,6 +26,7 @@ function montar(estado: {
   };
 
   const criadas: Record<string, unknown>[] = [];
+  const conversasCriadas: Record<string, unknown>[] = [];
   const atualizacoes: Record<string, unknown>[] = [];
 
   const prisma = {
@@ -39,7 +42,11 @@ function montar(estado: {
           }
           return estado.conversaAberta !== undefined ? estado.conversaAberta : null;
         }),
-        create: jest.fn().mockResolvedValue(conversa),
+        create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+          conversasCriadas.push(args.data);
+          // Reflete o modo escolhido na criação, como o banco faria.
+          return { ...conversa, aiMode: args.data.aiMode ?? conversa.aiMode };
+        }),
         update: jest.fn().mockImplementation((args: { data: unknown }) => {
           atualizacoes.push(args.data as Record<string, unknown>);
           return { ...conversa, ...(args.data as object) };
@@ -82,7 +89,10 @@ function montar(estado: {
     { emitToTenant: jest.fn() } as never,
     // Devolve algo com forma de resultado: o teste da IA ativa só quer
     // saber que a saudação NÃO saiu, mas o fluxo segue lendo a resposta.
-    { generateReply: jest.fn().mockResolvedValue({ tipo: 'nao_respondeu' }) } as never,
+    {
+      generateReply: jest.fn().mockResolvedValue({ tipo: 'nao_respondeu' }),
+      podeAtender: jest.fn().mockResolvedValue(estado.iaPodeAtender ?? false),
+    } as never,
     whatsapp as never,
     {} as never,
     inboxSettings as never,
@@ -93,7 +103,7 @@ function montar(estado: {
     { registrar: jest.fn() } as never,
   );
 
-  return { service, whatsapp, criadas, atualizacoes };
+  return { service, whatsapp, criadas, atualizacoes, conversasCriadas };
 }
 
 async function receber(service: ConversationsService) {
@@ -144,7 +154,11 @@ describe('saudação automática', () => {
   it('não fala junto com a IA', async () => {
     // Seriam duas boas-vindas seguidas, com palavras diferentes, dizendo a
     // mesma coisa.
-    const { service, whatsapp } = montar({ aiMode: 'AI_ACTIVE' });
+    //
+    // A condição é `iaPodeAtender` e não mais um `aiMode` fixado no mock:
+    // o modo da conversa passou a ser CONSEQUÊNCIA de a IA ter como
+    // atender, e o teste tem que exercitar a causa, não o efeito.
+    const { service, whatsapp } = montar({ iaPodeAtender: true });
 
     await receber(service);
 
@@ -188,5 +202,65 @@ describe('saudação automática', () => {
     await receber(service);
 
     expect(atualizacoes.some((d) => d.unreadCount === 0)).toBe(false);
+  });
+});
+
+/**
+ * O modo da conversa nasce do que a empresa TEM, não do padrão do banco.
+ *
+ * Aqui estava o defeito que fazia a primeira resposta automática parecer
+ * ligada com o interruptor desligado. Toda conversa nova nascia
+ * AI_ACTIVE, inclusive em empresa sem IA nenhuma configurada — e daí
+ * saíam dois erros de uma vez: a saudação nunca falava (ela só fala
+ * quando a IA não vai falar), e o caminho da IA rodava assim mesmo,
+ * fracassava por falta de credencial e mandava ao cliente o aviso de
+ * indisponibilidade. Quem olhava de fora via uma resposta automática
+ * saindo sozinha.
+ */
+describe('o modo da conversa nova', () => {
+  it('nasce humana quando a empresa não tem IA pra atender', async () => {
+    const { service, conversasCriadas } = montar({ iaPodeAtender: false });
+
+    await receber(service);
+
+    expect(conversasCriadas[0]).toMatchObject({ aiMode: 'HUMAN_ACTIVE' });
+  });
+
+  it('nasce com IA quando ela está ligada e com chave', async () => {
+    const { service, conversasCriadas } = montar({ iaPodeAtender: true });
+
+    await receber(service);
+
+    expect(conversasCriadas[0]).toMatchObject({ aiMode: 'AI_ACTIVE' });
+  });
+
+  it('sem IA e com saudação DESLIGADA, o cliente não recebe nada', async () => {
+    // O caso exato relatado: interruptor desligado e mesmo assim saía
+    // texto automático — que não era a saudação, era a IA fracassando
+    // com educação ("vou chamar alguém da equipe").
+    const { service, whatsapp } = montar({
+      iaPodeAtender: false,
+      greetingEnabled: false,
+    });
+
+    await receber(service);
+
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+  });
+
+  it('sem IA e com saudação LIGADA, sai a saudação da empresa', async () => {
+    const { service, whatsapp } = montar({
+      iaPodeAtender: false,
+      greetingEnabled: true,
+      greetingMessage: 'Recebemos sua mensagem!',
+    });
+
+    await receber(service);
+
+    expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
+      '5527999998888',
+      'Recebemos sua mensagem!',
+      undefined,
+    );
   });
 });
