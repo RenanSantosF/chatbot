@@ -48,7 +48,13 @@ export class EvolutionService {
    * mensagem aparece no painel.
    */
   private urlDoWebhook(secret: string): string {
-    const base = process.env.API_PUBLIC_URL?.replace(/\/+$/, '');
+    const bruto = process.env.API_PUBLIC_URL?.trim().replace(/\/+$/, '');
+    // Sem esquema não é endereço, é texto. O Railway mostra o domínio
+    // pelado ("algo.up.railway.app") e é exatamente assim que ele é
+    // copiado pra variável — o servidor de mensagens então guarda um
+    // destino que não dá pra chamar, e o sintoma é o de sempre: tudo
+    // conectado e nenhuma mensagem no painel.
+    const base = bruto && !/^https?:\/\//i.test(bruto) ? `https://${bruto}` : bruto;
     if (!base) {
       throw new BadRequestException(
         'Configure API_PUBLIC_URL com o endereço público desta API antes de conectar: é para lá que o servidor de mensagens envia o que chega.',

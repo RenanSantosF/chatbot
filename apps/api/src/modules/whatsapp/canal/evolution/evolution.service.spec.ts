@@ -158,6 +158,21 @@ describe('endereço do webhook', () => {
     });
   });
 
+  it('completa o https:// que o Railway não mostra', async () => {
+    // O painel exibe o domínio pelado, e é assim que ele é copiado. Sem
+    // esquema o destino não é chamável, e o sintoma é o de sempre: tudo
+    // conectado e nenhuma mensagem no painel.
+    process.env.API_PUBLIC_URL = 'api-production-7156.up.railway.app';
+    const chamadas = servidor();
+    const { service } = montar();
+
+    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+
+    expect(webhookRegistrado(chamadas)?.url).toBe(
+      `https://api-production-7156.up.railway.app/api/webhooks/evolution/${'a'.repeat(48)}`,
+    );
+  });
+
   it('recusa conectar sem o endereço público configurado', async () => {
     // Melhor falhar na cara de quem clicou que registrar um webhook
     // apontando pra localhost e descobrir horas depois.
