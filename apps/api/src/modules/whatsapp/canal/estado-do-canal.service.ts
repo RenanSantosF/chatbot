@@ -44,65 +44,37 @@ export class EstadoDoCanalService {
   constructor(private readonly prisma: PrismaService) {}
 
   async doTenant(tenantId: string): Promise<EstadoDoCanal> {
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { canal: true },
-    });
-
-    if (tenant?.canal === 'EVOLUTION') {
-      const config = await this.prisma.client.evolutionSettings.findFirst({
-        where: { tenantId },
-        select: {
-          estado: true,
-          lastError: true,
-          historicoEstado: true,
-          historicoMensagens: true,
-          historicoIniciadoEm: true,
-        },
-      });
-
-      return {
-        provedor: 'EVOLUTION',
-        // Sem linha nenhuma, a empresa escolheu a Evolution e ainda não
-        // pareou: "nunca conectou" é diferente de "caiu", e a tela dos
-        // primeiros passos precisa dessa diferença.
-        estado: config?.estado ?? 'DESCONECTADO',
-        motivo: config?.lastError ?? null,
-        jaConectou: Boolean(config),
-        historico: {
-          importando: sincronizando(config),
-          mensagens: config?.historicoMensagens ?? 0,
-        },
-      };
-    }
-
-    const oficial = await this.prisma.client.whatsAppSettings.findFirst({
+    const config = await this.prisma.client.evolutionSettings.findFirst({
       where: { tenantId },
-      select: { id: true },
+      select: {
+        estado: true,
+        lastError: true,
+        historicoEstado: true,
+        historicoMensagens: true,
+        historicoIniciadoEm: true,
+      },
     });
 
     return {
-      provedor: 'META_CLOUD',
-      /*
-       * No caminho oficial não existe "sessão caída".
-       *
-       * A Cloud API não tem aparelho vinculado: se as credenciais estão
-       * gravadas, ela responde. Quando não responde é por token vencido ou
-       * número sem permissão — e isso só se descobre TENTANDO enviar, o
-       * que já vira o motivo da falha no balão.
-       *
-       * Dizer "desconectado" aqui seria um alarme que ninguém consegue
-       * confirmar nem resolver.
-       */
-      estado: oficial ? 'CONECTADO' : 'DESCONECTADO',
-      motivo: null,
-      jaConectou: Boolean(oficial),
-      // A Cloud API não tem aparelho de onde puxar conversa antiga: o
-      // histórico dela, quando existe, vem por outro caminho e já está
-      // gravado. Nada a esperar.
-      historico: { importando: false, mensagens: 0 },
+      // Só existe um provedor. Havia uma bifurcação aqui, decidida por um
+      // campo `canal` no Tenant, e ela pesava dos dois lados: quando o
+      // campo atrasava, a tela relatava o estado de um canal que a empresa
+      // não usava. Com um caminho só, o que a tela mostra é sempre o que
+      // manda a mensagem.
+      provedor: 'EVOLUTION',
+      // Sem linha nenhuma, a empresa ainda não pareou: "nunca conectou" é
+      // diferente de "caiu", e a tela dos primeiros passos precisa dessa
+      // diferença.
+      estado: config?.estado ?? 'DESCONECTADO',
+      motivo: config?.lastError ?? null,
+      jaConectou: Boolean(config),
+      historico: {
+        importando: sincronizando(config),
+        mensagens: config?.historicoMensagens ?? 0,
+      },
     };
   }
+
 }
 
 /**

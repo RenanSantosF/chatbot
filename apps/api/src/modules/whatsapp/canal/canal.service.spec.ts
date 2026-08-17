@@ -7,30 +7,26 @@ import type { TenantPrismaService } from '../../../common/prisma/tenant-prisma.s
 /**
  * O que estes testes protegem.
  *
- * A camada de canal não envia nada — ela ESCOLHE quem envia. O defeito que
- * ela pode ter é silencioso e caro: mandar pela Meta uma mensagem de empresa
- * que escolheu outro provedor (cobrança indevida, número errado no aparelho
- * do cliente) ou, pior, dizer que enviou quando ninguém enviou.
+ * A camada de canal não envia nada — ela decide QUEM envia. Desde que o
+ * produto passou a ter um provedor só, a decisão deixou de ser uma
+ * escolha e virou uma garantia: nenhuma mensagem pode encontrar o caminho
+ * oficial, nem por engano, nem por um campo desatualizado no banco.
  *
- * Por isso os casos aqui são sobre roteamento e sobre a honestidade da
- * falha, e não sobre o conteúdo da mensagem — aquilo é assunto de quem
- * implementa.
+ * Era exatamente esse engano que acontecia. A empresa tinha o aparelho
+ * vinculado e funcionando, a tela dizia "Conectado", o que chegava
+ * entrava pelo webhook — e só o ENVIO caía no provedor oficial, que não
+ * tem credencial nenhuma e recusava. Tudo parecia certo menos a única
+ * coisa que importava.
  */
-function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
+function montar() {
   const meta = {
     enviarTexto: jest.fn().mockResolvedValue('wamid.OK'),
     enviarReacao: jest.fn().mockResolvedValue(undefined),
     marcarComoLida: jest.fn().mockResolvedValue(undefined),
     listarModelos: jest.fn().mockResolvedValue([]),
     enviarModelo: jest.fn().mockResolvedValue('wamid.MODELO'),
-    sendMedia: jest.fn().mockResolvedValue('wamid.MIDIA'),
-    enviarMidia: jest
-      .fn()
-      .mockResolvedValue({ externalId: 'wamid.MIDIA', handle: 'media-1' }),
-    baixarMidia: jest.fn().mockResolvedValue({
-      buffer: Buffer.from('bin'),
-      mimeType: 'image/png',
-    }),
+    enviarMidia: jest.fn().mockResolvedValue({ externalId: 'x', handle: 'y' }),
+    baixarMidia: jest.fn().mockResolvedValue(null),
     motivoDaUltimaFalha: null as string | null,
   };
 
@@ -42,34 +38,13 @@ function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
     enviarModelo: jest.fn().mockRejectedValue(new Error('sem modelo aqui')),
     enviarMidia: jest
       .fn()
-      .mockResolvedValue({ externalId: 'jid|1|EVO', handle: 'jid|1|EVO' }),
-    baixarMidia: jest.fn().mockResolvedValue({
-      buffer: Buffer.from('bin'),
-      mimeType: 'image/jpeg',
-    }),
+      .mockResolvedValue({ externalId: 'jid|1|MIDIA', handle: 'jid|0|MIDIA' }),
+    baixarMidia: jest.fn().mockResolvedValue({ buffer: Buffer.from(''), mimeType: '' }),
     motivoDaUltimaFalha: null as string | null,
   };
 
-  const prisma = {
-    tenantId: 'tenant-1',
-    db: {
-      evolutionSettings: {
-        // Sem sessão pareada, por padrão: o resgate por sessão viva tem
-        // teste próprio abaixo.
-        findFirst: jest.fn().mockResolvedValue(null),
-      },
-    },
-  };
-  const global = {
-    client: {
-      tenant: {
-        update: jest.fn().mockResolvedValue({}),
-        findUnique: jest
-          .fn()
-          .mockResolvedValue(provider ? { canal: provider } : null),
-      },
-    },
-  };
+  const prisma = { tenantId: 'tenant-1', db: {} };
+  const global = { client: { tenant: { findUnique: jest.fn(), update: jest.fn() } } };
 
   const service = new CanalService(
     prisma as unknown as TenantPrismaService,
@@ -78,157 +53,59 @@ function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
     evolution as unknown as EvolutionCanal,
   );
 
-  return { service, meta, evolution, global, prisma };
+  return { service, meta, evolution, global };
 }
 
-describe('escolha do provedor', () => {
-  it('usa a Meta quando a empresa está no provedor oficial', async () => {
-    const { service, meta } = montar('META_CLOUD');
+describe('quem entrega', () => {
+  it('é sempre a Evolution', async () => {
+    const { service, meta, evolution } = montar();
 
-    const id = await service.enviarTexto('5511999', 'oi', null);
-
-    expect(id).toBe('wamid.OK');
-    expect(meta.enviarTexto).toHaveBeenCalledWith('5511999', 'oi', null);
-  });
-
-  it('usa a Meta quando a empresa ainda não configurou nada', async () => {
-    // Era o comportamento antes de existir escolha, e é o que devolve a
-    // mensagem de "não conectado" que o painel sabe mostrar.
-    const { service, meta } = montar(null);
-
-    await service.enviarTexto('5511999', 'oi');
-
-    expect(meta.enviarTexto).toHaveBeenCalled();
-  });
-
-  it('não encosta na Meta quando a empresa está na Evolution', async () => {
-    // O caso perigoso: entregar em silêncio pelo canal errado gastaria
-    // conversa paga da Meta numa empresa que pediu outro caminho.
-    const { service, meta, evolution } = montar('EVOLUTION');
-
-    const id = await service.enviarTexto('5511999', 'oi');
-
-    expect(id).toBe('jid|1|EVO');
-    expect(evolution.enviarTexto).toHaveBeenCalled();
+    expect(await service.enviarTexto('5511999', 'oi', null)).toBe('jid|1|EVO');
+    expect(evolution.enviarTexto).toHaveBeenCalledWith('5511999', 'oi', null);
     expect(meta.enviarTexto).not.toHaveBeenCalled();
   });
 
-  it('lê o provedor a cada envio, e não uma vez só', async () => {
-    // A empresa pode trocar de provedor sem ninguém reiniciar o servidor.
-    const { service, global } = montar('META_CLOUD');
-
-    await service.enviarTexto('5511999', 'a');
-    await service.enviarTexto('5511999', 'b');
-
-    expect(global.client.tenant.findUnique).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('canal desatualizado', () => {
-  it('usa a Evolution quando a sessão está pareada, mesmo com o campo em META_CLOUD', async () => {
-    // O campo só é escrito ao conectar e desconectar, então ele atrasa. O
-    // estrago é mudo: a tela mostra "Conectado", o que CHEGA entra
-    // normalmente, e só o envio cai no provedor oficial — que não tem
-    // credencial nenhuma e recusa.
-    const { service, meta, evolution, prisma } = montar('META_CLOUD');
-    prisma.db.evolutionSettings.findFirst.mockResolvedValue({
-      estado: 'CONECTADO',
-    });
+  it('não consulta o banco pra decidir', async () => {
+    // A decisão não depende mais de nenhum campo, e é isso que impede o
+    // caso em que a tela mostra "Conectado" e o envio vai pro outro lado
+    // porque uma linha ficou pra trás.
+    const { service, global } = montar();
 
     await service.enviarTexto('5511999', 'oi');
 
-    expect(evolution.enviarTexto).toHaveBeenCalled();
-    expect(meta.enviarTexto).not.toHaveBeenCalled();
+    expect(global.client.tenant.findUnique).not.toHaveBeenCalled();
   });
 
-  it('corrige o campo de passagem, pra não repetir', async () => {
-    const { service, global, prisma } = montar('META_CLOUD');
-    prisma.db.evolutionSettings.findFirst.mockResolvedValue({
-      estado: 'CONECTADO',
-    });
+  it('nunca encosta no serviço oficial, em nenhum método', async () => {
+    const { service, meta, evolution } = montar();
 
     await service.enviarTexto('5511999', 'oi');
-
-    expect(global.client.tenant.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { canal: 'EVOLUTION' } }),
-    );
-  });
-
-  it('não sequestra quem está no oficial com a sessão fora do ar', async () => {
-    // Sessão apenas EXISTIR não basta: quem desconectou a Evolution e
-    // voltou pro oficial não pode ser arrastado de volta.
-    const { service, meta, prisma } = montar('META_CLOUD');
-    prisma.db.evolutionSettings.findFirst.mockResolvedValue({
-      estado: 'DESCONECTADO',
+    await service.enviarReacao('5511999', 'jid|0|A', '👍');
+    await service.marcarComoLida('jid|0|A');
+    await service.listarModelos();
+    await service.enviarMidia('5511999', {
+      buffer: Buffer.from(''),
+      mimetype: 'image/png',
+      filename: 'a.png',
+      tipo: 'image',
     });
+    await service.baixarMidia('jid|0|A');
+    await expect(
+      service.enviarModelo('5511999', { name: 'ola', language: 'pt_BR' }),
+    ).rejects.toThrow();
 
-    await service.enviarTexto('5511999', 'oi');
-
-    expect(meta.enviarTexto).toHaveBeenCalled();
-  });
-});
-
-describe('anexo', () => {
-  const foto = {
-    buffer: Buffer.from('bin'),
-    mimetype: 'image/png',
-    filename: 'foto.png',
-    tipo: 'image' as const,
-  };
-
-  it('vai pela Evolution quando é dela que a empresa é', async () => {
-    // Antes este caminho era recusado: o anexo só sabia falar com a Meta,
-    // e uma empresa conectada por QR code recebia "não está disponível
-    // nesta conexão" ao tentar mandar uma foto.
-    const { service, meta, evolution } = montar('EVOLUTION');
-
-    const envio = await service.enviarMidia('5511999', foto);
-
-    expect(envio.externalId).toBe('jid|1|EVO');
+    for (const chamada of Object.values(meta)) {
+      if (typeof chamada === 'function') expect(chamada).not.toHaveBeenCalled();
+    }
     expect(evolution.enviarMidia).toHaveBeenCalled();
-    expect(meta.enviarMidia).not.toHaveBeenCalled();
-  });
-
-  it('vai pela Meta quando a empresa está no oficial', async () => {
-    const { service, meta, evolution } = montar('META_CLOUD');
-
-    const envio = await service.enviarMidia('5511999', foto);
-
-    expect(envio.handle).toBe('media-1');
-    expect(meta.enviarMidia).toHaveBeenCalled();
-    expect(evolution.enviarMidia).not.toHaveBeenCalled();
-  });
-
-  it('busca o binário no provedor de HOJE', async () => {
-    // O handle guardado só faz sentido pra quem o criou: um `mediaId` da
-    // Meta não quer dizer nada pra Evolution, e vice-versa.
-    const { service, evolution } = montar('EVOLUTION');
-
-    await service.baixarMidia('jid|1|EVO');
-
-    expect(evolution.baixarMidia).toHaveBeenCalledWith('jid|1|EVO');
+    expect(evolution.baixarMidia).toHaveBeenCalled();
   });
 });
 
 describe('motivo da falha', () => {
   it('repassa o motivo de quem tentou entregar', async () => {
-    const { service, meta } = montar('META_CLOUD');
-    meta.enviarTexto.mockResolvedValue(null);
-    meta.motivoDaUltimaFalha = 'o WhatsApp não está conectado nesta empresa';
-
-    await service.enviarTexto('5511999', 'oi');
-
-    expect(service.motivoDaUltimaFalha).toBe(
-      'o WhatsApp não está conectado nesta empresa',
-    );
-  });
-
-  it('não mostra o motivo da Meta quando quem recusou foi outro provedor', async () => {
-    // Sem o controle de "quem foi usado por último", uma empresa na
-    // Evolution veria no balão um erro guardado por um serviço que nem
-    // chegou a ser chamado.
-    const { service, meta, evolution } = montar('EVOLUTION');
-    meta.motivoDaUltimaFalha = 'a Meta recusou o envio';
+    const { service, evolution } = montar();
+    evolution.enviarTexto.mockResolvedValue(null);
     evolution.motivoDaUltimaFalha = 'o WhatsApp desta empresa está desconectado';
 
     await service.enviarTexto('5511999', 'oi');
@@ -237,13 +114,22 @@ describe('motivo da falha', () => {
       'o WhatsApp desta empresa está desconectado',
     );
   });
+
+  it('não devolve o motivo guardado pelo serviço oficial', async () => {
+    // Ele nunca é chamado, então um motivo antigo lá dentro só poderia
+    // aparecer como mentira no balão de quem atende.
+    const { service, meta } = montar();
+    meta.motivoDaUltimaFalha = 'a Meta recusou o envio';
+
+    expect(service.motivoDaUltimaFalha).not.toBe('a Meta recusou o envio');
+  });
 });
 
 describe('modelo aprovado', () => {
-  it('propaga o erro quando o provedor não tem modelo', async () => {
+  it('propaga o erro, porque não existe modelo neste caminho', async () => {
     // Diferente do texto, iniciar conversa precisa falhar na cara de quem
     // clicou: ficar olhando pra uma conversa vazia é pior que ver o erro.
-    const { service } = montar('EVOLUTION');
+    const { service } = montar();
 
     await expect(
       service.enviarModelo('5511999', { name: 'ola', language: 'pt_BR' }),
@@ -251,8 +137,6 @@ describe('modelo aprovado', () => {
   });
 
   it('devolve lista vazia em vez de quebrar a tela', async () => {
-    const { service } = montar('EVOLUTION');
-
-    await expect(service.listarModelos()).resolves.toEqual([]);
+    await expect(montar().service.listarModelos()).resolves.toEqual([]);
   });
 });

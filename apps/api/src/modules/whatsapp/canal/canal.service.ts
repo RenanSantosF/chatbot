@@ -40,91 +40,59 @@ export class CanalService {
   ) {}
 
   /**
-   * Quem atende esta empresa.
+   * Quem atende esta empresa: a Evolution, sempre.
    *
-   * A escolha vem do Tenant, e não da configuração do WhatsApp oficial:
-   * quem está na Evolution nunca cria aquela linha, então perguntar lá
-   * responderia "oficial" pra todo mundo.
+   * Houve um tempo em que isto escolhia entre dois provedores, lendo um
+   * campo `canal` no Tenant. A escolha foi retirada do produto: o caminho
+   * oficial da Meta exige verificação de negócio, análise de app e modelo
+   * aprovado, e enquanto essa burocracia não sai ele não é uma opção que
+   * alguém possa usar — só uma porta pela qual dava pra cair sem querer.
    *
-   * Empresa que não existe mais (apagada no meio de uma requisição em
-   * andamento) cai no oficial, que é o que devolve a mensagem de "não
-   * conectado" que o painel sabe mostrar.
+   * E caía. Aquele campo só era escrito ao conectar e ao desconectar, então
+   * atrasava: a tela mostrava "Conectado", o que chegava entrava pelo
+   * webhook, e só o ENVIO ia parar no provedor oficial, que não tem
+   * credencial nenhuma e recusa. Um caminho que nunca é escolhido não
+   * precisa existir na decisão.
+   *
+   * Quem não tem sessão pareada NÃO cai em lugar nenhum: a própria
+   * Evolution recusa com um motivo legível ("ainda não foi conectado",
+   * "desconectado", "aguardando a leitura do QR code"), que é o que o
+   * balão mostra a quem atende. Silêncio nunca é resposta melhor que um
+   * motivo.
+   *
+   * O serviço da Meta segue no código, exportado e testado, para o dia em
+   * que a aprovação sair — mas nenhuma mensagem chega até ele por aqui.
    */
-  private async provedor(): Promise<CanalDeMensagem> {
-    const [tenant, sessao] = await Promise.all([
-      this.global.client.tenant.findUnique({
-        where: { id: this.prisma.tenantId },
-        select: { canal: true },
-      }),
-      this.prisma.db.evolutionSettings.findFirst({ select: { estado: true } }),
-    ]);
-
-    if (tenant?.canal === 'EVOLUTION') {
-      this.ultimoUsado = this.evolution;
-      return this.ultimoUsado;
-    }
-
-    /*
-     * Uma sessão pareada vale mais que o campo.
-     *
-     * O `canal` só é escrito ao conectar e ao desconectar, então ele
-     * ATRASA: uma sessão que voltou sozinha, um desconectar seguido de
-     * reconexão pelo próprio servidor, ou uma linha gravada por uma
-     * versão anterior deixam o campo dizendo META_CLOUD com o aparelho
-     * vinculado e funcionando.
-     *
-     * O estrago é mudo do jeito mais cruel: a tela mostra "Conectado", o
-     * webhook entrega as mensagens que chegam, e só o ENVIO cai no
-     * provedor oficial — que não tem credencial nenhuma e recusa. Aparelho
-     * vinculado de pé é evidência melhor que um campo que ninguém
-     * atualizou, então ele ganha, e o campo é corrigido de passagem pra
-     * não repetir.
-     */
-    if (sessao?.estado === 'CONECTADO') {
-      this.logger.warn(
-        `Tenant ${this.prisma.tenantId} tinha sessão da Evolution conectada com o canal em META_CLOUD; corrigido.`,
-      );
-      await this.global.client.tenant.update({
-        where: { id: this.prisma.tenantId },
-        data: { canal: 'EVOLUTION' },
-      });
-      this.ultimoUsado = this.evolution;
-      return this.ultimoUsado;
-    }
-
-    this.ultimoUsado = this.meta;
-    return this.ultimoUsado;
+  private provedor(): CanalDeMensagem {
+    this.ultimoUsado = this.evolution;
+    return this.evolution;
   }
 
-  async enviarTexto(
+  enviarTexto(
     para: string,
     texto: string,
     citando?: IdExterno | null,
   ): Promise<IdExterno | null> {
-    return (await this.provedor()).enviarTexto(para, texto, citando);
+    return this.provedor().enviarTexto(para, texto, citando);
   }
 
-  async enviarReacao(
-    para: string,
-    mensagem: IdExterno,
-    emoji: string,
-  ): Promise<void> {
-    return (await this.provedor()).enviarReacao(para, mensagem, emoji);
+  enviarReacao(para: string, mensagem: IdExterno, emoji: string): Promise<void> {
+    return this.provedor().enviarReacao(para, mensagem, emoji);
   }
 
-  async marcarComoLida(mensagem: IdExterno): Promise<void> {
-    return (await this.provedor()).marcarComoLida(mensagem);
+  marcarComoLida(mensagem: IdExterno): Promise<void> {
+    return this.provedor().marcarComoLida(mensagem);
   }
 
-  async listarModelos(): Promise<ModeloAprovado[]> {
-    return (await this.provedor()).listarModelos();
+  listarModelos(): Promise<ModeloAprovado[]> {
+    return this.provedor().listarModelos();
   }
 
-  async enviarModelo(
+  enviarModelo(
     para: string,
     modelo: { name: string; language: string; bodyParams?: string[] },
   ): Promise<IdExterno> {
-    return (await this.provedor()).enviarModelo(para, modelo);
+    return this.provedor().enviarModelo(para, modelo);
   }
 
   /**
@@ -137,12 +105,12 @@ export class CanalService {
    * identificador, cada provedor faz o que precisa por dentro, e o
    * chamador não sabe a diferença (ver canal.interface).
    */
-  async enviarMidia(
+  enviarMidia(
     para: string,
     arquivo: ArquivoParaEnvio,
     opcoes: { caption?: string; citando?: IdExterno | null } = {},
   ): Promise<EnvioDeMidia> {
-    return (await this.provedor()).enviarMidia(para, arquivo, opcoes);
+    return this.provedor().enviarMidia(para, arquivo, opcoes);
   }
 
   /**
@@ -155,8 +123,8 @@ export class CanalService {
    * StorageService), que guarda uma cópia justamente porque a origem não
    * dura pra sempre.
    */
-  async baixarMidia(handle: string): Promise<MidiaBaixada | null> {
-    return (await this.provedor()).baixarMidia(handle);
+  baixarMidia(handle: string): Promise<MidiaBaixada | null> {
+    return this.provedor().baixarMidia(handle);
   }
 
   /**
@@ -168,7 +136,7 @@ export class CanalService {
    * chegou a ser chamado.
    */
   get motivoDaUltimaFalha(): string | null {
-    return (this.ultimoUsado ?? this.meta).motivoDaUltimaFalha;
+    return (this.ultimoUsado ?? this.evolution).motivoDaUltimaFalha;
   }
 
   private ultimoUsado: CanalDeMensagem | null = null;
