@@ -45,10 +45,19 @@ const EVENTOS = [
   'MESSAGES_UPDATE',
   'CONNECTION_UPDATE',
   'QRCODE_UPDATED',
-  // Por onde chegam as conversas que JÁ existiam no aparelho. Sem assinar
-  // este, o pareamento trazia o telefone e mais nada: conversa antiga não
-  // aparecia, e a que aconteceu pelo celular enquanto o painel estava
-  // desconectado sumia pra sempre.
+  /*
+   * Por onde chegam as conversas que JÁ existiam no aparelho.
+   *
+   * O nome é `MESSAGES_SET`, e não `MESSAGING_HISTORY_SET`. O segundo é
+   * como o evento se chama DENTRO da Evolution, no Baileys; o que sai pelo
+   * webhook é o primeiro. Assinar só o nome de dentro deixava o
+   * pareamento trazer o telefone e mais nada — sem erro em lugar nenhum,
+   * porque o servidor simplesmente não tinha esse evento pra mandar.
+   *
+   * Os dois ficam: versões diferentes já usaram grafias diferentes, e
+   * assinar um evento que não existe não custa nada.
+   */
+  'MESSAGES_SET',
   'MESSAGING_HISTORY_SET',
 ];
 

@@ -306,10 +306,7 @@ describe('troca de canal', () => {
       'MESSAGES_UPDATE',
       'CONNECTION_UPDATE',
       'QRCODE_UPDATED',
-      // Por onde vêm as conversas que já estavam no aparelho. Ficar de
-      // fora desta lista foi o que fazia o pareamento trazer o telefone e
-      // nenhuma conversa — inclusive as que aconteceram pelo celular
-      // enquanto o painel estava desconectado.
+      'MESSAGES_SET',
       'MESSAGING_HISTORY_SET',
     ]);
   });

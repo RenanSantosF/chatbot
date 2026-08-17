@@ -18,6 +18,16 @@ import type { ChaveDaMensagem } from './evolution-id';
 export interface EventoDaEvolution {
   event?: string;
   instance?: string;
+  /**
+   * O andamento do histórico, que chega FORA de `data`.
+   *
+   * Quando a Evolution manda um lote de conversas antigas, `data` é a
+   * lista de mensagens e nada mais; o "é o último?" e o percentual sobem
+   * pra raiz do evento. Procurá-los dentro de `data` faz toda importação
+   * parecer eterna — nunca chega o aviso de fim.
+   */
+  isLatest?: boolean;
+  progress?: number;
   data?: DadosDaMensagem | DadosDaMensagem[] | Record<string, unknown>;
 }
 
