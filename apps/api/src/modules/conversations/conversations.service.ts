@@ -680,13 +680,24 @@ export class ConversationsService {
     return exists;
   }
 
+  /**
+   * A conversa, pra quem só precisa saber que ela existe.
+   *
+   * Sem as mensagens, e isso é o ponto. Ela carregava o histórico INTEIRO,
+   * sem limite, em toda mudança de prioridade, atribuição, etiqueta e
+   * transferência — e nenhum desses chamadores lê uma linha do que vinha.
+   * Enquanto as conversas tinham dezenas de mensagens, era desperdício
+   * invisível; com o histórico do aparelho importado, uma conversa de anos
+   * faz cada uma dessas operações arrastar milhares de linhas do banco
+   * pra jogar fora.
+   *
+   * Quem precisa das mensagens usa `getById`, que já pagina — e é a
+   * paginação que a tela consome ao rolar pra cima.
+   */
   private async requireConversation(id: string) {
     const conversation = await this.prisma.db.conversation.findFirst({
       where: { id },
-      include: {
-        ...conversationInclude,
-        messages: { orderBy: { createdAt: 'asc' } },
-      },
+      include: conversationInclude,
     });
     if (!conversation) {
       throw new NotFoundException('Conversa não encontrada.');

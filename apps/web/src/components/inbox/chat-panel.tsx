@@ -10,7 +10,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -304,6 +304,7 @@ export function ChatPanel({
    * a mensagem que a pessoa estava lendo exatamente onde ela estava.
    */
   const ancoraRef = useRef<{ altura: number; topo: number } | null>(null);
+  const topoRef = useRef<HTMLDivElement | null>(null);
   /**
    * Avisa o efeito de rolagem que esta atualização foi histórico antigo
    * entrando, não mensagem nova chegando.
@@ -367,7 +368,7 @@ export function ChatPanel({
     atalhoDispensado,
   ]);
 
-  async function carregarAnteriores() {
+  const carregarAnteriores = useCallback(async () => {
     const area = scrollAreaRef.current;
     if (!area || carregandoAnteriores) return;
 
@@ -379,7 +380,37 @@ export function ChatPanel({
     } finally {
       setCarregandoAnteriores(false);
     }
-  }
+  }, [carregandoAnteriores, onLoadOlder]);
+
+  /*
+   * O histórico sobe sozinho quando a rolagem chega no topo.
+   *
+   * Antes só havia o botão, e ele bastava quando uma conversa tinha
+   * dezenas de mensagens. Com o histórico do aparelho importado, voltar
+   * meses vira dezenas de cliques — e ninguém espera isso de um chat.
+   *
+   * A margem grande antecipa: começa a buscar antes de a pessoa encostar
+   * no topo, de modo que os balões antigos costumam já estar lá quando ela
+   * chega. A posição é preservada logo abaixo, no efeito de layout.
+   */
+  useEffect(() => {
+    const topo = topoRef.current;
+    const area = scrollAreaRef.current;
+    if (!topo || !area || !hasOlder) return;
+
+    const observer = new IntersectionObserver(
+      ([entrada]) => {
+        if (entrada.isIntersecting) void carregarAnteriores();
+      },
+      { root: area, rootMargin: "400px 0px 0px 0px", threshold: 0 },
+    );
+
+    observer.observe(topo);
+    return () => observer.disconnect();
+    // `carregandoAnteriores` entra de propósito: terminada uma busca, o
+    // observador é refeito e, se o topo ainda estiver à vista, pede a
+    // página seguinte — que é o que faz a rolagem contínua funcionar.
+  }, [hasOlder, carregarAnteriores, conversation?.id]);
 
   // useLayoutEffect, não useEffect: a correção precisa acontecer no mesmo
   // quadro em que os balões antigos entram. Um quadro depois já teria
@@ -810,6 +841,15 @@ export function ChatPanel({
             <p className="text-sm font-medium">Solte o arquivo pra anexar</p>
           </div>
         ) : null}
+        {/*
+            O gatilho da rolagem pra cima.
+            Fica ACIMA do botão, e é ele que faz o histórico subir sozinho
+            ao chegar no topo — como no WhatsApp Web. O botão continua
+            embaixo porque nem toda rolagem é suave: em aba de segundo
+            plano, ou com o teclado, o topo pode ser alcançado sem o
+            observador disparar, e aí a pessoa precisa de algo pra clicar.
+        */}
+        <div ref={topoRef} aria-hidden className="h-px" />
         {hasOlder ? (
           <div className="flex justify-center pb-2">
             <Button
