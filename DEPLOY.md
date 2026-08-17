@@ -282,10 +282,31 @@ Duas armadilhas nesse endereço:
 
 Fica assim: **1 serviço novo** no Railway, nenhum banco novo.
 
-### 5.2 Antes de conectar, confira a API
+### 5.2 Apontar a API para o servidor
 
-O servidor Evolution precisa **chamar a API de volta** quando chegar
-mensagem. Duas coisas têm que estar certas:
+**Estas duas variáveis vão no serviço da API, e nunca no painel de quem
+usa o produto.**
+
+| Variável | Valor |
+|---|---|
+| `EVOLUTION_BASE_URL` | O endereço do seu servidor Evolution |
+| `EVOLUTION_API_KEY` | A `AUTHENTICATION_API_KEY` que você gerou |
+
+O endereço aceita domínio pelado (`algo.up.railway.app`) e barra
+sobrando: a API completa o `https://` e apara o fim.
+
+> **Por que não pedir isso ao cliente.** A chave da Evolution é
+> **global**: quem a tem cria, lê e **apaga qualquer sessão** do servidor,
+> não só a sua. A tela chegou a pedi-la a cada empresa, e isso entregava a
+> cada cliente o poder de derrubar o WhatsApp de todos os outros. Não é
+> preferência de tela — é isolamento entre empresas.
+>
+> Se a chave vazar, troque-a no servidor Evolution **e** na variável, nesta
+> ordem. As sessões já pareadas continuam de pé; só as chamadas da API
+> passam a usar a nova.
+
+Além delas, o servidor precisa **chamar a API de volta** quando chegar
+mensagem:
 
 - `API_PUBLIC_URL` preenchida no serviço da API (é dela que sai a URL do
   webhook). Sem ela, conectar falha na hora, com recado explícito.
@@ -296,14 +317,13 @@ mensagem. Duas coisas têm que estar certas:
 ### 5.3 Conectar
 
 1. Em **Configurações > WhatsApp**, role até *Conectar lendo um QR code*.
-2. Endereço do servidor: `https://evolution.seudominio.com` (com `https://`).
-3. Chave da API: a `AUTHENTICATION_API_KEY` que você gerou.
-4. **Conectar** → o QR code aparece.
-5. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.
-6. A tela vira "Conectado" sozinha em alguns segundos.
+2. **Conectar WhatsApp** → o QR code aparece.
+3. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.
+4. A tela vira "Conectado" sozinha.
 
-O sistema cria a sessão, registra o webhook e troca o canal da empresa
-sozinho. Você não configura webhook em lugar nenhum.
+Nenhum campo para preencher: quem usa o produto não informa endereço nem
+chave. O sistema cria a sessão, registra o webhook e troca o canal da
+empresa sozinho.
 
 ### 5.4 Quando der errado
 
@@ -311,10 +331,10 @@ sozinho. Você não configura webhook em lugar nenhum.
 |---|---|
 | QR code aparece, some e nunca conecta | O contêiner não alcança `web.whatsapp.com` (é de lá que ele lê a versão do WhatsApp Web a cada conexão) — confira a saída de rede dele |
 | Conecta, mas mensagem não chega no Inbox | `API_PUBLIC_URL` errada, ou a API não é acessível de fora |
-| "a chave da API do servidor foi recusada" | `AUTHENTICATION_API_KEY` diferente da que você colou |
+| "a chave da API do servidor foi recusada" | `EVOLUTION_API_KEY` na API diferente da `AUTHENTICATION_API_KEY` do servidor |
 | "a sessão não existe mais no servidor" | O servidor foi recriado do zero — conecte de novo |
 | Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
-| Anexo não envia | Esperado: mídia pela Evolution ainda não existe |
+| "a conexão por QR code não está disponível nesta instalação" | Faltou `EVOLUTION_BASE_URL` ou `EVOLUTION_API_KEY` no serviço da API |
 | `failed to decrypt message` / `Invalid PreKey ID` | O pareamento nasceu quebrado, ou sobraram aparelhos vinculados antigos — ver abaixo |
 | A API começa a falhar com `P3009` | Uma migração ficou marcada como falha por disputa de cadeado — ver abaixo |
 | `EMAXCONNSESSION: max clients reached` | Quase sempre `DATABASE_SAVE_IS_ON_WHATSAPP` ligada — ver abaixo. Depois disso, `connection_limit` na string |

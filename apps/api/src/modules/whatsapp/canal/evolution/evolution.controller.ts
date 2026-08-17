@@ -1,6 +1,5 @@
-import { Body, Controller, Delete, Get, Post } from '@nestjs/common';
+import { Controller, Delete, Get, Post } from '@nestjs/common';
 import { RequiresPermission } from '../../../../common/auth/permission.decorator';
-import { ConectarEvolutionDto } from './dto/conectar-evolution.dto';
 import { EvolutionService } from './evolution.service';
 
 /**
@@ -18,10 +17,19 @@ export class EvolutionController {
     return this.evolution.status();
   }
 
+  /**
+   * Sem corpo, de propósito.
+   *
+   * Já recebeu endereço do servidor e chave da API, e os dois saíram: são
+   * infraestrutura da plataforma, não configuração do cliente. O motivo
+   * mais forte é de segurança — a chave da Evolution é global, e quem a
+   * tem apaga a sessão de QUALQUER empresa do servidor (ver
+   * evolution-servidor.ts).
+   */
   @Post()
   @RequiresPermission('whatsapp.manage')
-  conectar(@Body() dto: ConectarEvolutionDto) {
-    return this.evolution.conectar(dto);
+  conectar() {
+    return this.evolution.conectar();
   }
 
   /** O QR code expira em cerca de um minuto; a tela pede outro. */

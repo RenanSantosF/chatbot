@@ -9,6 +9,10 @@ import { EncryptionService } from '../../../../common/crypto/encryption.service'
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../../../common/prisma/tenant-prisma.service';
 import * as evolution from './evolution.client';
+import {
+  normalizarEndereco,
+  servidorDaPlataforma,
+} from './evolution-servidor';
 
 /**
  * A tela de conectar o WhatsApp pela Evolution.
@@ -68,7 +72,9 @@ export class EvolutionService {
     if (!config) return null;
 
     return {
-      baseUrl: config.baseUrl,
+      // O endereço do servidor NÃO sai daqui: é infraestrutura nossa, e o
+      // painel não tem o que fazer com ele além de expor onde as
+      // mensagens de todo mundo passam.
       instance: config.instance,
       estado: config.estado,
       qrCode: config.qrCode,
@@ -86,25 +92,33 @@ export class EvolutionService {
    * memória do servidor que ninguém sabe apagar — e o nome dela, que é
    * aleatório, se perde junto.
    */
-  async conectar(dados: { baseUrl?: string; apiKey?: string }) {
+  async conectar() {
     const existente = await this.prisma.db.evolutionSettings.findFirst();
 
-    // Reconectar não deve exigir digitar a chave de novo.
-    //
-    // Ela é guardada cifrada, e quem já conectou uma vez não a tem mais na
-    // mão pra colar — o campo da tela vem vazio depois de salvar. Sem
-    // reaproveitar o que está guardado, o botão de reconectar exigia um
-    // segredo que a própria tela apagou.
-    const apiKey =
-      dados.apiKey?.trim() ||
-      (existente ? this.encryption.decrypt(existente.apiKeyEncrypted) : '');
-    const endereco = dados.baseUrl?.trim() || existente?.baseUrl || '';
+    /*
+     * O servidor é o da plataforma — o cliente não informa nem vê.
+     *
+     * A configuração por empresa continua tendo precedência pra quem já
+     * conectou com servidor próprio: trocar o endereço debaixo de uma
+     * sessão viva a mataria, e o nome dela só existe lá.
+     */
+    const plataforma = servidorDaPlataforma();
+    const servidor = existente
+      ? {
+          baseUrl: existente.baseUrl,
+          apiKey: this.encryption.decrypt(existente.apiKeyEncrypted),
+        }
+      : plataforma;
 
-    if (!apiKey || !endereco) {
+    if (!servidor) {
       throw new BadRequestException(
-        'Informe o endereço do servidor e a chave da API para conectar.',
+        'A conexão por QR code não está disponível nesta instalação. Fale com o suporte.',
       );
     }
+
+    const { apiKey } = servidor;
+    const baseUrl = normalizarEndereco(servidor.baseUrl);
+    const apiKeyEncrypted = this.encryption.encrypt(apiKey);
 
     // O nome da sessão é sorteado, e não derivado do nome da empresa: ele
     // é único na plataforma inteira, e nome de empresa se repete. Uma vez
@@ -112,8 +126,6 @@ export class EvolutionService {
     // servidor.
     const instance = existente?.instance ?? `inteliwa-${randomUUID()}`;
     const webhookSecret = existente?.webhookSecret ?? randomBytes(24).toString('hex');
-    const apiKeyEncrypted = this.encryption.encrypt(apiKey);
-    const baseUrl = endereco.replace(/\/+$/, '');
 
     const config = existente
       ? await this.prisma.db.evolutionSettings.update({

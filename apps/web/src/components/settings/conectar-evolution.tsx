@@ -6,8 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
@@ -16,7 +14,6 @@ import { useRealtime } from "@/components/realtime-provider";
 type Estado = "DESCONECTADO" | "AGUARDANDO_QRCODE" | "CONECTADO";
 
 interface StatusDaEvolution {
-  baseUrl: string;
   instance: string;
   estado: Estado;
   qrCode: string | null;
@@ -49,8 +46,6 @@ const INTERVALO_MS = 8_000;
 export function ConectarEvolution() {
   const [status, setStatus] = useState<StatusDaEvolution | null>(null);
   const [carregando, setCarregando] = useState(true);
-  const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [conectando, setConectando] = useState(false);
   const { canal } = useRealtime();
 
@@ -60,7 +55,6 @@ export function ConectarEvolution() {
       () => null,
     );
     setStatus(atual);
-    if (atual?.baseUrl) setBaseUrl((antes) => antes || atual.baseUrl);
   }, []);
 
   useEffect(() => {
@@ -68,10 +62,7 @@ export function ConectarEvolution() {
     // estado precisa mudar DENTRO da resposta da promessa — mudá-lo no
     // corpo do efeito faria a tela renderizar duas vezes a cada montagem.
     apiFetch<StatusDaEvolution | null>("/whatsapp/evolution")
-      .then((atual) => {
-        setStatus(atual);
-        if (atual?.baseUrl) setBaseUrl((antes) => antes || atual.baseUrl);
-      })
+      .then(setStatus)
       // Silêncio de propósito: esta é a tela de quem AINDA não conectou, e
       // um erro vermelho na primeira visita assusta sem informar nada.
       .catch(() => undefined)
@@ -173,20 +164,12 @@ export function ConectarEvolution() {
     return () => clearInterval(timer);
   }, [status?.estado, carregar, avisarConectado]);
 
-  async function conectar(evento: React.FormEvent) {
-    evento.preventDefault();
+  async function conectar() {
     setConectando(true);
     try {
-      await apiFetch("/whatsapp/evolution", {
-        method: "POST",
-        body: JSON.stringify({
-          baseUrl: baseUrl.trim() || undefined,
-          // Em branco na reconexão significa "mantenha a que está
-          // guardada", e não "apague".
-          apiKey: apiKey.trim() || undefined,
-        }),
-      });
-      setApiKey("");
+      // Sem corpo: o servidor de mensagens é da plataforma, e a API já
+      // sabe qual é. Ver evolution-servidor.ts, do lado de lá.
+      await apiFetch("/whatsapp/evolution", { method: "POST" });
       await carregar();
     } catch (erro) {
       toast.error(
@@ -221,8 +204,8 @@ export function ConectarEvolution() {
   const conectado = status?.estado === "CONECTADO";
   const sincronizando = conectado && sincronizandoAte;
   const aguardando = status?.estado === "AGUARDANDO_QRCODE";
-  // Já existe servidor guardado: o formulário vira "reconectar", e a
-  // chave deixa de ser obrigatória.
+  // Já existe sessão: o botão deixa de ser "conectar" e passa a ser
+  // "gerar novo QR code", que é o que ele de fato faz nesse ponto.
   const jaConfigurado = Boolean(status?.instance);
 
   return (
@@ -302,42 +285,31 @@ export function ConectarEvolution() {
         ) : null}
 
         {!conectado ? (
-          <form className="flex flex-col gap-3" onSubmit={(e) => void conectar(e)}>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="evolution-url">Endereço do servidor</Label>
-              <Input
-                id="evolution-url"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://evolution.suaempresa.com"
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="evolution-key">Chave da API</Label>
-              <Input
-                id="evolution-key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  jaConfigurado ? "Guardada — deixe em branco para manter" : "A chave global do seu servidor Evolution"
-                }
-                // Obrigatória só na PRIMEIRA vez. Depois de salvar, a tela
-                // apaga o campo e ninguém tem a chave na mão pra colar de
-                // novo — exigi-la aqui travava o próprio botão de
-                // reconectar, que é justamente quando ela mais é precisa.
-                required={!jaConfigurado}
-              />
-              <p className="text-xs text-muted-foreground">
-                Guardada cifrada. É a mesma chave que você usa no painel do servidor.
-              </p>
-            </div>
-            <Button type="submit" disabled={conectando} className="self-start">
+          <div className="flex flex-col gap-2">
+            <Button
+              onClick={() => void conectar()}
+              disabled={conectando}
+              className="self-start"
+            >
               {conectando ? <Spinner className="size-4" /> : <QrCode className="size-4" />}
-              {jaConfigurado ? "Reconectar" : "Conectar"}
+              {jaConfigurado ? "Gerar novo QR code" : "Conectar WhatsApp"}
             </Button>
-          </form>
+            {/* Um botão, e nenhum campo.
+                
+                A tela pedia o endereço do servidor de mensagens e a chave
+                da API dele, e as duas coisas saíram. A primeira é
+                infraestrutura nossa — quem contrata um atendimento no
+                WhatsApp não tem por que saber por qual servidor a mensagem
+                passa, e um endereço colado errado produz o pior sintoma
+                que existe aqui: conecta, o QR code funciona, e nada chega.
+                
+                A segunda era mais séria que uma questão de tela: a chave
+                da Evolution é global, e quem a tem apaga a sessão de
+                qualquer empresa do servidor. */}
+            <p className="text-xs text-muted-foreground text-pretty">
+              É só ler o código com o celular que vai atender. Nada para configurar.
+            </p>
+          </div>
         ) : null}
       </CardContent>
     </Card>

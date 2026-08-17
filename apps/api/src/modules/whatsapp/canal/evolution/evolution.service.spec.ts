@@ -92,9 +92,15 @@ function webhookRegistrado(chamadas: { url: string; corpo: Record<string, unknow
 }
 
 describe('endereço do webhook', () => {
-  const antes = process.env.API_PUBLIC_URL;
+  const antes = { ...process.env };
+  beforeEach(() => {
+    // O servidor de mensagens vem do ambiente da API, não do cliente
+    // (ver evolution-servidor.ts).
+    process.env.EVOLUTION_BASE_URL = 'https://evo.exemplo.com';
+    process.env.EVOLUTION_API_KEY = 'chave-da-plataforma';
+  });
   afterEach(() => {
-    process.env.API_PUBLIC_URL = antes;
+    process.env = { ...antes };
   });
 
   it('inclui o prefixo global da API', async () => {
@@ -105,7 +111,7 @@ describe('endereço do webhook', () => {
     const chamadas = servidor();
     const { service } = montar();
 
-    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+    await service.conectar();
 
     expect(webhookRegistrado(chamadas)).toMatchObject({
       url: `https://api.exemplo.com/api/webhooks/evolution/${'a'.repeat(48)}`,
@@ -121,7 +127,7 @@ describe('endereço do webhook', () => {
     const chamadas = servidor({ sessaoJaExiste: true });
     const { service } = montar({ instance: 'inteliwa-1' });
 
-    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+    await service.conectar();
 
     expect(chamadas.some((c) => c.url.includes('/instance/connect/'))).toBe(true);
     expect(webhookRegistrado(chamadas)).toMatchObject({
@@ -142,7 +148,7 @@ describe('endereço do webhook', () => {
     const { service } = montar();
 
     await expect(
-      service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' }),
+      service.conectar(),
     ).rejects.toThrow(/endereço de retorno/);
   });
 
@@ -151,7 +157,7 @@ describe('endereço do webhook', () => {
     const chamadas = servidor();
     const { service } = montar();
 
-    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+    await service.conectar();
 
     expect(webhookRegistrado(chamadas)).toMatchObject({
       url: expect.not.stringContaining('com//'),
@@ -166,7 +172,7 @@ describe('endereço do webhook', () => {
     const chamadas = servidor();
     const { service } = montar();
 
-    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+    await service.conectar();
 
     expect(webhookRegistrado(chamadas)?.url).toBe(
       `https://api-production-7156.up.railway.app/api/webhooks/evolution/${'a'.repeat(48)}`,
@@ -181,36 +187,45 @@ describe('endereço do webhook', () => {
     const { service } = montar();
 
     await expect(
-      service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' }),
+      service.conectar(),
     ).rejects.toThrow(BadRequestException);
   });
 });
 
 describe('reconexão', () => {
-  const antes = process.env.API_PUBLIC_URL;
+  const antes = { ...process.env };
   beforeEach(() => {
     process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+    // O servidor de mensagens é da plataforma, e vem do ambiente da API
+    // (ver evolution-servidor.ts) — o cliente não informa nada.
+    process.env.EVOLUTION_BASE_URL = 'https://evo.exemplo.com';
+    process.env.EVOLUTION_API_KEY = 'chave-da-plataforma';
   });
   afterEach(() => {
-    process.env.API_PUBLIC_URL = antes;
+    process.env = { ...antes };
   });
 
-  it('reaproveita a chave guardada quando a tela não manda nenhuma', async () => {
-    // A tela apaga o campo depois de salvar, então quem já conectou não
-    // tem mais a chave na mão. Exigi-la de novo tornava o botão de
-    // reconectar impossível de acionar.
+  it('reconectar não pede nada a ninguém', async () => {
+    // A tela chegou a pedir endereço e chave, e a reconexão ficava
+    // impossível de acionar: o campo era apagado ao salvar, então quem já
+    // tinha conectado não tinha mais o segredo na mão.
     const chamadas = servidor({ sessaoJaExiste: true });
     const { service } = montar({ baseUrl: 'https://evo.exemplo.com' });
 
-    await expect(service.conectar({})).resolves.toBeDefined();
+    await expect(service.conectar()).resolves.toBeDefined();
     expect(chamadas.some((c) => c.url.includes('/webhook/set/'))).toBe(true);
   });
 
-  it('recusa quando não há chave guardada nem informada', async () => {
+  it('recusa com clareza quando a plataforma não tem servidor configurado', async () => {
+    // Sem as variáveis de ambiente, o recurso simplesmente não existe
+    // nesta instalação — melhor dizer isso do que estourar no meio do
+    // caminho com um erro de rede.
+    delete process.env.EVOLUTION_BASE_URL;
+    delete process.env.EVOLUTION_API_KEY;
     servidor();
     const { service } = montar(null);
 
-    await expect(service.conectar({})).rejects.toThrow(BadRequestException);
+    await expect(service.conectar()).rejects.toThrow(BadRequestException);
   });
 
   it('não fica esperando QR code numa sessão que já está de pé', async () => {
@@ -233,7 +248,7 @@ describe('reconexão', () => {
 
     const { service } = montar({ baseUrl: 'https://evo.exemplo.com' });
 
-    await expect(service.conectar({})).resolves.toMatchObject({
+    await expect(service.conectar()).resolves.toMatchObject({
       estado: 'CONECTADO',
       qrCode: null,
     });
@@ -241,12 +256,16 @@ describe('reconexão', () => {
 });
 
 describe('troca de canal', () => {
-  const antes = process.env.API_PUBLIC_URL;
+  const antes = { ...process.env };
   beforeEach(() => {
     process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+    // O servidor de mensagens é da plataforma, e vem do ambiente da API
+    // (ver evolution-servidor.ts) — o cliente não informa nada.
+    process.env.EVOLUTION_BASE_URL = 'https://evo.exemplo.com';
+    process.env.EVOLUTION_API_KEY = 'chave-da-plataforma';
   });
   afterEach(() => {
-    process.env.API_PUBLIC_URL = antes;
+    process.env = { ...antes };
   });
 
   it('passa a empresa pra Evolution assim que a sessão existe', async () => {
@@ -255,7 +274,7 @@ describe('troca de canal', () => {
     servidor();
     const { service, global: g } = montar();
 
-    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+    await service.conectar();
 
     expect(g.client.tenant.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { canal: 'EVOLUTION' } }),
@@ -268,7 +287,7 @@ describe('troca de canal', () => {
     const chamadas = servidor();
     const { service } = montar();
 
-    await service.conectar({ baseUrl: 'https://evo.exemplo.com', apiKey: 'chave' });
+    await service.conectar();
 
     expect(webhookRegistrado(chamadas)?.events).toEqual([
       'MESSAGES_UPSERT',
