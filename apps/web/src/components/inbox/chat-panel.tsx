@@ -26,6 +26,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useSession } from "@/components/session-provider";
+import { useRealtime } from "@/components/realtime-provider";
 import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { apiFetch } from "@/lib/api-client";
@@ -198,6 +199,7 @@ export function ChatPanel({
   podeEnviarEncerrada: boolean;
 }) {
   const { user } = useSession();
+  const { canal } = useRealtime();
   const [draft, setDraft] = useState("");
   /**
    * Esc dispensou o seletor de respostas rápidas nesta digitação.
@@ -575,7 +577,22 @@ export function ChatPanel({
   // reabre o atendimento sozinho (ver reabrirSePreciso na API) — do lado do
   // cliente é uma conversa de WhatsApp como outra qualquer, e obrigar o
   // atendente a reabrir antes de escrever seria burocracia só nossa.
-  const composicaoTravada = isResolved && !podeEnviarEncerrada;
+  /*
+   * O WhatsApp da empresa está fora do ar.
+   *
+   * Trancar o compositor aqui é a diferença entre avisar e impedir. Com o
+   * campo liberado, quem atende digitava, apertava enviar, via o tique de
+   * sempre e seguia adiante — e nada saía. Um aviso que a pessoa pode
+   * atravessar sem perceber não é um aviso, é um enfeite.
+   *
+   * E não existe fila de reenvio de propósito: a mensagem barrada aqui NÃO
+   * vai sair sozinha quando a sessão voltar. Guardar texto pra disparar
+   * depois seria pior que não enviar — o cliente receberia horas depois uma
+   * resposta escrita para outro momento, sem ninguém revisar se ela ainda
+   * faz sentido.
+   */
+  const canalForaDoAr = canal !== null && canal.estado !== "CONECTADO";
+  const composicaoTravada = (isResolved && !podeEnviarEncerrada) || canalForaDoAr;
 
   function handleDrop(event: React.DragEvent) {
     event.preventDefault();
@@ -1054,9 +1071,11 @@ export function ChatPanel({
           }}
           ref={composerRef}
           placeholder={
-            composicaoTravada
-              ? "Conversa encerrada — reabra para responder"
-              : isResolved
+            canalForaDoAr
+              ? "WhatsApp desconectado — reconecte para responder"
+              : composicaoTravada
+                ? "Conversa encerrada — reabra para responder"
+                : isResolved
                 ? "Responder reabre o atendimento"
                 : "Escreva uma mensagem..."
           }
