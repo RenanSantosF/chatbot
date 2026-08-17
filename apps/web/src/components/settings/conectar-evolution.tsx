@@ -247,6 +247,20 @@ export function ConectarEvolution() {
     }
   }
 
+  /** Derruba a sessão pela ordem certa e devolve a tela ao estado inicial. */
+  async function recomecar() {
+    setConectando(true);
+    try {
+      await apiFetch("/whatsapp/evolution", { method: "DELETE" });
+      await carregar();
+      toast.success("Sessão apagada. Pode conectar de novo do jeito que quiser.");
+    } catch (erro) {
+      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra apagar a sessão.");
+    } finally {
+      setConectando(false);
+    }
+  }
+
   async function desconectar() {
     try {
       await apiFetch("/whatsapp/evolution", { method: "DELETE" });
@@ -400,6 +414,29 @@ export function ConectarEvolution() {
                   número do celular que vai ler o código.
                 </p>
               </div>
+            ) : null}
+
+            {jaConfigurado ? (
+              /*
+               * A saída de emergência, e ela precisa existir AQUI.
+               *
+               * "Desconectar" só aparecia com a sessão de pé — mas quem
+               * fica preso é justamente quem NÃO conectou. E há um estado
+               * do qual não se sai de outro jeito: uma sessão criada com
+               * número fica em modo código e nunca mais devolve QR, então
+               * trocar de caminho exige derrubá-la.
+               *
+               * Este botão desliga na ordem certa (encerra o socket e só
+               * então apaga), que é o que evita deixar sessão órfã no
+               * servidor.
+               */
+              <button
+                type="button"
+                onClick={() => void recomecar()}
+                className="self-start text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+              >
+                Nada funciona? Apagar esta sessão e recomeçar do zero
+              </button>
             ) : null}
 
             <Button
