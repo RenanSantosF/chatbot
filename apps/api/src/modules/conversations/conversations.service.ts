@@ -2941,7 +2941,32 @@ export class ConversationsService {
     try {
       const settings = await this.inboxSettings.get();
       const texto = settings.greetingMessage?.trim();
-      if (!settings.greetingEnabled || !texto) return null;
+
+      /*
+       * `=== true`, e não só a ausência de falsidade.
+       *
+       * Este é o único lugar do sistema que manda texto ao cliente sem
+       * ninguém ter clicado em nada. Um valor que chegue como string, ou
+       * como `undefined` de um cliente Prisma defasado, não pode ser lido
+       * como permissão: a diferença entre "não sei" e "sim" é a empresa
+       * falando em nome próprio sem ter pedido.
+       */
+      if (settings.greetingEnabled !== true || !texto) {
+        // Em nível de log normal, e de propósito: quando alguém disser que
+        // a saudação saiu com a opção desligada, é esta linha que separa
+        // "o código ignorou a configuração" de "a configuração estava
+        // ligada no banco". Sem ela, sobra a palavra de cada um.
+        this.logger.log(
+          `Saudação automática não enviada na conversa ${conversationId}: greetingEnabled=${String(
+            settings.greetingEnabled,
+          )}, texto=${texto ? 'presente' : 'vazio'}.`,
+        );
+        return null;
+      }
+
+      this.logger.log(
+        `Saudação automática enviada na conversa ${conversationId} (greetingEnabled=true).`,
+      );
 
       const { conversation } = await this.persistMessage(conversationId, {
         senderType: 'AGENT',

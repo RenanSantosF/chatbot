@@ -128,6 +128,19 @@ describe('saudação automática', () => {
     expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
   });
 
+  it('exige um sim explícito, não só a ausência de não', async () => {
+    // É o único lugar que manda texto ao cliente sem ninguém clicar em
+    // nada. Valor que chega como texto, ou ausente de um cliente Prisma
+    // defasado, não pode ser lido como permissão.
+    const { service, whatsapp } = montar({
+      greetingEnabled: 'sim' as unknown as boolean,
+    });
+
+    await receber(service);
+
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+  });
+
   it('não fala junto com a IA', async () => {
     // Seriam duas boas-vindas seguidas, com palavras diferentes, dizendo a
     // mesma coisa.
