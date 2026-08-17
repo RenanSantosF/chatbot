@@ -54,11 +54,12 @@ const EVENTOS = [
    * pareamento trazer o telefone e mais nada — sem erro em lugar nenhum,
    * porque o servidor simplesmente não tinha esse evento pra mandar.
    *
-   * Os dois ficam: versões diferentes já usaram grafias diferentes, e
-   * assinar um evento que não existe não custa nada.
+   * E é SÓ ele. O servidor valida esta lista contra um enum e recusa a
+   * chamada inteira quando encontra um nome que não conhece — não é um
+   * item ignorado, é o registro do endereço de retorno que não acontece.
+   * Mandar os dois nomes "por garantia" derrubava a conexão toda.
    */
   'MESSAGES_SET',
-  'MESSAGING_HISTORY_SET',
 ];
 
 export interface RespostaDaEvolution<T = unknown> {

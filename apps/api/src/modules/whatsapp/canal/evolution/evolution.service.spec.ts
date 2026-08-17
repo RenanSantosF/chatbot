@@ -307,7 +307,6 @@ describe('troca de canal', () => {
       'CONNECTION_UPDATE',
       'QRCODE_UPDATED',
       'MESSAGES_SET',
-      'MESSAGING_HISTORY_SET',
     ]);
   });
 
