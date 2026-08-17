@@ -192,7 +192,28 @@ export function ConectarEvolution() {
   const digitos = numero.replace(/\D/g, "");
   const numeroValido = /^\d{10,15}$/.test(digitos);
 
+  /**
+   * Trocar de modo pede um pareamento novo na hora.
+   *
+   * Só virar o botão não servia: o material de pareamento pertence a uma
+   * sessão que já nasceu num modo, então quem pedira código continuava
+   * vendo o código, e a aba de QR ficava vazia sem explicação. Como a
+   * troca só faz sentido pra quem quer tentar do outro jeito, ela já
+   * dispara a tentativa.
+   */
+  async function trocarModo(novo: "QRCODE" | "CODIGO") {
+    if (novo === modo) return;
+    setModo(novo);
+    // Sem número não dá pra pedir código: a pessoa digita e clica.
+    if (novo === "CODIGO" && !digitos) return;
+    await parear(novo);
+  }
+
   async function conectar() {
+    await parear(modo);
+  }
+
+  async function parear(comOModo: "QRCODE" | "CODIGO") {
     setConectando(true);
     try {
       // O servidor de mensagens é da plataforma, e a API já sabe qual é
@@ -200,9 +221,7 @@ export function ConectarEvolution() {
       // telefone, e só quando o pareamento é por código.
       await apiFetch("/whatsapp/evolution", {
         method: "POST",
-        body: JSON.stringify(
-          modo === "CODIGO" ? { numero: digitos } : {},
-        ),
+        body: JSON.stringify(comOModo === "CODIGO" ? { numero: digitos } : {}),
       });
       await carregar();
     } catch (erro) {
@@ -350,13 +369,13 @@ export function ConectarEvolution() {
             >
               <OpcaoDeModo
                 ativa={modo === "QRCODE"}
-                onClick={() => setModo("QRCODE")}
+                onClick={() => void trocarModo("QRCODE")}
                 icone={QrCode}
                 rotulo="Ler QR code"
               />
               <OpcaoDeModo
                 ativa={modo === "CODIGO"}
-                onClick={() => setModo("CODIGO")}
+                onClick={() => void trocarModo("CODIGO")}
                 icone={Smartphone}
                 rotulo="Usar código"
               />
