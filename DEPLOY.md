@@ -315,10 +315,36 @@ sozinho. Você não configura webhook em lugar nenhum.
 | "a sessão não existe mais no servidor" | O servidor foi recriado do zero — conecte de novo |
 | Cai sozinho toda hora | Celular sem bateria/internet, ou WhatsApp Web aberto demais em outros lugares |
 | Anexo não envia | Esperado: mídia pela Evolution ainda não existe |
+| `failed to decrypt message` / `Invalid PreKey ID` | O pareamento nasceu quebrado, ou sobraram aparelhos vinculados antigos — ver abaixo |
 | A API começa a falhar com `P3009` | Uma migração ficou marcada como falha por disputa de cadeado — ver abaixo |
 | `EMAXCONNSESSION: max clients reached` | Quase sempre `DATABASE_SAVE_IS_ON_WHATSAPP` ligada — ver abaixo. Depois disso, `connection_limit` na string |
 | Variável que você definiu parece ignorada | A imagem embute um `.env` com os padrões dela. O que você define no painel ganha; o que você não define NÃO fica vazio, fica no padrão — que é `true` |
 | A API para de responder junto com isso | Mesma causa: a Evolution consumiu as 15 conexões do pooler e não sobrou nenhuma |
+
+### `Invalid PreKey ID`: conecta, e a mensagem não chega
+
+A Evolution recebe a mensagem e não consegue descriptografá-la, então a
+descarta antes de virar webhook. O painel fica mudo com a sessão
+conectada — mesmo sintoma de webhook errado, causa completamente
+diferente.
+
+O material de criptografia se estabelece no instante do pareamento. Ele
+nasce quebrado quando o banco está engasgado nesse momento (procure por
+`transaction failed, rolling back` no log: é o Baileys tentando gravar as
+chaves e não conseguindo), e também quando sobraram vínculos antigos —
+cada QR lido cria um aparelho vinculado a mais, e os anteriores continuam
+valendo no celular.
+
+Refazer o pareamento do zero, com o banco saudável:
+
+1. No celular: WhatsApp > Aparelhos conectados > remova **todos** os
+   vínculos da plataforma, inclusive o atual.
+2. Na tela de Configurações > WhatsApp: **Desconectar** (isso apaga a
+   sessão no servidor, não só desliga).
+3. Conectar de novo e ler o QR.
+
+Resolver o banco ANTES de repareá-lo não é detalhe de ordem: é a única
+forma de as chaves serem gravadas.
 
 ### `EMAXCONNSESSION` logo depois de ler o QR code
 
