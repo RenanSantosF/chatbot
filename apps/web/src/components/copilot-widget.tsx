@@ -12,6 +12,15 @@ import { cn } from "@/lib/utils";
 interface Turn {
   role: "user" | "assistant";
   content: string;
+  /**
+   * A resposta é um aviso de falha, não uma resposta.
+   *
+   * Marcado pra o balão não se passar pelo que não é: "a chave foi
+   * recusada pelo provedor" no mesmo cinza de uma resposta normal se lê
+   * como se o assistente estivesse informando algo, quando na verdade ele
+   * não conseguiu fazer o que foi pedido.
+   */
+  falhou?: boolean;
 }
 
 const SUGESTOES = [
@@ -55,16 +64,28 @@ export function CopilotWidget() {
     setDraft("");
     setLoading(true);
     try {
-      const answer = await apiFetch<{ content: string }>("/copilot/ask", {
-        method: "POST",
-        body: JSON.stringify({ history }),
-      });
-      setTurns([...history, { role: "assistant", content: answer.content }]);
+      const answer = await apiFetch<{ content: string; falhou?: boolean }>(
+        "/copilot/ask",
+        {
+          method: "POST",
+          // Só o par role/content vai pro servidor: `falhou` é marcação de
+          // tela, e mandá-la de volta como parte do histórico faria o
+          // modelo tentar interpretá-la.
+          body: JSON.stringify({
+            history: history.map(({ role, content }) => ({ role, content })),
+          }),
+        },
+      );
+      setTurns([
+        ...history,
+        { role: "assistant", content: answer.content, falhou: answer.falhou },
+      ]);
     } catch (error) {
       setTurns([
         ...history,
         {
           role: "assistant",
+          falhou: true,
           content:
             error instanceof ApiError
               ? error.message
@@ -131,7 +152,9 @@ export function CopilotWidget() {
                 "max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap",
                 turn.role === "user"
                   ? "self-end rounded-br-sm bg-primary text-primary-foreground"
-                  : "self-start rounded-bl-sm bg-muted",
+                  : turn.falhou
+                    ? "self-start rounded-bl-sm border border-destructive/30 bg-destructive/10 text-foreground"
+                    : "self-start rounded-bl-sm bg-muted",
               )}
             >
               {turn.content}

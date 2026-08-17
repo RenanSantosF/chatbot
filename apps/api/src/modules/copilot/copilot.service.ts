@@ -7,6 +7,7 @@ import {
   type AiProvider,
   type AiToolDeclaration,
 } from '../ai/providers/ai-provider.interface';
+import { porQueOCopilotoFalhou } from '../ai/ai-indisponivel';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 
 export interface CopilotTurn {
@@ -169,23 +170,60 @@ export class CopilotService {
       content: turn.content,
     }));
 
-    const result = await this.ai.generateReply({
-      systemPrompt: SYSTEM_PROMPT,
-      history: messages,
-      apiKey: resolution.credentials.apiKey,
-      model: resolution.credentials.model,
-      tools: this.tools,
-      executeTool: async (name, args) => {
-        try {
-          return await this.execute(name, args);
-        } catch (error) {
-          this.logger.warn(`Falha na ferramenta ${name}: ${String(error)}`);
-          return { error: 'Não deu pra executar essa ação agora.' };
-        }
-      },
-    });
+    /**
+     * Alguma ferramenta mexeu em configuração nesta resposta?
+     *
+     * Muda o que dizer quando o modelo não escreve nada no fim: sem
+     * ferramenta, é uma resposta perdida; COM ferramenta, a mudança JÁ
+     * ACONTECEU, e devolver o balão vazio faria o operador achar que o
+     * pedido dele se perdeu — e repetir a alteração.
+     */
+    let mexeu = false;
 
-    return { content: result.content };
+    try {
+      const result = await this.ai.generateReply({
+        systemPrompt: SYSTEM_PROMPT,
+        history: messages,
+        apiKey: resolution.credentials.apiKey,
+        model: resolution.credentials.model,
+        tools: this.tools,
+        executeTool: async (name, args) => {
+          if (name === 'ajustarAtendimento' || name === 'ajustarIa') mexeu = true;
+          try {
+            return await this.execute(name, args);
+          } catch (error) {
+            this.logger.warn(`Falha na ferramenta ${name}: ${String(error)}`);
+            return { error: 'Não deu pra executar essa ação agora.' };
+          }
+        },
+      });
+
+      const conteudo = result.content.trim();
+      if (conteudo) return { content: conteudo };
+
+      return {
+        content: mexeu
+          ? 'Pronto, ajustei. Confira na tela de Configurações pra ver como ficou.'
+          : 'Não consegui formular uma resposta pra isso. Tente perguntar de outro jeito.',
+      };
+    } catch (error) {
+      /*
+       * A falha da IA vira RESPOSTA, não exceção.
+       *
+       * Deixar a exceção subir era o defeito: o Nest a transformava num
+       * 500 "Internal server error", o painel mostrava "o servidor falhou
+       * ao responder, veja os registros da API", e o dono da empresa —
+       * que não tem acesso a log nenhum — ficava sem saber que o problema
+       * era a cota, ou a chave, ou uma demora do provedor.
+       *
+       * Aqui o assistente é a própria tela: a frase honesta no balão vale
+       * mais do que um código de status que ninguém vê.
+       */
+      this.logger.error(
+        `O assistente do painel não conseguiu responder: ${String(error)}`,
+      );
+      return { content: porQueOCopilotoFalhou(error), falhou: true };
+    }
   }
 }
 

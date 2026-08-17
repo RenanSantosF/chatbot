@@ -71,11 +71,22 @@ export interface FalhaDaIa {
 }
 
 /**
- * Traduz a falha técnica na frase que o atendente lê.
+ * De que TIPO foi a falha, sem ainda dizer nada a ninguém.
  *
- * @param erro o que o provedor jogou, cru
+ * Separado da frase porque o mesmo erro precisa ser dito de dois jeitos
+ * diferentes conforme quem lê: o atendente que abre uma conversa parada
+ * (ver `porQueAIaNaoRespondeu`) e o operador que perguntou algo ao
+ * assistente do painel (ver CopilotService). O que não pode é cada um
+ * manter a própria lista de sinais — elas envelhecem a cada versão do
+ * provedor, e uma envelheceria sem a outra.
  */
-export function porQueAIaNaoRespondeu(erro: unknown): FalhaDaIa {
+export type TipoDeFalhaDaIa =
+  | 'limite'
+  | 'credencial'
+  | 'tempo'
+  | 'desconhecida';
+
+export function classificarFalhaDaIa(erro: unknown): TipoDeFalhaDaIa {
   const texto = simplificar(
     erro instanceof Error ? `${erro.name} ${erro.message}` : String(erro),
   );
@@ -92,34 +103,51 @@ export function porQueAIaNaoRespondeu(erro: unknown): FalhaDaIa {
         compacto.includes(sinal.replace(/[^a-z0-9]/g, '')),
     );
 
-  if (bate(SINAIS_DE_LIMITE)) {
-    return {
-      motivo:
-        'O atendimento automático atingiu o limite de uso e o cliente está esperando.',
-      avisarCliente: true,
-    };
-  }
+  if (bate(SINAIS_DE_LIMITE)) return 'limite';
+  if (bate(SINAIS_DE_CREDENCIAL)) return 'credencial';
+  if (bate(SINAIS_DE_TEMPO)) return 'tempo';
+  return 'desconhecida';
+}
 
-  if (bate(SINAIS_DE_CREDENCIAL)) {
-    return {
-      motivo:
-        'O atendimento automático está com a chave de acesso recusada e o cliente está esperando.',
-      avisarCliente: true,
-    };
-  }
-
-  if (bate(SINAIS_DE_TEMPO)) {
-    return {
-      motivo:
-        'O atendimento automático demorou demais para responder e o cliente está esperando.',
-      avisarCliente: true,
-    };
-  }
-
-  return {
-    motivo: 'O cliente escreveu e não houve resposta automática.',
-    avisarCliente: true,
+/**
+ * Traduz a falha técnica na frase que o atendente lê.
+ *
+ * @param erro o que o provedor jogou, cru
+ */
+export function porQueAIaNaoRespondeu(erro: unknown): FalhaDaIa {
+  const motivo: Record<TipoDeFalhaDaIa, string> = {
+    limite:
+      'O atendimento automático atingiu o limite de uso e o cliente está esperando.',
+    credencial:
+      'O atendimento automático está com a chave de acesso recusada e o cliente está esperando.',
+    tempo:
+      'O atendimento automático demorou demais para responder e o cliente está esperando.',
+    desconhecida: 'O cliente escreveu e não houve resposta automática.',
   };
+
+  return { motivo: motivo[classificarFalhaDaIa(erro)], avisarCliente: true };
+}
+
+/**
+ * A mesma falha, dita pra quem OPERA o painel.
+ *
+ * Outro leitor, outra frase. O atendente lê "o cliente está esperando",
+ * que é a informação útil pra ele. Quem perguntou algo ao assistente
+ * precisa de outra coisa: o que aconteceu e onde se resolve — senão o
+ * caminho é o que este defeito produzia, um "erro do servidor" que manda
+ * o dono da empresa abrir log de API pra descobrir que a cota acabou.
+ */
+export function porQueOCopilotoFalhou(erro: unknown): string {
+  switch (classificarFalhaDaIa(erro)) {
+    case 'limite':
+      return 'A chave de IA desta empresa atingiu o limite de uso. Isso costuma liberar sozinho depois de alguns minutos; se for constante, é caso de aumentar o plano no provedor.';
+    case 'credencial':
+      return 'A chave de IA foi recusada pelo provedor. Confira em Configurações > IA se ela ainda é válida.';
+    case 'tempo':
+      return 'O provedor de IA demorou demais para responder. Tente de novo em alguns instantes.';
+    default:
+      return 'Não consegui responder agora — a IA falhou nesta chamada. Tente de novo; se continuar, o motivo exato está no log da API.';
+  }
 }
 
 /**
