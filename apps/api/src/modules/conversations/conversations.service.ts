@@ -848,9 +848,26 @@ export class ConversationsService {
        * pra quem esperou a manhã toda.
        */
       createdAt?: Date;
+      /**
+       * Saiu sozinha, em nome da empresa — e ninguém atendeu ainda.
+       *
+       * A saudação automática precisa de duas coisas que não vinham
+       * juntas em nenhum tipo existente: ela É enviada ao cliente (o
+       * SYSTEM não é, ele só aparece no painel) e NÃO pode dizer que a
+       * bola está com o cliente (o AGENT diz, e mandaria a conversa pra
+       * "aguardando cliente" um segundo depois de a pessoa escrever —
+       * fora da fila de quem precisa de resposta, que é onde ela tem que
+       * estar).
+       *
+       * Pelo mesmo motivo ela não zera o contador de não lidas: a
+       * mensagem do cliente continua por ler pela equipe.
+       */
+      automatica?: boolean;
     },
   ) {
-    const { jaEntregue = false, ...dadosDaMensagem } = data;
+    // `automatica` sai do espalhamento junto com `jaEntregue`: são
+    // decisões de fluxo, não colunas da tabela de mensagens.
+    const { jaEntregue = false, automatica = false, ...dadosDaMensagem } = data;
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
       select: { status: true, aiMode: true, waitingSince: true },
@@ -882,7 +899,7 @@ export class ConversationsService {
       (before?.status === 'WAITING_AGENT' || before?.aiMode === 'HUMAN_ACTIVE');
 
     const status: ConversationStatus | undefined =
-      isSystemNote || alreadyHandedOff
+      isSystemNote || alreadyHandedOff || automatica
         ? undefined
         : fromCustomer
           ? 'OPEN'
@@ -895,7 +912,7 @@ export class ConversationsService {
         ...(status ? { status } : {}),
         ...(fromCustomer
           ? { unreadCount: { increment: 1 } }
-          : isSystemNote
+          : isSystemNote || automatica
             ? {}
             : { unreadCount: 0 }),
         /**
@@ -2540,7 +2557,12 @@ export class ConversationsService {
       conversation = await this.reabrirParaAgrupamento(customer.id);
     }
 
+    // Guardado ANTES de gravar a mensagem: é a única janela em que dá pra
+    // saber que esta conversa não existia. Depois disso ela tem histórico
+    // como qualquer outra.
+    let conversaNova = false;
     if (!conversation) {
+      conversaNova = true;
       conversation = await this.prisma.db.conversation.create({
         data: {
           tenantId: this.prisma.tenantId,
@@ -2591,6 +2613,23 @@ export class ConversationsService {
       conversation.aiMode !== 'AI_ACTIVE'
     ) {
       void this.transcricao.transcreverSeAutomatico(inbound.message.id);
+    }
+
+    /*
+     * A saudação automática, pra quem não tem IA.
+     *
+     * Só na ABERTURA da conversa, e só quando a IA não vai responder. As
+     * duas condições são o que separa um aviso de cortesia de um robô
+     * chato: repetir a cada mensagem transformaria uma conversa de três
+     * perguntas em três avisos iguais, e mandar junto com a resposta da
+     * IA seria dizer duas vezes a mesma coisa com palavras diferentes.
+     *
+     * Depois dela, nada mais acontece: a conversa fica na fila esperando
+     * gente, que é exatamente o destino de quem não usa IA.
+     */
+    if (conversaNova && conversation.aiMode !== 'AI_ACTIVE') {
+      const saudada = await this.saudar(conversation.id);
+      if (saudada) latestConversation = saudada;
     }
 
     if (conversation.aiMode === 'AI_ACTIVE' && !(await this.chegouOutraDepois(inbound.message))) {
@@ -2883,6 +2922,41 @@ export class ConversationsService {
     });
 
     return novas.length;
+  }
+
+  /**
+   * Manda a primeira resposta da empresa, quando ela pediu isso.
+   *
+   * Passa por `persistMessage` como qualquer outra mensagem de saída: vai
+   * pro WhatsApp, aparece no painel, conta na conversa. O tipo é SYSTEM
+   * porque não foi ninguém que escreveu — e é isso que impede a conversa
+   * de virar "aguardando cliente" logo depois de ele ter escrito, que era
+   * o que a mandaria pro fim da fila em vez do começo.
+   *
+   * Falhar aqui não pode derrubar o recebimento: a mensagem do cliente já
+   * está gravada, e uma saudação que não saiu é menos grave que uma
+   * conversa que não entrou.
+   */
+  private async saudar(conversationId: string) {
+    try {
+      const settings = await this.inboxSettings.get();
+      const texto = settings.greetingMessage?.trim();
+      if (!settings.greetingEnabled || !texto) return null;
+
+      const { conversation } = await this.persistMessage(conversationId, {
+        senderType: 'AGENT',
+        content: texto,
+        automatica: true,
+      });
+      return conversation;
+    } catch (erro) {
+      this.logger.warn(
+        `Não deu pra enviar a saudação automática na conversa ${conversationId}: ${
+          erro instanceof Error ? erro.message : erro
+        }`,
+      );
+      return null;
+    }
   }
 
   async recordOutboundEcho(input: {

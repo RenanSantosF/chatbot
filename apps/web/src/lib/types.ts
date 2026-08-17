@@ -370,6 +370,9 @@ export interface CollectionField {
 export interface InboxSettings {
   id: string;
   sendReadReceipts: boolean;
+  /** A primeira resposta automática, sem IA. Ver a tela de Atendimento. */
+  greetingEnabled: boolean;
+  greetingMessage: string;
   notifyOnResolve: boolean;
   resolveMessage: string;
   /** Responder numa conversa encerrada reabre o atendimento? */

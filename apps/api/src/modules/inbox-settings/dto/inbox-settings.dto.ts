@@ -68,6 +68,27 @@ export class ExpedienteValido implements ValidatorConstraintInterface {
 }
 
 export class UpdateInboxSettingsDto {
+  /**
+   * A primeira resposta automática, sem IA no meio.
+   *
+   * Sai uma vez, na abertura da conversa, e só quando a IA não vai
+   * responder. Depois dela a conversa fica na fila esperando gente.
+   */
+  @IsOptional()
+  @IsBoolean()
+  greetingEnabled?: boolean;
+
+  /**
+   * O texto é curto de propósito no limite de baixo: uma saudação com
+   * menos de cinco caracteres não diz nada a quem recebe, e vale mais
+   * recusar que mandar "ok" em nome da empresa.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  greetingMessage?: string;
+
   @IsOptional()
   @IsBoolean()
   sendReadReceipts?: boolean;

@@ -6,6 +6,7 @@ import {
   Clock,
   Eye,
   Layers,
+  MessageSquareHeart,
   MessageSquareX,
   PenLine,
   Undo2,
@@ -33,6 +34,8 @@ export default function InboxSettingsPage() {
   const [savingMessage, setSavingMessage] = useState(false);
   const [despedida, setDespedida] = useState("");
   const [salvandoDespedida, setSalvandoDespedida] = useState(false);
+  const [saudacao, setSaudacao] = useState("");
+  const [salvandoSaudacao, setSalvandoSaudacao] = useState(false);
 
   useEffect(() => {
     apiFetch<InboxSettings>("/inbox-settings")
@@ -40,6 +43,7 @@ export default function InboxSettingsPage() {
         setSettings(result);
         setMessage(result.resolveMessage);
         setDespedida(result.autoCloseMessage);
+        setSaudacao(result.greetingMessage);
       })
       .catch(() => toast.error("Não deu pra carregar as configurações."));
   }, []);
@@ -56,6 +60,13 @@ export default function InboxSettingsPage() {
       toast.error("Não deu pra salvar.");
       return null;
     }
+  }
+
+  async function salvarSaudacao() {
+    setSalvandoSaudacao(true);
+    const updated = await patch({ greetingMessage: saudacao.trim() });
+    if (updated) toast.success("Mensagem de boas-vindas salva.");
+    setSalvandoSaudacao(false);
   }
 
   async function handleSaveMessage() {
@@ -107,6 +118,62 @@ export default function InboxSettingsPage() {
               aria-label="Enviar confirmação de leitura"
             />
           </label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquareHeart className="size-4" />
+            Primeira resposta automática
+          </CardTitle>
+          <CardDescription>
+            Quando alguém escreve pela primeira vez, o cliente recebe esta mensagem na hora e a
+            conversa entra na fila para um atendente. Não depende de IA — serve justamente para
+            quem ainda não configurou uma. Sai uma vez por conversa, e fica em silêncio quando a
+            IA está respondendo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <label className="flex items-center justify-between gap-4 rounded-md border p-3">
+            <span className="text-sm font-medium">Responder automaticamente ao primeiro contato</span>
+            <Switch
+              checked={settings.greetingEnabled}
+              onCheckedChange={(checked) => patch({ greetingEnabled: checked })}
+              aria-label="Responder ao primeiro contato"
+            />
+          </label>
+
+          {settings.greetingEnabled ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="greeting-message" className="text-xs">
+                Mensagem enviada
+              </Label>
+              <Textarea
+                id="greeting-message"
+                rows={3}
+                value={saudacao}
+                onChange={(event) => setSaudacao(event.target.value)}
+                maxLength={1000}
+                placeholder="Olá! Somos do Escritório Ferreira Cleto Advogados. Um atendente já vai falar com você."
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={salvarSaudacao}
+                  disabled={
+                    salvandoSaudacao ||
+                    saudacao.trim().length < 5 ||
+                    saudacao.trim() === settings.greetingMessage
+                  }
+                >
+                  {salvandoSaudacao ? <Spinner /> : null}
+                  Salvar mensagem
+                </Button>
+                <span className="text-xs text-muted-foreground">{saudacao.length}/1000</span>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

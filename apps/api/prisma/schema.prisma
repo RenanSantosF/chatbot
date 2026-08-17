@@ -464,6 +464,19 @@ model InboxSettings {
   // Confirmação de leitura: quando desligada, abrir a conversa no painel
   // não acende o tique azul no aparelho do cliente. É escolha da empresa —
   // tem negócio que prefere não revelar que leu e ainda não respondeu.
+  /// A primeira resposta, sem depender de IA nenhuma.
+  ///
+  /// Existe pra empresa que acabou de conectar o WhatsApp e ainda não tem
+  /// chave de IA — que é a maioria no primeiro dia. Sem isto, o cliente
+  /// escreve e não recebe nada até alguém abrir o painel; com isto, ele
+  /// recebe na hora um aviso de que foi visto, e a conversa cai na fila
+  /// de gente como qualquer outra.
+  ///
+  /// Desligado por padrão: mandar texto em nome da empresa é coisa que
+  /// ela precisa escolher, e um texto genérico saindo sem ninguém saber
+  /// seria pior que o silêncio.
+  greetingEnabled  Boolean  @default(false)
+  greetingMessage  String   @default("Olá! Recebemos sua mensagem e um atendente vai falar com você em instantes.")
   sendReadReceipts Boolean  @default(true)
   // Aviso automático ao resolver: sem isso o cliente fica sem saber que o
   // atendimento foi encerrado e continua esperando resposta.
@@ -838,7 +851,12 @@ enum AiMemoryMode {
 model AiSettings {
   id                 String         @id @default(uuid())
   tenantId           String         @unique
-  active             Boolean        @default(true)
+  /// Desligada até alguém ligar, e a razão é prática: a IA não funciona
+  /// sem chave de modelo, e a empresa não tem uma no minuto em que cria a
+  /// conta. Nascendo ligada, toda mensagem do primeiro dia batia num
+  /// provedor sem credencial e virava escalonamento com motivo de erro —
+  /// o pior primeiro contato possível com o produto.
+  active             Boolean        @default(false)
   aiName             String         @default("Assistente")
   tone               AiTone         @default(PROFESSIONAL)
   customInstructions String?
