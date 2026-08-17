@@ -8,6 +8,7 @@ import {
   type AiToolExecutor,
 } from './providers/ai-provider.interface';
 import { verificarResposta, type VerificacaoDaResposta } from './ai-guardrails';
+import { porQueAIaNaoRespondeu } from './ai-indisponivel';
 import { AiToolsService } from './tools/ai-tools.service';
 
 export interface AiReply {
@@ -288,9 +289,13 @@ export class AiEngineService {
         };
       }
 
+      // O motivo sai da falha, e não de um texto fixo: cota estourada,
+      // chave recusada e provedor mudo pedem providências diferentes de
+      // quem administra a empresa, e a nota do painel é onde isso aparece
+      // (ver ai-indisponivel).
       return {
         tipo: 'indisponivel',
-        motivo: 'O cliente escreveu e não houve resposta automática.',
+        motivo: porQueAIaNaoRespondeu(error).motivo,
       };
     }
   }

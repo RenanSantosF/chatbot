@@ -677,3 +677,93 @@ describe('envio que falha', () => {
     expect(atualizacoesDeMensagem[0]).not.toHaveProperty('status');
   });
 });
+
+describe('a IA não conseguiu responder', () => {
+  /**
+   * Escalar resolve o lado de dentro — a conversa aparece na fila e alguém
+   * pega. Do lado de fora continuava um silêncio idêntico ao de um sistema
+   * quebrado: a pessoa escreveu e nada voltou.
+   */
+  function montarComIaFora(status: string) {
+    const { service, criadas, atualizacoes } = montar({
+      conversa: { status },
+      conversaAntes: { status, aiMode: 'AI_ACTIVE' },
+      conversaAberta: {
+        id: 'conversa-1',
+        channel: 'WHATSAPP',
+        status,
+        aiMode: 'AI_ACTIVE',
+        priority: 'NORMAL',
+        customer: { id: 'cliente-1', phone: '5527999998888', name: 'Ana' },
+        messages: [],
+      },
+    });
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      aiEngine: {
+        generateReply: jest.fn().mockResolvedValue({
+          tipo: 'indisponivel',
+          motivo:
+            'O atendimento automático atingiu o limite de uso e o cliente está esperando.',
+        }),
+      },
+      customers: {
+        findOrCreateByPhone: jest
+          .fn()
+          .mockResolvedValue({ id: 'cliente-1', phone: '5527999998888' }),
+      },
+      routing: {
+        resolveTarget: jest.fn().mockResolvedValue(null),
+        resolveByPriority: jest.fn().mockResolvedValue(null),
+      },
+      collection: { missingRequired: jest.fn().mockResolvedValue([]) },
+    });
+
+    return { service, criadas, atualizacoes };
+  }
+
+  it('o cliente é avisado de que alguém da equipe vem', async () => {
+    const { service, criadas } = montarComIaFora('OPEN');
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'oi, tudo bem?',
+      channel: 'WHATSAPP',
+    });
+
+    const paraOCliente = criadas.filter((m) => m.senderType === 'AI');
+    expect(paraOCliente).toHaveLength(1);
+    expect(String(paraOCliente[0].content)).toContain('equipe');
+  });
+
+  it('o aviso não menciona o defeito — pro cliente, a empresa só demorou', async () => {
+    const { service, criadas } = montarComIaFora('OPEN');
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'oi',
+      channel: 'WHATSAPP',
+    });
+
+    const texto = String(criadas.find((m) => m.senderType === 'AI')?.content);
+    expect(texto).not.toMatch(/erro|falha|limite|sistema|IA/i);
+  });
+
+  it('não repete o aviso a cada mensagem de quem insiste', async () => {
+    // Três mensagens seguidas com a IA fora rendiam três avisos iguais —
+    // pior que nenhum. A conversa já aguardando atendente significa que o
+    // aviso já foi dado.
+    const { service, criadas } = montarComIaFora('WAITING_AGENT');
+
+    await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'alguém aí?',
+      channel: 'WHATSAPP',
+    });
+
+    expect(criadas.filter((m) => m.senderType === 'AI')).toHaveLength(0);
+  });
+});

@@ -33,6 +33,7 @@ import {
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { CanalService } from '../whatsapp/canal/canal.service';
 import { idDaMensagem } from '../whatsapp/canal/evolution/evolution-id';
+import { AVISO_DE_INDISPONIBILIDADE } from '../ai/ai-indisponivel';
 
 /**
  * Os três estados que importam pra quem atende, montados a partir dos cinco
@@ -2491,19 +2492,44 @@ export class ConversationsService {
         if (travada) latestConversation = travada;
       } else if (resultado.tipo === 'indisponivel') {
         // A IA não pode responder — desligada no meio do atendimento, sem
-        // chave, provedor fora. Antes isso virava silêncio: a mensagem
-        // entrava, a IA calava e nada marcava a conversa como pendente de
-        // gente. O cliente ficava falando sozinho e ninguém era chamado
-        // porque ninguém sabia que precisava chamar.
+        // chave, cota estourada, provedor fora. Antes isso virava silêncio:
+        // a mensagem entrava, a IA calava e nada marcava a conversa como
+        // pendente de gente. O cliente ficava falando sozinho e ninguém era
+        // chamado porque ninguém sabia que precisava chamar.
         //
-        // Agora cai no mesmo caminho de escalonamento das travas, então as
-        // regras de "quem atende o quê" também valem aqui.
+        // Cai no mesmo caminho de escalonamento das travas, então as regras
+        // de "quem atende o quê" também valem aqui.
+        // O status de ANTES desta mensagem. `latestConversation` já é o
+        // de depois, e receber mensagem de cliente reabre a conversa como
+        // OPEN — usá-lo aqui faria a conta dar "não estava esperando"
+        // sempre, e o aviso sairia de novo a cada mensagem.
+        const jaEsperava = conversation.status === 'WAITING_AGENT';
+
         const escalada = await this.aplicarTravasDaIa(
           conversation.id,
           { precisaHandoff: true, motivo: resultado.motivo },
           latestConversation.priority,
         );
         if (escalada) latestConversation = escalada;
+
+        /*
+         * E o cliente fica sabendo que alguém vem.
+         *
+         * Escalar resolve o lado de dentro: a conversa aparece na fila e
+         * alguém pega. Do lado de fora continuava um silêncio idêntico ao
+         * de um sistema quebrado — a pessoa escreveu e nada voltou.
+         *
+         * Uma vez por espera, e não uma por mensagem: quem manda três
+         * mensagens seguidas enquanto a IA está fora recebia três avisos
+         * iguais, o que é pior que nenhum. Se a conversa JÁ estava
+         * aguardando atendente, o aviso já foi dado.
+         */
+        if (!jaEsperava) {
+          await this.persistMessage(conversation.id, {
+            senderType: 'AI',
+            content: AVISO_DE_INDISPONIBILIDADE,
+          });
+        }
       }
     }
 
