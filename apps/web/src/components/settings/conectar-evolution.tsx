@@ -103,7 +103,12 @@ export function ConectarEvolution() {
     try {
       await apiFetch("/whatsapp/evolution", {
         method: "POST",
-        body: JSON.stringify({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim() }),
+        body: JSON.stringify({
+          baseUrl: baseUrl.trim() || undefined,
+          // Em branco na reconexão significa "mantenha a que está
+          // guardada", e não "apague".
+          apiKey: apiKey.trim() || undefined,
+        }),
       });
       setApiKey("");
       await carregar();
@@ -139,6 +144,9 @@ export function ConectarEvolution() {
 
   const conectado = status?.estado === "CONECTADO";
   const aguardando = status?.estado === "AGUARDANDO_QRCODE";
+  // Já existe servidor guardado: o formulário vira "reconectar", e a
+  // chave deixa de ser obrigatória.
+  const jaConfigurado = Boolean(status?.instance);
 
   return (
     <Card>
@@ -148,22 +156,12 @@ export function ConectarEvolution() {
           Conectar lendo um QR code
         </CardTitle>
         <CardDescription className="text-pretty">
-          Liga o WhatsApp a um servidor Evolution seu, como um aparelho vinculado — o mesmo jeito do
-          WhatsApp Web. Conecta em minutos, sem análise da Meta e sem custo por mensagem.
+          Liga o WhatsApp da sua empresa lendo um QR code, como um aparelho conectado. Leva menos de
+          um minuto.
         </CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground text-pretty">
-          <p className="font-medium text-foreground">Antes de escolher este caminho</p>
-          <p className="mt-1">
-            Não é homologado pelo WhatsApp. O número pode ser bloqueado, a sessão cai sozinha de vez
-            em quando (basta ler o QR code de novo) e não existe modelo aprovado — ou seja, só dá
-            para escrever a quem falou com você antes. Para volume alto ou número principal da
-            empresa, o caminho oficial continua sendo o mais seguro.
-          </p>
-        </div>
-
         {conectado ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
             <span className="min-w-0">
@@ -193,7 +191,15 @@ export function ConectarEvolution() {
                 className="rounded-md bg-white p-2"
               />
             ) : (
-              <Spinner />
+              <div className="flex flex-col items-center gap-2">
+                <Spinner />
+                {/* Sem esta frase, a espera é indistinguível de travamento:
+                    o código pode simplesmente ainda não ter sido gerado
+                    pelo servidor, e a saída é pedir outro. */}
+                <p className="text-center text-xs text-muted-foreground text-pretty">
+                  O servidor ainda não devolveu um código. Se demorar, peça outro abaixo.
+                </p>
+              </div>
             )}
             <p className="text-center text-xs text-muted-foreground text-pretty">
               No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. O código expira em
@@ -229,8 +235,14 @@ export function ConectarEvolution() {
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="A chave global do seu servidor Evolution"
-                required
+                placeholder={
+                  jaConfigurado ? "Guardada — deixe em branco para manter" : "A chave global do seu servidor Evolution"
+                }
+                // Obrigatória só na PRIMEIRA vez. Depois de salvar, a tela
+                // apaga o campo e ninguém tem a chave na mão pra colar de
+                // novo — exigi-la aqui travava o próprio botão de
+                // reconectar, que é justamente quando ela mais é precisa.
+                required={!jaConfigurado}
               />
               <p className="text-xs text-muted-foreground">
                 Guardada cifrada. É a mesma chave que você usa no painel do servidor.
@@ -238,7 +250,7 @@ export function ConectarEvolution() {
             </div>
             <Button type="submit" disabled={conectando} className="self-start">
               {conectando ? <Spinner className="size-4" /> : <QrCode className="size-4" />}
-              {aguardando ? "Reconectar" : "Conectar"}
+              {jaConfigurado ? "Reconectar" : "Conectar"}
             </Button>
           </form>
         ) : null}

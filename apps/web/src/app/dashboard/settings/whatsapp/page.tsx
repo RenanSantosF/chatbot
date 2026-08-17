@@ -10,28 +10,48 @@ import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import type { WhatsAppSettings } from "@/lib/types";
 
+/**
+ * Quais caminhos de conexão a tela oferece.
+ *
+ * O caminho oficial da Meta continua inteiro no servidor — rotas,
+ * credenciais, coexistência, tudo. O que muda aqui é só o que a tela
+ * mostra, enquanto a aprovação da plataforma não sai: oferecer três
+ * portas quando só uma está disponível transforma a tela de conexão num
+ * labirinto.
+ *
+ * Pra trazer de volta, é esta linha.
+ */
+const MOSTRAR_CAMINHO_OFICIAL = false;
+
 export default function WhatsappSettingsPage() {
   const [whatsapp, setWhatsapp] = useState<WhatsAppSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Com o caminho oficial escondido não há o que buscar, então a tela já
+  // nasce pronta: um esqueleto piscando antes de uma requisição que nunca
+  // acontece é atraso inventado.
+  const [loading, setLoading] = useState(MOSTRAR_CAMINHO_OFICIAL);
 
   useEffect(() => {
+    if (!MOSTRAR_CAMINHO_OFICIAL) return;
+
     apiFetch<WhatsAppSettings>("/whatsapp/settings")
       .then(setWhatsapp)
       .catch(() => toast.error("Não deu pra carregar as configurações."))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading || !whatsapp) {
+  if (loading) {
     return <PageSkeleton rows={2} />;
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <WhatsAppSettingsCard settings={whatsapp} onUpdated={setWhatsapp} />
-      {whatsapp.connected ? <PainelDeCoexistencia settings={whatsapp} /> : null}
-      {/* Depois do caminho oficial, e não antes: a ordem da tela é a
-          recomendação. Quem rolar até aqui já viu qual é o padrão. */}
       <ConectarEvolution />
+      {MOSTRAR_CAMINHO_OFICIAL && whatsapp ? (
+        <>
+          <WhatsAppSettingsCard settings={whatsapp} onUpdated={setWhatsapp} />
+          {whatsapp.connected ? <PainelDeCoexistencia settings={whatsapp} /> : null}
+        </>
+      ) : null}
     </div>
   );
 }

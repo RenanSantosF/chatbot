@@ -171,6 +171,60 @@ describe('endereço do webhook', () => {
   });
 });
 
+describe('reconexão', () => {
+  const antes = process.env.API_PUBLIC_URL;
+  beforeEach(() => {
+    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+  });
+  afterEach(() => {
+    process.env.API_PUBLIC_URL = antes;
+  });
+
+  it('reaproveita a chave guardada quando a tela não manda nenhuma', async () => {
+    // A tela apaga o campo depois de salvar, então quem já conectou não
+    // tem mais a chave na mão. Exigi-la de novo tornava o botão de
+    // reconectar impossível de acionar.
+    const chamadas = servidor({ sessaoJaExiste: true });
+    const { service } = montar({ baseUrl: 'https://evo.exemplo.com' });
+
+    await expect(service.conectar({})).resolves.toBeDefined();
+    expect(chamadas.some((c) => c.url.includes('/webhook/set/'))).toBe(true);
+  });
+
+  it('recusa quando não há chave guardada nem informada', async () => {
+    servidor();
+    const { service } = montar(null);
+
+    await expect(service.conectar({})).rejects.toThrow(BadRequestException);
+  });
+
+  it('não fica esperando QR code numa sessão que já está de pé', async () => {
+    // Reconectar numa sessão aberta não devolve QR nenhum — não há o que
+    // parear. Assumir "aguardando" deixava a tela girando pra sempre.
+    global.fetch = jest.fn(async (url: unknown) => {
+      const endereco = String(url);
+      if (endereco.includes('/instance/create')) {
+        return { ok: false, status: 403, text: async () => '{}' } as Response;
+      }
+      if (endereco.includes('/instance/connectionState/')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ instance: { state: 'open' } }),
+        } as Response;
+      }
+      return { ok: true, status: 200, text: async () => '{}' } as Response;
+    }) as unknown as typeof fetch;
+
+    const { service } = montar({ baseUrl: 'https://evo.exemplo.com' });
+
+    await expect(service.conectar({})).resolves.toMatchObject({
+      estado: 'CONECTADO',
+      qrCode: null,
+    });
+  });
+});
+
 describe('troca de canal', () => {
   const antes = process.env.API_PUBLIC_URL;
   beforeEach(() => {

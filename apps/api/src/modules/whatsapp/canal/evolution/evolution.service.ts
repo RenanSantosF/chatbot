@@ -80,8 +80,25 @@ export class EvolutionService {
    * memória do servidor que ninguém sabe apagar — e o nome dela, que é
    * aleatório, se perde junto.
    */
-  async conectar(dados: { baseUrl: string; apiKey: string }) {
+  async conectar(dados: { baseUrl?: string; apiKey?: string }) {
     const existente = await this.prisma.db.evolutionSettings.findFirst();
+
+    // Reconectar não deve exigir digitar a chave de novo.
+    //
+    // Ela é guardada cifrada, e quem já conectou uma vez não a tem mais na
+    // mão pra colar — o campo da tela vem vazio depois de salvar. Sem
+    // reaproveitar o que está guardado, o botão de reconectar exigia um
+    // segredo que a própria tela apagou.
+    const apiKey =
+      dados.apiKey?.trim() ||
+      (existente ? this.encryption.decrypt(existente.apiKeyEncrypted) : '');
+    const endereco = dados.baseUrl?.trim() || existente?.baseUrl || '';
+
+    if (!apiKey || !endereco) {
+      throw new BadRequestException(
+        'Informe o endereço do servidor e a chave da API para conectar.',
+      );
+    }
 
     // O nome da sessão é sorteado, e não derivado do nome da empresa: ele
     // é único na plataforma inteira, e nome de empresa se repete. Uma vez
@@ -89,8 +106,8 @@ export class EvolutionService {
     // servidor.
     const instance = existente?.instance ?? `inteliwa-${randomUUID()}`;
     const webhookSecret = existente?.webhookSecret ?? randomBytes(24).toString('hex');
-    const apiKeyEncrypted = this.encryption.encrypt(dados.apiKey);
-    const baseUrl = dados.baseUrl.replace(/\/+$/, '');
+    const apiKeyEncrypted = this.encryption.encrypt(apiKey);
+    const baseUrl = endereco.replace(/\/+$/, '');
 
     const config = existente
       ? await this.prisma.db.evolutionSettings.update({
@@ -114,7 +131,7 @@ export class EvolutionService {
           },
         });
 
-    const credenciais = { baseUrl, apiKey: dados.apiKey, instance: config.instance };
+    const credenciais = { baseUrl, apiKey, instance: config.instance };
     const url = this.urlDoWebhook(config.webhookSecret);
 
     // Criar dá 403 quando a sessão já existe. Não é erro: é o caso de quem
@@ -157,14 +174,30 @@ export class EvolutionService {
       );
     }
 
+    // O estado sai do SERVIDOR, e não de um palpite.
+    //
+    // Reconectar numa sessão que já está de pé não devolve QR code nenhum
+    // — não há o que parear. Assumir "aguardando QR code" nesse caso
+    // deixava a tela girando pra sempre esperando uma imagem que nunca
+    // vinha, numa sessão que estava funcionando o tempo todo.
     const qrCode = resposta.dados?.qrcode?.base64 ?? null;
+    const situacao = await evolution.estado(credenciais);
+    const estado = qrCode
+      ? ('AGUARDANDO_QRCODE' as const)
+      : traduzirEstado(situacao.dados?.instance?.state);
+
     await this.prisma.db.evolutionSettings.update({
       where: { id: config.id },
-      data: { qrCode, lastError: null },
+      data: {
+        qrCode,
+        estado,
+        lastError: null,
+        ...(estado === 'CONECTADO' ? { lastSeenAt: new Date() } : {}),
+      },
     });
 
     this.logger.log(
-      `Sessão ${config.instance} criada pro tenant ${this.prisma.tenantId}; aguardando leitura do QR code.`,
+      `Sessão ${config.instance} pronta pro tenant ${this.prisma.tenantId} (${estado}); retorno em ${url}.`,
     );
 
     // A empresa passa a ser da Evolution assim que a sessão existe, e não
@@ -176,7 +209,7 @@ export class EvolutionService {
       data: { canal: 'EVOLUTION' },
     });
 
-    return { instance: config.instance, qrCode, estado: 'AGUARDANDO_QRCODE' as const };
+    return { instance: config.instance, qrCode, estado };
   }
 
   /** Um QR code novo — o anterior expira em cerca de um minuto. */
@@ -219,13 +252,7 @@ export class EvolutionService {
       return { estado: config.estado, lastError: resposta.erro };
     }
 
-    const bruto = resposta.dados?.instance?.state;
-    const estado =
-      bruto === 'open'
-        ? ('CONECTADO' as const)
-        : bruto === 'connecting'
-          ? ('AGUARDANDO_QRCODE' as const)
-          : ('DESCONECTADO' as const);
+    const estado = traduzirEstado(resposta.dados?.instance?.state);
 
     await this.prisma.db.evolutionSettings.update({
       where: { id: config.id },
@@ -292,4 +319,20 @@ export class EvolutionService {
       },
     };
   }
+}
+
+/**
+ * O vocabulário de estado do servidor traduzido pro nosso.
+ *
+ * `connecting` vira "aguardando QR code" porque é o que ele significa na
+ * prática pra quem está olhando: a sessão existe e está esperando alguém
+ * parear. Qualquer outra coisa é desconectado — inclusive `refused`, que
+ * é a sessão recusada pelo WhatsApp.
+ */
+function traduzirEstado(
+  bruto: string | undefined,
+): 'CONECTADO' | 'AGUARDANDO_QRCODE' | 'DESCONECTADO' {
+  if (bruto === 'open') return 'CONECTADO';
+  if (bruto === 'connecting') return 'AGUARDANDO_QRCODE';
+  return 'DESCONECTADO';
 }
