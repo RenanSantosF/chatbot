@@ -113,7 +113,6 @@ export class EvolutionWebhookController {
       case 'CONNECTION_UPDATE':
         await this.conexao(body, config);
         break;
-      case 'MESSAGES_SET':
       case 'MESSAGING_HISTORY_SET':
         await this.historico(body, config);
         break;
@@ -302,26 +301,11 @@ export class EvolutionWebhookController {
   ) {
     const dados = body.data as
       | { messages?: DadosDaMensagem[]; isLatest?: boolean; progress?: number }
-      | DadosDaMensagem[]
       | undefined;
 
-    /*
-     * O lote vem de dois jeitos, e o andamento vem de fora.
-     *
-     * No webhook de verdade, `data` É a lista de mensagens, e o "é o
-     * último?" sobe pra raiz do evento. A forma com `data.messages` é a
-     * de dentro da Evolution. Aceitar as duas custa uma linha; aceitar só
-     * a de dentro fazia a importação nunca começar nem terminar — sem
-     * erro nenhum, porque o formato simplesmente não batia.
-     */
-    const lote = Array.isArray(dados)
-      ? dados
-      : Array.isArray(dados?.messages)
-        ? dados.messages
-        : [];
+    const lote = Array.isArray(dados?.messages) ? dados.messages : [];
     // O lote final costuma vir vazio, só pra avisar que acabou.
-    const ultimo =
-      body.isLatest === true || (!Array.isArray(dados) && dados?.isLatest === true);
+    const ultimo = dados?.isLatest === true;
 
     const porContato = new Map<
       string,

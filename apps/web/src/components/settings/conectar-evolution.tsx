@@ -192,28 +192,7 @@ export function ConectarEvolution() {
   const digitos = numero.replace(/\D/g, "");
   const numeroValido = /^\d{10,15}$/.test(digitos);
 
-  /**
-   * Trocar de modo pede um pareamento novo na hora.
-   *
-   * Só virar o botão não servia: o material de pareamento pertence a uma
-   * sessão que já nasceu num modo, então quem pedira código continuava
-   * vendo o código, e a aba de QR ficava vazia sem explicação. Como a
-   * troca só faz sentido pra quem quer tentar do outro jeito, ela já
-   * dispara a tentativa.
-   */
-  async function trocarModo(novo: "QRCODE" | "CODIGO") {
-    if (novo === modo) return;
-    setModo(novo);
-    // Sem número não dá pra pedir código: a pessoa digita e clica.
-    if (novo === "CODIGO" && !digitos) return;
-    await parear(novo);
-  }
-
   async function conectar() {
-    await parear(modo);
-  }
-
-  async function parear(comOModo: "QRCODE" | "CODIGO") {
     setConectando(true);
     try {
       // O servidor de mensagens é da plataforma, e a API já sabe qual é
@@ -221,7 +200,9 @@ export function ConectarEvolution() {
       // telefone, e só quando o pareamento é por código.
       await apiFetch("/whatsapp/evolution", {
         method: "POST",
-        body: JSON.stringify(comOModo === "CODIGO" ? { numero: digitos } : {}),
+        body: JSON.stringify(
+          modo === "CODIGO" ? { numero: digitos } : {},
+        ),
       });
       await carregar();
     } catch (erro) {
@@ -244,20 +225,6 @@ export function ConectarEvolution() {
       await carregar();
     } catch (erro) {
       toast.error(erro instanceof ApiError ? erro.message : "Não deu pra gerar o QR code.");
-    }
-  }
-
-  /** Derruba a sessão pela ordem certa e devolve a tela ao estado inicial. */
-  async function recomecar() {
-    setConectando(true);
-    try {
-      await apiFetch("/whatsapp/evolution", { method: "DELETE" });
-      await carregar();
-      toast.success("Sessão apagada. Pode conectar de novo do jeito que quiser.");
-    } catch (erro) {
-      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra apagar a sessão.");
-    } finally {
-      setConectando(false);
     }
   }
 
@@ -383,13 +350,13 @@ export function ConectarEvolution() {
             >
               <OpcaoDeModo
                 ativa={modo === "QRCODE"}
-                onClick={() => void trocarModo("QRCODE")}
+                onClick={() => setModo("QRCODE")}
                 icone={QrCode}
                 rotulo="Ler QR code"
               />
               <OpcaoDeModo
                 ativa={modo === "CODIGO"}
-                onClick={() => void trocarModo("CODIGO")}
+                onClick={() => setModo("CODIGO")}
                 icone={Smartphone}
                 rotulo="Usar código"
               />
@@ -414,29 +381,6 @@ export function ConectarEvolution() {
                   número do celular que vai ler o código.
                 </p>
               </div>
-            ) : null}
-
-            {jaConfigurado ? (
-              /*
-               * A saída de emergência, e ela precisa existir AQUI.
-               *
-               * "Desconectar" só aparecia com a sessão de pé — mas quem
-               * fica preso é justamente quem NÃO conectou. E há um estado
-               * do qual não se sai de outro jeito: uma sessão criada com
-               * número fica em modo código e nunca mais devolve QR, então
-               * trocar de caminho exige derrubá-la.
-               *
-               * Este botão desliga na ordem certa (encerra o socket e só
-               * então apaga), que é o que evita deixar sessão órfã no
-               * servidor.
-               */
-              <button
-                type="button"
-                onClick={() => void recomecar()}
-                className="self-start text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-              >
-                Nada funciona? Apagar esta sessão e recomeçar do zero
-              </button>
             ) : null}
 
             <Button

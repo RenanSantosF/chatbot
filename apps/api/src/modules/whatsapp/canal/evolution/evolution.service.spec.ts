@@ -26,15 +26,7 @@ function montar(config: Record<string, unknown> | null = null) {
       evolutionSettings: {
         findFirst: jest.fn().mockResolvedValue(config),
         create: jest.fn().mockResolvedValue(criado),
-        // Devolve a linha ATUALIZADA, como o Prisma faz. Importa porque o
-        // nome da sessão é trocado nesse mesmo update, e o resto do
-        // método usa o valor devolvido pra falar com o servidor.
-        update: jest
-          .fn()
-          .mockImplementation((args: { data: Record<string, unknown> }) => ({
-            ...criado,
-            ...args.data,
-          })),
+        update: jest.fn().mockResolvedValue(criado),
       },
     },
   };
@@ -199,55 +191,6 @@ describe('endereço do webhook', () => {
     );
   });
 
-
-
-
-  it('estreia um nome de sessão novo a cada pareamento', async () => {
-    // O servidor só pede um código ao WhatsApp quando o socket sobe;
-    // depois devolve o que está na memória dele — o mesmo código vencido.
-    // Nome novo é o que garante socket novo, e sem colidir com o velho
-    // (recriar com o MESMO nome deixa um socket órfão gravando em
-    // registro apagado, e o pareamento nunca completa).
-    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
-    const chamadas = servidor({ sessaoJaExiste: false });
-    const { service, prisma } = montar({
-      baseUrl: 'https://evo.exemplo.com',
-      instance: 'inteliwa-velha',
-      estado: 'AGUARDANDO_QRCODE',
-      pairingCode: 'VENCIDO1',
-      updatedAt: new Date(Date.now() - 5 * 60_000),
-    });
-
-    await service.conectar('5527998836017');
-
-    const criacao = chamadas.find((c) => c.url.includes('/instance/create'));
-    expect(criacao?.corpo.instanceName).not.toBe('inteliwa-velha');
-    expect(prisma.db.evolutionSettings.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ instance: expect.any(String) }),
-      }),
-    );
-  });
-
-  it('devolve o pareamento recém emitido em vez de trocar de sessão', async () => {
-    // Sem isto, um segundo clique — ou a tela consultando o estado —
-    // trocaria a sessão por baixo do código que a pessoa está digitando.
-    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
-    const chamadas = servidor();
-    const { service } = montar({
-      baseUrl: 'https://evo.exemplo.com',
-      instance: 'inteliwa-1',
-      estado: 'AGUARDANDO_QRCODE',
-      pairingCode: '3Z243KXG',
-      updatedAt: new Date(),
-    });
-
-    await expect(service.conectar('5527998836017')).resolves.toMatchObject({
-      pairingCode: '3Z243KXG',
-    });
-    expect(chamadas).toHaveLength(0);
-  });
-
   it('recusa conectar sem o endereço público configurado', async () => {
     // Melhor falhar na cara de quem clicou que registrar um webhook
     // apontando pra localhost e descobrir horas depois.
@@ -363,7 +306,6 @@ describe('troca de canal', () => {
       'MESSAGES_UPDATE',
       'CONNECTION_UPDATE',
       'QRCODE_UPDATED',
-      'MESSAGES_SET',
     ]);
   });
 

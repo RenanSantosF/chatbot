@@ -26,16 +26,6 @@ import {
  * celular, abrir o menu certo), e uma requisição HTTP pendurada esse tempo
  * todo é uma requisição que o balanceador derruba no meio.
  */
-/**
- * Por quanto tempo um pareamento recém-emitido continua valendo.
- *
- * O código do WhatsApp dura cerca de um minuto, e o QR um pouco menos.
- * Enquanto estiver dentro disso, pedir "de novo" devolve o mesmo — é o
- * que impede que um segundo clique, ou a tela consultando o estado,
- * derrube o pareamento que a pessoa está no meio de digitar.
- */
-const VALIDADE_DO_PAREAMENTO_MS = 60_000;
-
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
@@ -135,51 +125,7 @@ export class EvolutionService {
     // é único na plataforma inteira, e nome de empresa se repete. Uma vez
     // sorteado, nunca muda — trocá-lo abandonaria a sessão antiga no
     // servidor.
-    /*
-     * Código de pareamento novo exige SOCKET novo — e socket novo, aqui,
-     * quer dizer NOME novo.
-     *
-     * O servidor só pede um código ao WhatsApp quando o socket emite o
-     * evento de pareamento, o que acontece uma vez, ao subir. Depois
-     * disso ele devolve o que está guardado na memória dele: o mesmo
-     * código de antes, já vencido. A tela mostra oito caracteres
-     * novinhos, a pessoa digita, e o WhatsApp recusa — sempre, e sem
-     * nunca dizer que o código já tinha morrido.
-     *
-     * Apagar a instância e recriar com o MESMO nome não resolve: o
-     * servidor apaga a linha e mantém o socket vivo, que segue tentando
-     * gravar num registro inexistente (`P2025`) e nunca completa o
-     * pareamento. Nome novo evita a colisão inteira — a sessão velha
-     * morre sozinha e a nova nasce limpa, com registro próprio.
-     *
-     * Só quando não está conectada, e só quando não há pareamento recém
-     * emitido: rotacionar o nome de uma sessão viva a abandonaria no
-     * servidor, com o atendimento junto.
-     */
-    const pareamentoFresco =
-      Boolean(existente?.pairingCode || existente?.qrCode) &&
-      Boolean(existente?.updatedAt) &&
-      Date.now() - existente!.updatedAt.getTime() < VALIDADE_DO_PAREAMENTO_MS;
-
-    const precisaDeSocketNovo =
-      Boolean(existente) && existente!.estado !== 'CONECTADO' && !pareamentoFresco;
-
-    if (precisaDeSocketNovo) {
-      // Melhor esforço: o servidor guarda a sessão velha sem uso nenhum, e
-      // falhar aqui não pode impedir a nova de nascer.
-      await evolution
-        .apagarInstancia({
-          baseUrl,
-          apiKey,
-          instance: existente!.instance,
-        })
-        .catch(() => undefined);
-    }
-
-    const instance =
-      !existente || precisaDeSocketNovo
-        ? `inteliwa-${randomUUID()}`
-        : existente.instance;
+    const instance = existente?.instance ?? `inteliwa-${randomUUID()}`;
     const webhookSecret = existente?.webhookSecret ?? randomBytes(24).toString('hex');
 
     const config = existente
@@ -188,7 +134,6 @@ export class EvolutionService {
           data: {
             baseUrl,
             apiKeyEncrypted,
-            instance,
             estado: 'AGUARDANDO_QRCODE',
             qrCode: null,
             lastError: null,
@@ -205,41 +150,12 @@ export class EvolutionService {
           },
         });
 
-    if (pareamentoFresco) {
-      this.logger.log(
-        `Sessão ${config.instance}: pareamento ainda válido, devolvido sem recriar.`,
-      );
-      return {
-        instance: config.instance,
-        qrCode: existente!.qrCode,
-        pairingCode: existente!.pairingCode,
-        estado: 'AGUARDANDO_QRCODE' as const,
-      };
-    }
-
     const credenciais = { baseUrl, apiKey, instance: config.instance };
     const url = this.urlDoWebhook(config.webhookSecret);
 
-    /*
-     * NÃO apague a instância pra "começar limpa".
-     *
-     * Isto já esteve aqui, com a intenção de garantir um socket novo a
-     * cada pareamento, e o resultado foi pior que o problema: a Evolution
-     * apaga a linha no banco dela mas mantém o socket vivo em memória.
-     * Ele segue gerando código e tentando gravar num registro que não
-     * existe mais — `P2025: No record was found for an update` — e o
-     * pareamento nunca completa. O celular nem chega a receber o pedido
-     * de conexão, então o erro que aparece é "não foi possível conectar o
-     * dispositivo", que aponta pro lugar errado.
-     *
-     * Quando uma sessão precisar mesmo ser recriada, o caminho é
-     * desconectar pela tela (que faz logout ANTES de apagar, terminando o
-     * socket) e conectar de novo.
-     */
-
-    // Criar dá 403 quando a sessão já existe — o que, depois da limpeza
-    // acima, só acontece com uma sessão VIVA. Aí o caminho é pedir o
-    // material de pareamento da que já está lá.
+    // Criar dá 403 quando a sessão já existe. Não é erro: é o caso de quem
+    // está reconectando depois de uma queda, e aí o caminho é pedir o QR
+    // code da sessão que já está lá.
     let resposta = await evolution.criarInstancia(credenciais, url, numero);
     const jaExistia = !resposta.ok && resposta.status === 403;
     if (jaExistia) {
@@ -347,14 +263,6 @@ export class EvolutionService {
   async renovarQrCode(numero?: string | null) {
     const { config, credenciais } = await this.credenciais();
 
-    /*
-     * Pede ao servidor o material da sessão que já existe.
-     *
-     * Não recria nada: recriar exigiria apagar a instância, e apagar
-     * deixa o socket órfão em memória — ver o aviso longo em `conectar`.
-     * Pra trocar de QR pra código (ou o contrário) numa sessão que não
-     * pareou, o caminho é desconectar pela tela e conectar de novo.
-     */
     const resposta = await evolution.conectar(credenciais, numero);
     if (!resposta.ok) {
       throw new BadRequestException(

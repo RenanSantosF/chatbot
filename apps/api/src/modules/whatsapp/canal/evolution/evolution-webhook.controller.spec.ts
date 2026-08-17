@@ -312,38 +312,6 @@ describe('status de entrega', () => {
   });
 });
 
-describe('histórico do aparelho', () => {
-  it('aceita o formato do webhook: lista em data, andamento na raiz', async () => {
-    // Foi assim que a importação ficava eterna. O evento chega com a
-    // lista direto em `data` e o "é o último?" na raiz; o código só sabia
-    // ler `data.messages`, então nenhuma conversa entrava e o aviso de
-    // fim nunca vinha — sem erro em lugar nenhum.
-    const { controller, conversations, req } = montar();
-
-    await controller.receber(SEGREDO, req, {
-      event: 'messages.set',
-      instance: 'inteliwa-1',
-      isLatest: true,
-      data: [
-        {
-          key: {
-            remoteJid: '5511999999999@s.whatsapp.net',
-            fromMe: false,
-            id: '3EB0ANTIGA',
-          },
-          pushName: 'Ana',
-          messageTimestamp: 1755300000,
-          message: { conversation: 'mensagem de ontem' },
-        },
-      ],
-    });
-
-    expect(conversations.importarHistorico).toHaveBeenCalledWith(
-      expect.objectContaining({ customerPhone: '5511999999999' }),
-    );
-  });
-});
-
 describe('estado da conexão', () => {
   it('marca conectado e apaga o QR code usado', async () => {
     const { controller, prisma, req } = montar();
