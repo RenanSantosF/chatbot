@@ -5,7 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { EvolutionCanal } from './canal/evolution/evolution.canal';
 import { StorageService } from '../storage/storage.service';
 import { motivoDaMeta } from './meta-erro';
 
@@ -31,9 +33,41 @@ export class WhatsappMediaService {
 
   constructor(
     private readonly prisma: TenantPrismaService,
+    private readonly global: PrismaService,
     private readonly encryption: EncryptionService,
     private readonly storage: StorageService,
+    private readonly evolution: EvolutionCanal,
   ) {}
+
+  /**
+   * Busca o binário na origem certa.
+   *
+   * "Origem" mudou de significado quando a Evolution entrou. Na Meta o
+   * arquivo fica hospedado 30 dias e o handle é um id que aponta pra ele;
+   * na Evolution nada fica hospedado — o handle é a chave da mensagem, e o
+   * arquivo é pedido ao WhatsApp na hora, como o aplicativo do celular faz
+   * ao abrir uma conversa antiga.
+   *
+   * Sem esta bifurcação, TODA mídia de empresa conectada por QR code era
+   * buscada na Cloud API — que não tem credencial dessa empresa, nem o
+   * arquivo. O balão ficava sem imagem e sem explicação.
+   */
+  private async baixarDaOrigem(handle: string): Promise<DownloadedMedia> {
+    const tenant = await this.global.client.tenant.findUnique({
+      where: { id: this.prisma.tenantId },
+      select: { canal: true },
+    });
+
+    if (tenant?.canal !== 'EVOLUTION') return this.baixarDaMeta(handle);
+
+    const baixada = await this.evolution.baixarMidia(handle);
+    if (!baixada) {
+      throw new NotFoundException(
+        'Não deu pra buscar este anexo no WhatsApp. Ele pode ter sido apagado no aparelho.',
+      );
+    }
+    return baixada;
+  }
 
   /**
    * Acha a mensagem dona de uma mídia pelo id que a Meta deu.
@@ -69,7 +103,7 @@ export class WhatsappMediaService {
       const metadata = (mensagem?.metadata ?? {}) as Record<string, unknown>;
       if (metadata.storageKey) return; // já guardado
 
-      const { buffer, mimeType } = await this.baixarDaMeta(mediaId);
+      const { buffer, mimeType } = await this.baixarDaOrigem(mediaId);
       const chave = await this.storage.guardar({
         tenantId: this.prisma.tenantId,
         mediaId,
@@ -129,12 +163,12 @@ export class WhatsappMediaService {
         );
       }
 
-      const daMeta = await this.baixarDaMeta(mediaId);
+      const daOrigem = await this.baixarDaOrigem(mediaId);
       void this.arquivar(mediaId, metadata.fileName as string | undefined);
-      return daMeta;
+      return daOrigem;
     }
 
-    return this.baixarDaMeta(mediaId);
+    return this.baixarDaOrigem(mediaId);
   }
 
   /** Busca o binário direto da Meta, em dois passos como ela exige. */

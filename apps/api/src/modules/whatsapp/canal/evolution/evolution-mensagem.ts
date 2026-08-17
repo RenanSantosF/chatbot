@@ -241,10 +241,19 @@ export function traduzirMensagem(
         // `ptt` (push to talk) é o áudio gravado na hora, e não um arquivo
         // de música anexado. A tela mostra os dois diferente.
         voice: midia.ptt ?? false,
-        // Sem `mediaId`: na Evolution o binário não fica hospedado com um
-        // id como na Meta, ele é buscado pela chave da mensagem. Enquanto
-        // o download não existir, o balão mostra o nome do arquivo e diz
-        // que o anexo não está disponível — o que é a verdade.
+        /*
+         * Marca de "esta mídia ainda precisa de um handle".
+         *
+         * Esta função é pura e não conhece a chave da mensagem, que é o
+         * que a Evolution usa pra devolver o binário — o binário não fica
+         * hospedado com um id, como na Meta. Quem tem a chave é o
+         * controlador do webhook, e é ele que troca esta marca pelo
+         * `mediaId` de verdade (ver evolution-webhook.controller).
+         *
+         * A marca some ali; se ela chegar ao banco, é sinal de que aquele
+         * caminho não rodou — e o balão mostra o anexo como indisponível,
+         * que é a verdade nesse caso.
+         */
         evolutionPendente: true,
       },
       citando: citacao(midia as unknown as ContextoDaCitacao) ?? citadoNaRaiz,

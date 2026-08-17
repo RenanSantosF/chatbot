@@ -23,6 +23,17 @@
 const TEMPO_LIMITE_MS = 10_000;
 
 /**
+ * O mesmo, para as chamadas que carregam arquivo.
+ *
+ * Mídia não cabe no orçamento das outras: o binário vai em base64 no
+ * corpo (~33% maior que o arquivo), e depois a Evolution ainda cifra e
+ * sobe pro WhatsApp antes de responder. Dez segundos derrubava o envio de
+ * um vídeo que teria dado certo — e o cliente via "não deu pra enviar" por
+ * uma mensagem que estava a caminho.
+ */
+const TEMPO_LIMITE_MIDIA_MS = 60_000;
+
+/**
  * Os eventos que assinamos, num lugar só.
  *
  * Assinar tudo faria o servidor despejar presença, digitação e cada
@@ -108,7 +119,7 @@ export function motivoDaEvolution(corpo: string, status: number): string {
 async function chamar<T>(
   credenciais: Pick<Credenciais, 'baseUrl' | 'apiKey'>,
   caminho: string,
-  init: { method: string; body?: unknown },
+  init: { method: string; body?: unknown; tempoLimiteMs?: number },
 ): Promise<RespostaDaEvolution<T>> {
   // A barra do fim do endereço é o erro de digitação mais comum ao colar
   // uma URL, e sem isto vira "//message/..." — que alguns servidores
@@ -123,7 +134,7 @@ async function chamar<T>(
         'Content-Type': 'application/json',
       },
       ...(init.body ? { body: JSON.stringify(init.body) } : {}),
-      signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
+      signal: AbortSignal.timeout(init.tempoLimiteMs ?? TEMPO_LIMITE_MS),
     });
 
     const corpo = await resposta.text();
@@ -168,6 +179,111 @@ export function enviarTexto(
         : {}),
     },
   });
+}
+
+/**
+ * Envia um arquivo.
+ *
+ * O binário vai em base64 no corpo, e não como upload separado: a
+ * Evolution não tem a etapa de "subir e receber um id" da Cloud API. Isso
+ * infla o corpo em ~33%, e é o motivo de o tempo limite deste envio ser
+ * maior que o das outras chamadas — um vídeo de alguns megabytes leva mais
+ * que dez segundos pra atravessar.
+ *
+ * `mediatype` é o vocabulário dela (image/video/audio/document), e é o que
+ * decide como o anexo aparece no aparelho do cliente.
+ */
+export function enviarMidia(
+  credenciais: Credenciais,
+  envio: {
+    numero: string;
+    tipo: 'image' | 'video' | 'audio' | 'document';
+    base64: string;
+    mimetype: string;
+    filename: string;
+    legenda?: string;
+    citando?: string | null;
+  },
+): Promise<RespostaDaEvolution<EnvioAceito>> {
+  return chamar(
+    credenciais,
+    `/message/sendMedia/${credenciais.instance}`,
+    {
+      method: 'POST',
+      tempoLimiteMs: TEMPO_LIMITE_MIDIA_MS,
+      body: {
+        number: envio.numero,
+        mediatype: envio.tipo,
+        mimetype: envio.mimetype,
+        media: envio.base64,
+        fileName: envio.filename,
+        ...(envio.legenda ? { caption: envio.legenda } : {}),
+        ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
+      },
+    },
+  );
+}
+
+/**
+ * Envia áudio como MENSAGEM DE VOZ.
+ *
+ * Rota separada de propósito, e a diferença é visível pro cliente: por
+ * aqui o áudio chega como a bolha de voz com forma de onda; por
+ * `sendMedia` chegaria como um arquivo anexado com nome. Quem gravou
+ * apertando o microfone espera o primeiro.
+ */
+export function enviarAudioDeVoz(
+  credenciais: Credenciais,
+  envio: { numero: string; base64: string; citando?: string | null },
+): Promise<RespostaDaEvolution<EnvioAceito>> {
+  return chamar(
+    credenciais,
+    `/message/sendWhatsAppAudio/${credenciais.instance}`,
+    {
+      method: 'POST',
+      tempoLimiteMs: TEMPO_LIMITE_MIDIA_MS,
+      body: {
+        number: envio.numero,
+        audio: envio.base64,
+        ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
+      },
+    },
+  );
+}
+
+export interface MidiaEmBase64 {
+  base64?: string;
+  mimetype?: string;
+  /** Algumas versões devolvem os dados aninhados aqui. */
+  message?: { mimetype?: string };
+}
+
+/**
+ * Busca o binário de uma mídia já recebida ou enviada.
+ *
+ * Aqui está a diferença de modelo que mais importa entre os dois
+ * provedores. A Meta hospeda o arquivo por 30 dias e dá um id pra buscá-lo
+ * quando quiser. A Evolution não hospeda nada: ela pede o arquivo ao
+ * WhatsApp usando a CHAVE DA MENSAGEM, do mesmo jeito que o aplicativo do
+ * celular faz ao abrir uma conversa antiga.
+ *
+ * A consequência prática é que o handle da Evolution é a chave da
+ * mensagem, e não um id de arquivo — e é por isso que o contrato do canal
+ * fala em `handle` opaco em vez de `mediaId`.
+ */
+export function baixarMidia(
+  credenciais: Credenciais,
+  chave: { remoteJid: string; fromMe: boolean; id: string },
+): Promise<RespostaDaEvolution<MidiaEmBase64>> {
+  return chamar(
+    credenciais,
+    `/chat/getBase64FromMediaMessage/${credenciais.instance}`,
+    {
+      method: 'POST',
+      tempoLimiteMs: TEMPO_LIMITE_MIDIA_MS,
+      body: { message: { key: chave }, convertToMp4: false },
+    },
+  );
 }
 
 export function enviarReacao(

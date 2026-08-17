@@ -25,18 +25,19 @@
  *    todos os chamadores; o serviço tem escopo de requisição, então o
  *    motivo não vaza entre pedidos simultâneos.
  *
- * MÍDIA AINDA NÃO ESTÁ AQUI, e a ausência é deliberada.
+ * MÍDIA ENTROU DEPOIS, e o redesenho que ela exigia foi este:
  *
- * Na Meta enviar um arquivo são duas viagens — sobe o binário, recebe um
- * `mediaId`, envia a mensagem citando esse id — e aquele id é guardado na
- * mensagem porque é por ele que o anexo é rebaixado e arquivado depois. Na
- * Evolution o arquivo vai direto, e esse id não existe.
+ * A versão anterior deste comentário explicava por que mídia estava de
+ * fora — o parâmetro seria o `mediaId`, que vem do upload em duas etapas
+ * da Cloud API e não existe na Evolution. Enfiá-lo aqui vazaria a Meta pra
+ * dentro do contrato feito pra escondê-la.
  *
- * Ou seja: não é só um método a mais, é um conceito do modelo de dados que
- * precisa mudar junto. Enfiar `mediaId` nesta interface seria vazar a Meta
- * pra dentro do contrato que existe justamente pra escondê-la. Até esse
- * redesenho, quem envia anexo continua falando com o serviço da Meta
- * diretamente — o que é honesto, porque hoje só existe ela.
+ * A saída foi inverter: o contrato recebe o ARQUIVO e devolve um `handle`
+ * opaco. Cada provedor decide o que aquele handle significa — na Meta é o
+ * `mediaId` do upload, na Evolution é a chave da mensagem, que é por onde
+ * ela devolve o binário. Quem guarda no banco só precisa devolver o mesmo
+ * valor quando quiser o arquivo de volta, exatamente como já acontecia com
+ * o id externo.
  */
 
 /**
@@ -98,6 +99,76 @@ export interface CanalDeMensagem {
     modelo: { name: string; language: string; bodyParams?: string[] },
   ): Promise<IdExterno>;
 
+  /**
+   * Envia um arquivo.
+   *
+   * O argumento é o ARQUIVO, e não um identificador dele. Essa escolha é a
+   * que tirou a Meta de dentro do contrato: antes o parâmetro era o
+   * `mediaId` do upload em duas etapas — sobe o binário, recebe um id,
+   * envia a mensagem citando esse id — que só existe na Cloud API. A
+   * Evolution manda o arquivo direto, e não tem id nenhum pra citar.
+   *
+   * Cada provedor faz o que precisa por dentro: a Meta sobe antes, a
+   * Evolution manda em base64. Quem chama não sabe a diferença.
+   */
+  enviarMidia(
+    para: string,
+    arquivo: ArquivoParaEnvio,
+    opcoes?: { caption?: string; citando?: IdExterno | null },
+  ): Promise<EnvioDeMidia>;
+
+  /**
+   * Busca o binário de uma mídia pelo `handle` que o envio ou o
+   * recebimento guardou.
+   *
+   * `null` quer dizer "não consegui buscar", e não "não existe": quem
+   * chama decide se tenta outra fonte (o arquivamento próprio) ou se
+   * mostra o balão sem o anexo.
+   */
+  baixarMidia(handle: string): Promise<MidiaBaixada | null>;
+
   /** O porquê da última falha, em português, pra mostrar a quem atende. */
   readonly motivoDaUltimaFalha: string | null;
+}
+
+/** O que o WhatsApp trata como categorias diferentes de anexo. */
+export type TipoDeMidia =
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'document'
+  | 'sticker';
+
+export interface ArquivoParaEnvio {
+  buffer: Buffer;
+  mimetype: string;
+  filename: string;
+  tipo: TipoDeMidia;
+  /**
+   * Áudio gravado na hora, e não arquivo de música anexado.
+   *
+   * A diferença é visível pro cliente: um vira a bolha de mensagem de voz
+   * com forma de onda, o outro vira um anexo com nome de arquivo. Os dois
+   * provedores têm caminhos separados pra isso.
+   */
+  voice?: boolean;
+}
+
+export interface EnvioDeMidia {
+  /** O id da mensagem, ou null quando o anexo não saiu. */
+  externalId: IdExterno | null;
+  /**
+   * Por onde buscar este binário depois.
+   *
+   * Na Meta é o `mediaId` do upload; na Evolution é a chave da mensagem,
+   * porque é por ela que o servidor devolve o arquivo. Quem guarda não
+   * precisa saber qual dos dois é — só devolver este mesmo valor em
+   * `baixarMidia`.
+   */
+  handle: string | null;
+}
+
+export interface MidiaBaixada {
+  buffer: Buffer;
+  mimeType: string;
 }

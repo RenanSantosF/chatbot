@@ -528,17 +528,16 @@ describe('relógio da espera (fila de atendimento)', () => {
     // uma foto respondida.
     const { service, atualizacoes } = montar();
 
-    const midia = {
-      upload: jest.fn().mockResolvedValue('media-1'),
-    };
+    // O canal recebe o ARQUIVO e devolve o id da mensagem mais o handle
+    // por onde buscar o binário depois — quem faz upload, se fizer, é o
+    // provedor por dentro (ver canal.interface).
     const whatsapp = {
-      enviarMidia: jest.fn().mockResolvedValue('wamid.MIDIA'),
+      enviarMidia: jest
+        .fn()
+        .mockResolvedValue({ externalId: 'wamid.MIDIA', handle: 'media-1' }),
       motivoDaUltimaFalha: null,
     };
-    Object.assign(service as unknown as Record<string, unknown>, {
-      media: midia,
-      whatsapp,
-    });
+    Object.assign(service as unknown as Record<string, unknown>, { whatsapp });
 
     await service.sendAttachment('conversa-1', 'user-1', {
       buffer: Buffer.from('imagem'),

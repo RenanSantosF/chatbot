@@ -1471,16 +1471,31 @@ export class ConversationsService {
     };
     if (!metadata.mediaId) {
       throw new BadRequestException(
-        'Esta mídia não pode ser encaminhada: ela não tem id na Meta.',
+        'Esta mídia não pode ser encaminhada: o arquivo dela não está mais disponível.',
       );
     }
 
     const kind = mediaKindFor(metadata.mimeType ?? '');
-    const externalId = await this.whatsapp.enviarMidia(
+
+    // Encaminhar busca o binário e manda de novo, em vez de reaproveitar o
+    // identificador do arquivo. Reaproveitar só funcionava na Meta, onde o
+    // arquivo fica hospedado com um id — na Evolution não existe id de
+    // arquivo, e o encaminhamento saía sem anexo nenhum.
+    const original = await this.whatsapp.baixarMidia(metadata.mediaId);
+    if (!original) {
+      throw new BadRequestException(
+        'Não deu pra buscar o arquivo original para encaminhar. Ele pode ter expirado no WhatsApp.',
+      );
+    }
+
+    const { externalId, handle } = await this.whatsapp.enviarMidia(
       target.customer.phone,
-      kind,
-      metadata.mediaId,
-      { filename: metadata.fileName },
+      {
+        buffer: original.buffer,
+        mimetype: metadata.mimeType ?? original.mimeType,
+        filename: metadata.fileName ?? 'arquivo',
+        tipo: kind,
+      },
     );
 
     const message = await this.prisma.db.message.create({
@@ -1492,10 +1507,10 @@ export class ConversationsService {
         content: source.content,
         messageType: source.messageType,
         externalId,
-        // Encaminhar reaproveita o id de mídia da Meta em vez de baixar e
-        // subir de novo — então a mensagem nova aponta pro MESMO arquivo.
-        mediaId: metadata.mediaId,
-        metadata: metadata as Prisma.InputJsonValue,
+        // O handle da cópia é o do envio novo, e não o do original: são
+        // dois arquivos diferentes do ponto de vista do WhatsApp.
+        mediaId: handle,
+        metadata: { ...metadata, mediaId: handle } as Prisma.InputJsonValue,
       },
     });
 
@@ -1552,22 +1567,34 @@ export class ConversationsService {
         `${toUpload.mimetype} (${toUpload.buffer.length} bytes).`,
     );
 
-    // `upload` já lança com o motivo da Meta quando ela recusa; um null aqui
-    // é o caso raro de ela responder 200 sem id.
-    const mediaId = await this.media.upload(toUpload);
-    if (!mediaId) {
+    const kind = mediaKindFor(toUpload.mimetype);
+
+    // O ARQUIVO vai pro canal, e não um identificador dele: quem faz o
+    // upload em duas etapas é a Meta, por dentro. Antes esta linha subia
+    // pra Cloud API sempre — inclusive numa empresa conectada por QR code,
+    // que nem tem conta na Meta — e o atendente recebia um erro de
+    // credencial no lugar do anexo.
+    const { externalId, handle } = await this.whatsapp.enviarMidia(
+      conversation.customer.phone,
+      {
+        buffer: toUpload.buffer,
+        mimetype: toUpload.mimetype,
+        filename: file.originalname,
+        tipo: kind,
+        // Áudio convertido pra ogg/opus veio do microfone do painel: é
+        // mensagem de voz, não arquivo de música anexado.
+        voice: kind === 'audio' && jaEhOggOpus(toUpload.mimetype),
+      },
+      { caption },
+    );
+
+    if (!externalId) {
+      // O motivo vem de quem tentou entregar, e é o que separa "arquivo
+      // grande demais" de "sessão caída" pra quem está olhando a tela.
       throw new BadRequestException(
-        'A Meta aceitou o arquivo mas não devolveu o identificador dele. Tente de novo.',
+        `Não deu pra enviar o anexo: ${this.whatsapp.motivoDaUltimaFalha ?? 'o envio foi recusado'}.`,
       );
     }
-
-    const kind = mediaKindFor(toUpload.mimetype);
-    const externalId = await this.whatsapp.enviarMidia(
-      conversation.customer.phone,
-      kind,
-      mediaId,
-      { caption, filename: file.originalname },
-    );
 
     const message = await this.prisma.db.message.create({
       data: {
@@ -1582,14 +1609,17 @@ export class ConversationsService {
         content: caption ?? '',
         messageType: MEDIA_MESSAGE_TYPE[kind],
         externalId,
-        mediaId,
+        // O handle é opaco: na Meta é o id do upload, na Evolution é a
+        // chave da mensagem. Quem baixa depois devolve isto ao canal e
+        // recebe o binário (ver canal.interface).
+        mediaId: handle,
         // Sem id da Meta o anexo NÃO saiu. Marcar como falha é o que faz o
         // triângulo vermelho aparecer no balão: antes ela era gravada como
         // qualquer outra e ficava indistinguível de uma mensagem entregue,
         // então o atendente achava que o cliente tinha recebido o áudio.
         ...(externalId ? {} : { status: 'FAILED' as const }),
         metadata: {
-          mediaId,
+          mediaId: handle,
           // O mime gravado é o que REALMENTE subiu: áudio convertido vira
           // ogg, e registrar o original faria o painel pedir o arquivo com
           // o tipo errado depois.

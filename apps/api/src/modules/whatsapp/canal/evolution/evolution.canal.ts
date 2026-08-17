@@ -2,8 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EncryptionService } from '../../../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../../../common/prisma/tenant-prisma.service';
 import type {
+  ArquivoParaEnvio,
   CanalDeMensagem,
+  EnvioDeMidia,
   IdExterno,
+  MidiaBaixada,
   ModeloAprovado,
 } from '../canal.interface';
 import * as evolution from './evolution.client';
@@ -116,6 +119,116 @@ export class EvolutionCanal implements CanalDeMensagem {
       fromMe: chave.fromMe ?? true,
       id: chave.id,
     });
+  }
+
+  /**
+   * O arquivo vai direto, sem etapa de upload.
+   *
+   * O `handle` devolvido é a CHAVE DA MENSAGEM, e não um id de arquivo:
+   * a Evolution não hospeda nada: quando alguém quiser o binário de volta,
+   * ela vai pedir ao WhatsApp usando essa chave (ver `baixarMidia`). É
+   * exatamente o que o contrato quer dizer com handle opaco.
+   *
+   * Sem chave devolvida não há handle — o anexo saiu, mas o painel nunca
+   * vai conseguir mostrá-lo de novo. Vale registrar em vez de falhar: a
+   * mensagem chegou no cliente, que é o que importa.
+   */
+  async enviarMidia(
+    para: string,
+    arquivo: ArquivoParaEnvio,
+    opcoes: { caption?: string; citando?: IdExterno | null } = {},
+  ): Promise<EnvioDeMidia> {
+    this.ultimaFalha = null;
+
+    const credenciais = await this.credenciais();
+    if (!credenciais) return { externalId: null, handle: null };
+
+    const numero = para.replace(/\D/g, '');
+    const base64 = arquivo.buffer.toString('base64');
+    const citando = opcoes.citando
+      ? (desempacotarId(opcoes.citando)?.id ?? opcoes.citando)
+      : null;
+
+    // Figurinha não tem rota própria aqui: vai como imagem, que é como a
+    // Evolution a trata. Áudio gravado tem, e é o que separa a bolha de
+    // voz de um arquivo de música anexado.
+    const resposta =
+      arquivo.tipo === 'audio' && arquivo.voice
+        ? await evolution.enviarAudioDeVoz(credenciais, {
+            numero,
+            base64,
+            citando,
+          })
+        : await evolution.enviarMidia(credenciais, {
+            numero,
+            tipo: arquivo.tipo === 'sticker' ? 'image' : arquivo.tipo,
+            base64,
+            mimetype: arquivo.mimetype,
+            filename: arquivo.filename,
+            legenda: opcoes.caption,
+            citando,
+          });
+
+    if (!resposta.ok) {
+      this.ultimaFalha = resposta.erro ?? 'o envio do anexo foi recusado';
+      this.logger.error(
+        `Falha ao enviar anexo pela Evolution (tenant ${this.prisma.tenantId}): ${resposta.erro}`,
+      );
+      return { externalId: null, handle: null };
+    }
+
+    const chave = resposta.dados?.key;
+    if (!chave?.id || !chave.remoteJid) {
+      this.logger.warn(
+        'A Evolution aceitou o anexo sem devolver a chave; ele não vai poder ser rebaixado depois.',
+      );
+      return { externalId: null, handle: null };
+    }
+
+    const empacotada = empacotarId({
+      remoteJid: chave.remoteJid,
+      fromMe: chave.fromMe ?? true,
+      id: chave.id,
+    });
+
+    return { externalId: empacotada, handle: empacotada };
+  }
+
+  /**
+   * Pede o binário de volta ao WhatsApp, pela chave da mensagem.
+   *
+   * É o mesmo gesto do aplicativo do celular ao abrir uma conversa antiga:
+   * o arquivo não está guardado em lugar nenhum nosso nem da Evolution —
+   * ele é buscado na hora. Por isso o handle aqui é a chave, e por isso
+   * uma mensagem apagada no WhatsApp deixa de ter anexo pra sempre.
+   */
+  async baixarMidia(handle: string): Promise<MidiaBaixada | null> {
+    const credenciais = await this.credenciais();
+    if (!credenciais) return null;
+
+    const chave = desempacotarId(handle);
+    if (!chave) {
+      this.logger.warn(
+        `Mídia não buscada: o identificador ${handle} não é uma chave da Evolution.`,
+      );
+      return null;
+    }
+
+    const resposta = await evolution.baixarMidia(credenciais, chave);
+    if (!resposta.ok || !resposta.dados?.base64) {
+      this.logger.warn(
+        `Não deu pra buscar a mídia na Evolution: ${resposta.erro ?? 'resposta sem o arquivo'}`,
+      );
+      return null;
+    }
+
+    return {
+      buffer: Buffer.from(resposta.dados.base64, 'base64'),
+      mimeType:
+        resposta.dados.mimetype ??
+        resposta.dados.message?.mimetype ??
+        'application/octet-stream',
+    };
   }
 
   async enviarReacao(

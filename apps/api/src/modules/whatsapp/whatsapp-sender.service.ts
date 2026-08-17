@@ -1,7 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
-import type { CanalDeMensagem, ModeloAprovado } from './canal/canal.interface';
+import type {
+  ArquivoParaEnvio,
+  CanalDeMensagem,
+  EnvioDeMidia,
+  MidiaBaixada,
+  ModeloAprovado,
+} from './canal/canal.interface';
+import { WhatsappMediaService } from './whatsapp-media.service';
 import { motivoDaMeta } from './meta-erro';
 import { postarTexto } from './meta-texto';
 
@@ -23,10 +30,9 @@ const GRAPH_BASE = process.env.META_GRAPH_URL ?? 'https://graph.facebook.com';
  *
  * É uma das implementações de `CanalDeMensagem` — a oficial. Os nomes dos
  * métodos seguem o contrato, e não o vocabulário da Meta, porque quem chama
- * não deve saber de quem está falando. `sendMedia` fica de fora do contrato
- * de propósito: o envio de anexo na Meta é em duas etapas e guarda um
- * `mediaId` na mensagem, coisa que não existe nos outros provedores (o
- * porquê está por extenso em canal.interface.ts).
+ * não deve saber de quem está falando. `sendMedia` continua público porque
+ * é a etapa crua da Cloud API (enviar citando um `mediaId` já subido); o
+ * contrato é `enviarMidia`, que faz as duas etapas de uma vez.
  */
 @Injectable()
 export class WhatsappSenderService implements CanalDeMensagem {
@@ -35,7 +41,49 @@ export class WhatsappSenderService implements CanalDeMensagem {
   constructor(
     private readonly prisma: TenantPrismaService,
     private readonly encryption: EncryptionService,
+    private readonly midia: WhatsappMediaService,
   ) {}
+
+  /**
+   * As duas etapas da Cloud API, escondidas atrás do contrato.
+   *
+   * Aqui o `mediaId` vira o `handle`: sobe o binário, recebe um id, e
+   * manda a mensagem citando aquele id. É esse mesmo id que volta em
+   * `baixarMidia` — a Meta hospeda o arquivo por 30 dias.
+   */
+  async enviarMidia(
+    para: string,
+    arquivo: ArquivoParaEnvio,
+    opcoes: { caption?: string } = {},
+  ): Promise<EnvioDeMidia> {
+    this.ultimaFalha = null;
+
+    // `upload` lança com o motivo da Meta quando ela recusa o arquivo — e
+    // esse motivo é útil demais pra virar um "não deu certo" genérico.
+    const mediaId = await this.midia.upload({
+      buffer: arquivo.buffer,
+      mimetype: arquivo.mimetype,
+      originalname: arquivo.filename,
+    });
+    if (!mediaId) {
+      this.ultimaFalha =
+        'a Meta aceitou o arquivo mas não devolveu o identificador dele';
+      return { externalId: null, handle: null };
+    }
+
+    const externalId = await this.sendMedia(para, arquivo.tipo, mediaId, {
+      caption: opcoes.caption,
+      filename: arquivo.filename,
+    });
+
+    // O handle sai mesmo quando a entrega falha: o binário está hospedado
+    // e o painel consegue mostrar o que foi tentado.
+    return { externalId, handle: mediaId };
+  }
+
+  baixarMidia(handle: string): Promise<MidiaBaixada | null> {
+    return this.midia.download(handle).catch(() => null);
+  }
 
   /**
    * Devolve o wamid da mensagem na Meta quando o envio dá certo (e null em

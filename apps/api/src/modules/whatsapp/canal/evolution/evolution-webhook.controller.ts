@@ -167,6 +167,27 @@ export class EvolutionWebhookController {
 
       const externalId = empacotarId(chave);
 
+      /*
+       * O anexo recebido ganha por onde ser buscado.
+       *
+       * Na Evolution o binário não fica hospedado com um id, como na Meta:
+       * ela pede o arquivo ao WhatsApp usando a CHAVE DA MENSAGEM, que é
+       * justamente o id externo. Guardar a chave como handle é o que faz o
+       * painel conseguir mostrar a foto — antes o balão só tinha o nome do
+       * arquivo e um aviso de indisponível, porque não havia por onde
+       * buscar.
+       *
+       * O campo se chama `mediaId` por herança da Meta, mas o contrato do
+       * canal já o trata como handle opaco (ver canal.interface).
+       */
+      if (traduzida.metadata?.evolutionPendente) {
+        traduzida.metadata = {
+          ...traduzida.metadata,
+          evolutionPendente: undefined,
+          mediaId: externalId,
+        };
+      }
+
       // Mensagem escrita pelo celular da própria empresa. Sem tratar isto,
       // o painel mostraria a pergunta e nunca a resposta — e a IA
       // responderia por cima de quem já respondeu. É o mesmo problema dos

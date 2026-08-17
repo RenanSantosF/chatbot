@@ -13,7 +13,12 @@ import type { ConversationMessage } from "@/lib/types";
  * pro nosso proxy autenticado.
  */
 function mediaUrl(mediaId: string): string {
-  return `/api/whatsapp/media/${mediaId}`;
+  // Codificado porque o identificador deixou de ser sempre um número.
+  // Numa conexão por QR code ele é a chave da mensagem —
+  // "5527999@s.whatsapp.net|0|3EB0ABC" — e a barra vertical não é
+  // permitida crua num caminho de URL. Em id da Meta (só dígitos) a
+  // codificação não muda nada.
+  return `/api/whatsapp/media/${encodeURIComponent(mediaId)}`;
 }
 
 function humanSize(bytes?: number): string {

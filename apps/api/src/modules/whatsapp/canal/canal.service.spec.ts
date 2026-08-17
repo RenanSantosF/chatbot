@@ -24,6 +24,13 @@ function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
     listarModelos: jest.fn().mockResolvedValue([]),
     enviarModelo: jest.fn().mockResolvedValue('wamid.MODELO'),
     sendMedia: jest.fn().mockResolvedValue('wamid.MIDIA'),
+    enviarMidia: jest
+      .fn()
+      .mockResolvedValue({ externalId: 'wamid.MIDIA', handle: 'media-1' }),
+    baixarMidia: jest.fn().mockResolvedValue({
+      buffer: Buffer.from('bin'),
+      mimeType: 'image/png',
+    }),
     motivoDaUltimaFalha: null as string | null,
   };
 
@@ -33,6 +40,13 @@ function montar(provider: 'META_CLOUD' | 'EVOLUTION' | null) {
     marcarComoLida: jest.fn().mockResolvedValue(undefined),
     listarModelos: jest.fn().mockResolvedValue([]),
     enviarModelo: jest.fn().mockRejectedValue(new Error('sem modelo aqui')),
+    enviarMidia: jest
+      .fn()
+      .mockResolvedValue({ externalId: 'jid|1|EVO', handle: 'jid|1|EVO' }),
+    baixarMidia: jest.fn().mockResolvedValue({
+      buffer: Buffer.from('bin'),
+      mimeType: 'image/jpeg',
+    }),
     motivoDaUltimaFalha: null as string | null,
   };
 
@@ -101,26 +115,44 @@ describe('escolha do provedor', () => {
 });
 
 describe('anexo', () => {
-  it('recusa em vez de mandar pela conta oficial que a empresa não tem', async () => {
-    // Sem esta conferência, a empresa na Evolution receberia um erro de
-    // credencial ausente da Meta — que não diz nada a quem só tentou
-    // mandar uma foto.
-    const { service, meta } = montar('EVOLUTION');
+  const foto = {
+    buffer: Buffer.from('bin'),
+    mimetype: 'image/png',
+    filename: 'foto.png',
+    tipo: 'image' as const,
+  };
 
-    const id = await service.enviarMidia('5511999', 'image', 'media-1');
+  it('vai pela Evolution quando é dela que a empresa é', async () => {
+    // Antes este caminho era recusado: o anexo só sabia falar com a Meta,
+    // e uma empresa conectada por QR code recebia "não está disponível
+    // nesta conexão" ao tentar mandar uma foto.
+    const { service, meta, evolution } = montar('EVOLUTION');
 
-    expect(id).toBeNull();
-    expect(meta.sendMedia).not.toHaveBeenCalled();
-    expect(service.motivoDaUltimaFalha).toContain('anexo');
+    const envio = await service.enviarMidia('5511999', foto);
+
+    expect(envio.externalId).toBe('jid|1|EVO');
+    expect(evolution.enviarMidia).toHaveBeenCalled();
+    expect(meta.enviarMidia).not.toHaveBeenCalled();
   });
 
-  it('deixa passar quando a empresa está no oficial', async () => {
-    const { service, meta } = montar('META_CLOUD');
+  it('vai pela Meta quando a empresa está no oficial', async () => {
+    const { service, meta, evolution } = montar('META_CLOUD');
 
-    await expect(service.enviarMidia('5511999', 'image', 'media-1')).resolves.toBe(
-      'wamid.MIDIA',
-    );
-    expect(meta.sendMedia).toHaveBeenCalled();
+    const envio = await service.enviarMidia('5511999', foto);
+
+    expect(envio.handle).toBe('media-1');
+    expect(meta.enviarMidia).toHaveBeenCalled();
+    expect(evolution.enviarMidia).not.toHaveBeenCalled();
+  });
+
+  it('busca o binário no provedor de HOJE', async () => {
+    // O handle guardado só faz sentido pra quem o criou: um `mediaId` da
+    // Meta não quer dizer nada pra Evolution, e vice-versa.
+    const { service, evolution } = montar('EVOLUTION');
+
+    await service.baixarMidia('jid|1|EVO');
+
+    expect(evolution.baixarMidia).toHaveBeenCalledWith('jid|1|EVO');
   });
 });
 

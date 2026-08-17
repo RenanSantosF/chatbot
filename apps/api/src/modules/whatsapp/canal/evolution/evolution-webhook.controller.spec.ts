@@ -358,3 +358,70 @@ describe('estado da conexão', () => {
     );
   });
 });
+
+describe('anexo recebido ganha por onde ser buscado', () => {
+  /**
+   * O relato: anexo não aparecia. A tradução marcava a mídia como
+   * "pendente" porque ela é função pura e não conhece a chave da mensagem
+   * — e a chave é justamente o que a Evolution usa pra devolver o binário,
+   * já que ela não hospeda arquivo com id, como a Meta.
+   *
+   * Quem tem a chave é o controlador, e é aqui que ela vira o handle.
+   */
+  it('a foto chega com o handle no lugar da marca de pendente', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        message: {
+          imageMessage: { mimetype: 'image/jpeg', caption: 'olha isso' },
+        },
+      }),
+    );
+
+    const recebida = conversations.receiveInbound.mock.calls[0][0] as {
+      metadata: Record<string, unknown>;
+    };
+    expect(recebida.metadata.mediaId).toBe(
+      '5511999999999@s.whatsapp.net|0|3EB0ABC',
+    );
+    expect(recebida.metadata.evolutionPendente).toBeUndefined();
+  });
+
+  it('o áudio de voz mantém a marca de voz junto do handle', async () => {
+    // As duas coisas convivem: `voice` decide o desenho do balão, o handle
+    // decide se dá pra tocar.
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        message: {
+          audioMessage: { mimetype: 'audio/ogg; codecs=opus', ptt: true },
+        },
+      }),
+    );
+
+    const recebida = conversations.receiveInbound.mock.calls[0][0] as {
+      metadata: Record<string, unknown>;
+    };
+    expect(recebida.metadata.voice).toBe(true);
+    expect(recebida.metadata.mediaId).toBe(
+      '5511999999999@s.whatsapp.net|0|3EB0ABC',
+    );
+  });
+
+  it('mensagem de texto continua sem handle nenhum', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(SEGREDO, req, mensagem());
+
+    const recebida = conversations.receiveInbound.mock.calls[0][0] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(recebida.metadata).toBeUndefined();
+  });
+});

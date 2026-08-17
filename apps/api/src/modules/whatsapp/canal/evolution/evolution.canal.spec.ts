@@ -184,3 +184,165 @@ describe('modelo aprovado', () => {
     await expect(montar({}).enviarModelo()).rejects.toThrow(/oficial/);
   });
 });
+
+describe('anexo', () => {
+  const foto = {
+    buffer: Buffer.from('binário da foto'),
+    mimetype: 'image/png',
+    filename: 'foto.png',
+    tipo: 'image' as const,
+  };
+
+  it('manda o arquivo em base64, sem etapa de upload', async () => {
+    // A Cloud API sobe o binário antes e envia citando um id; a Evolution
+    // não tem essa etapa. É a diferença que fez o contrato do canal passar
+    // a receber o ARQUIVO em vez de um identificador dele.
+    const rede = servidor();
+    const canal = montar({});
+
+    await canal.enviarMidia('5511999998888', foto, { caption: 'olha' });
+
+    expect(rede.chamadas[0].url).toContain('/message/sendMedia/');
+    expect(rede.chamadas[0].corpo).toMatchObject({
+      number: '5511999998888',
+      mediatype: 'image',
+      mimetype: 'image/png',
+      media: foto.buffer.toString('base64'),
+      caption: 'olha',
+    });
+  });
+
+  it('o handle devolvido é a chave da mensagem', async () => {
+    // Não é um id de arquivo: é por essa chave que o binário será pedido
+    // de volta ao WhatsApp depois.
+    const rede = servidor();
+    rede.responder(200, {
+      key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: true, id: 'MIDIA1' },
+    });
+    const canal = montar({});
+
+    const envio = await canal.enviarMidia('5511999998888', foto);
+
+    expect(envio.handle).toBe(
+      empacotarId({
+        remoteJid: '5511999998888@s.whatsapp.net',
+        fromMe: true,
+        id: 'MIDIA1',
+      }),
+    );
+    expect(envio.externalId).toBe(envio.handle);
+  });
+
+  it('áudio gravado vai pela rota de mensagem de voz', async () => {
+    // A diferença aparece no aparelho do cliente: bolha de voz com forma
+    // de onda, e não um arquivo de música com nome embaixo.
+    const rede = servidor();
+    const canal = montar({});
+
+    await canal.enviarMidia('5511999998888', {
+      buffer: Buffer.from('ogg'),
+      mimetype: 'audio/ogg; codecs=opus',
+      filename: 'audio.ogg',
+      tipo: 'audio',
+      voice: true,
+    });
+
+    expect(rede.chamadas[0].url).toContain('/message/sendWhatsAppAudio/');
+  });
+
+  it('áudio anexado como arquivo NÃO vira mensagem de voz', async () => {
+    const rede = servidor();
+    const canal = montar({});
+
+    await canal.enviarMidia('5511999998888', {
+      buffer: Buffer.from('mp3'),
+      mimetype: 'audio/mpeg',
+      filename: 'musica.mp3',
+      tipo: 'audio',
+    });
+
+    expect(rede.chamadas[0].url).toContain('/message/sendMedia/');
+  });
+
+  it('figurinha vai como imagem — a Evolution não tem rota própria', async () => {
+    const rede = servidor();
+    const canal = montar({});
+
+    await canal.enviarMidia('5511999998888', { ...foto, tipo: 'sticker' });
+
+    expect(rede.chamadas[0].corpo).toMatchObject({ mediatype: 'image' });
+  });
+
+  it('sessão caída não vira erro de protocolo ilegível', async () => {
+    const canal = montar({ estado: 'DESCONECTADO' });
+
+    const envio = await canal.enviarMidia('5511999998888', foto);
+
+    expect(envio.externalId).toBeNull();
+    expect(canal.motivoDaUltimaFalha).toContain('desconectado');
+  });
+
+  it('recusa do servidor sobe com o motivo dele', async () => {
+    const rede = servidor();
+    rede.responder(400, { message: 'arquivo grande demais' });
+    const canal = montar({});
+
+    const envio = await canal.enviarMidia('5511999998888', foto);
+
+    expect(envio.externalId).toBeNull();
+    expect(canal.motivoDaUltimaFalha).toContain('arquivo grande demais');
+  });
+});
+
+describe('buscar o binário de volta', () => {
+  const HANDLE = empacotarId({
+    remoteJid: '5511999998888@s.whatsapp.net',
+    fromMe: false,
+    id: 'RECEBIDA1',
+  });
+
+  it('pede ao WhatsApp pela chave da mensagem', async () => {
+    const rede = servidor();
+    rede.responder(200, {
+      base64: Buffer.from('conteúdo').toString('base64'),
+      mimetype: 'image/jpeg',
+    });
+    const canal = montar({});
+
+    const midia = await canal.baixarMidia(HANDLE);
+
+    expect(rede.chamadas[0].url).toContain('/chat/getBase64FromMediaMessage/');
+    expect(rede.chamadas[0].corpo).toMatchObject({
+      message: {
+        key: {
+          remoteJid: '5511999998888@s.whatsapp.net',
+          fromMe: false,
+          id: 'RECEBIDA1',
+        },
+      },
+    });
+    expect(midia?.buffer.toString()).toBe('conteúdo');
+    expect(midia?.mimeType).toBe('image/jpeg');
+  });
+
+  it('devolve null quando o arquivo não vem, em vez de estourar', async () => {
+    // O balão fica sem o anexo; a conversa continua funcionando. Uma
+    // exceção aqui derrubaria a abertura da conversa inteira.
+    const rede = servidor();
+    rede.responder(404, { message: 'mensagem não encontrada' });
+    const canal = montar({});
+
+    await expect(canal.baixarMidia(HANDLE)).resolves.toBeNull();
+  });
+
+  it('não tenta buscar com um identificador da Meta', async () => {
+    // Empresa que migrou de canal tem mensagens antigas com `mediaId` da
+    // Cloud API. Mandá-lo pra Evolution seria uma chamada garantidamente
+    // inútil.
+    const rede = servidor();
+    const canal = montar({});
+
+    await expect(canal.baixarMidia('1234567890')).resolves.toBeNull();
+    expect(rede.chamadas).toHaveLength(0);
+  });
+});

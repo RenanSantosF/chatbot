@@ -4,8 +4,11 @@ import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.servic
 import { WhatsappSenderService } from '../whatsapp-sender.service';
 import { EvolutionCanal } from './evolution/evolution.canal';
 import type {
+  ArquivoParaEnvio,
   CanalDeMensagem,
+  EnvioDeMidia,
   IdExterno,
+  MidiaBaixada,
   ModeloAprovado,
 } from './canal.interface';
 
@@ -89,34 +92,35 @@ export class CanalService {
   }
 
   /**
-   * Envio de anexo — hoje só pela Meta, e por isso fora do contrato.
+   * Envio de anexo, agora de verdade nos dois caminhos.
    *
-   * Passa por aqui mesmo assim pra que o ConversationsService tenha UMA
-   * porta só; se a mídia fosse pedida direto ao serviço da Meta, o dia em
-   * que a Evolution enviar arquivo exigiria caçar chamada espalhada.
-   *
-   * O `mediaId` denuncia o vazamento: ele vem de um upload em duas etapas
-   * que só existe na Cloud API. Quando o redesenho de mídia acontecer, é
-   * esta assinatura que muda — e só ela.
+   * Este método já existiu recebendo um `mediaId` — o identificador do
+   * upload em duas etapas da Cloud API — e por isso só sabia falar com a
+   * Meta: numa empresa na Evolution ele recusava com "o envio de anexo
+   * ainda não está disponível nesta conexão". Passando o ARQUIVO em vez do
+   * identificador, cada provedor faz o que precisa por dentro, e o
+   * chamador não sabe a diferença (ver canal.interface).
    */
   async enviarMidia(
     para: string,
-    tipo: 'image' | 'document' | 'audio' | 'video' | 'sticker',
-    mediaId: string,
-    opcoes: { caption?: string; filename?: string } = {},
-  ): Promise<IdExterno | null> {
-    // O provedor é conferido mesmo o destino sendo sempre a Meta hoje. Sem
-    // isto, uma empresa na Evolution mandaria o anexo pela conta oficial —
-    // que ela não tem — e receberia um erro de credencial ausente no lugar
-    // de "anexo ainda não está disponível nesta conexão".
-    if ((await this.provedor()) !== this.meta) {
-      this.ultimoUsado = new CanalIndisponivel(
-        'o envio de anexo ainda não está disponível nesta conexão',
-      );
-      return null;
-    }
+    arquivo: ArquivoParaEnvio,
+    opcoes: { caption?: string; citando?: IdExterno | null } = {},
+  ): Promise<EnvioDeMidia> {
+    return (await this.provedor()).enviarMidia(para, arquivo, opcoes);
+  }
 
-    return this.meta.sendMedia(para, tipo, mediaId, opcoes);
+  /**
+   * Busca o binário pelo handle que o envio ou o recebimento guardou.
+   *
+   * O provedor é o de HOJE, e não o de quando a mensagem foi gravada. Uma
+   * empresa que migrou da Meta pra Evolution perde o acesso aos anexos
+   * antigos por aqui — o `mediaId` da Meta não quer dizer nada pra
+   * Evolution. Quem cobre esse caso é o arquivamento próprio (ver
+   * StorageService), que guarda uma cópia justamente porque a origem não
+   * dura pra sempre.
+   */
+  async baixarMidia(handle: string): Promise<MidiaBaixada | null> {
+    return (await this.provedor()).baixarMidia(handle);
   }
 
   /**
@@ -163,5 +167,13 @@ class CanalIndisponivel implements CanalDeMensagem {
 
   enviarModelo(): Promise<IdExterno> {
     return Promise.reject(new Error(this.motivoDaUltimaFalha));
+  }
+
+  enviarMidia(): Promise<EnvioDeMidia> {
+    return Promise.resolve({ externalId: null, handle: null });
+  }
+
+  baixarMidia(): Promise<MidiaBaixada | null> {
+    return Promise.resolve(null);
   }
 }
