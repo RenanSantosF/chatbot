@@ -1,5 +1,6 @@
-import { Controller, Delete, Get, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post } from '@nestjs/common';
 import { RequiresPermission } from '../../../../common/auth/permission.decorator';
+import { PearEvolutionDto } from './dto/parear-evolution.dto';
 import { EvolutionService } from './evolution.service';
 
 /**
@@ -18,25 +19,28 @@ export class EvolutionController {
   }
 
   /**
-   * Sem corpo, de propósito.
+   * O único dado que vem de quem usa: o telefone que vai atender.
    *
-   * Já recebeu endereço do servidor e chave da API, e os dois saíram: são
-   * infraestrutura da plataforma, não configuração do cliente. O motivo
-   * mais forte é de segurança — a chave da Evolution é global, e quem a
-   * tem apaga a sessão de QUALQUER empresa do servidor (ver
-   * evolution-servidor.ts).
+   * Endereço do servidor e chave da API já saíram daqui — são
+   * infraestrutura da plataforma, e a chave é global, então pedi-la a cada
+   * empresa entregava a cada cliente o poder de derrubar o WhatsApp dos
+   * outros (ver evolution-servidor.ts).
+   *
+   * O número é o oposto disso: é informação dele, e serve pra pedir um
+   * CÓDIGO de pareamento em vez do QR code. Sem número, segue por imagem,
+   * como antes.
    */
   @Post()
   @RequiresPermission('whatsapp.manage')
-  conectar() {
-    return this.evolution.conectar();
+  conectar(@Body() dto: PearEvolutionDto) {
+    return this.evolution.conectar(dto.numero);
   }
 
-  /** O QR code expira em cerca de um minuto; a tela pede outro. */
+  /** O pareamento expira em cerca de um minuto; a tela pede outro. */
   @Post('qrcode')
   @RequiresPermission('whatsapp.manage')
-  renovarQrCode() {
-    return this.evolution.renovarQrCode();
+  renovarQrCode(@Body() dto: PearEvolutionDto) {
+    return this.evolution.renovarQrCode(dto.numero);
   }
 
   @Get('conferir')

@@ -316,14 +316,27 @@ mensagem:
 
 ### 5.3 Conectar
 
-1. Em **Configurações > WhatsApp**, role até *Conectar lendo um QR code*.
-2. **Conectar WhatsApp** → o QR code aparece.
-3. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.
-4. A tela vira "Conectado" sozinha.
+Em **Configurações > WhatsApp**, role até *Conectar lendo um QR code*. Há
+dois caminhos, e a tela já abre no que funciona no aparelho em uso.
 
-Nenhum campo para preencher: quem usa o produto não informa endereço nem
-chave. O sistema cria a sessão, registra o webhook e troca o canal da
-empresa sozinho.
+**Ler QR code** (computador)
+
+1. **Conectar WhatsApp** → a imagem aparece.
+2. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.
+
+**Usar código** (celular)
+
+1. Informe o número que vai atender, com DDI e DDD, só dígitos.
+2. **Conectar WhatsApp** → sai um código de oito caracteres.
+3. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho →
+   **Conectar com número de telefone** → digite o código.
+
+O segundo existe porque no celular não dá para escanear a própria tela, e
+porque um código se dita por telefone quando quem contrata não é quem tem
+o aparelho. Os dois expiram em cerca de um minuto.
+
+Em nenhum dos dois há endereço ou chave para preencher: o sistema cria a
+sessão, registra o webhook e troca o canal da empresa sozinho.
 
 ### 5.4 Quando der errado
 

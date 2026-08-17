@@ -224,6 +224,14 @@ model EvolutionSettings {
   estado         EvolutionEstado @default(DESCONECTADO)
   /// O último QR code gerado, em data URI. Vale poucos segundos.
   qrCode         String?
+  /// O código de oito caracteres, quando a conexão foi pedida informando
+  /// o número em vez de mostrar a imagem.
+  ///
+  /// Existe porque no celular não dá pra escanear a própria tela — quem
+  /// abre o painel pelo telefone precisava de um segundo aparelho. Vive
+  /// como o `qrCode`: nasce ao pedir a conexão e some quando o pareamento
+  /// acontece.
+  pairingCode    String?
   /// O número que atendeu ao QR code, do jeito que o WhatsApp informou.
   connectedPhone String?
   /// Quando o servidor confirmou a sessão de pé pela última vez.

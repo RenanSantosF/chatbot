@@ -314,19 +314,44 @@ export function marcarComoLida(
 }
 
 export interface InstanciaCriada {
-  qrcode?: { base64?: string; code?: string };
+  qrcode?: {
+    base64?: string;
+    code?: string;
+    /**
+     * O código de oito caracteres do pareamento por número.
+     *
+     * Aceito em três lugares de propósito: a Evolution mudou onde ele
+     * mora entre versões (`qrcode.pairingCode`, `pairingCode` na raiz), e
+     * caçar isso em produção custaria o mesmo que aceitar os três aqui.
+     * É a mesma precaução que fez os tiques voltarem a funcionar.
+     */
+    pairingCode?: string;
+  };
+  pairingCode?: string;
   instance?: { instanceName?: string; status?: string };
+}
+
+/** O código de pareamento, venha ele de onde vier. */
+export function codigoDePareamento(
+  dados: InstanciaCriada | undefined,
+): string | null {
+  return dados?.qrcode?.pairingCode ?? dados?.pairingCode ?? null;
 }
 
 export function criarInstancia(
   credenciais: Credenciais,
   webhookUrl: string,
+  numero?: string | null,
 ): Promise<RespostaDaEvolution<InstanciaCriada>> {
+  const so = numero?.replace(/\D/g, '');
   return chamar(credenciais, '/instance/create', {
     method: 'POST',
     body: {
       instanceName: credenciais.instance,
       qrcode: true,
+      // Com número, a criação já nasce pedindo código em vez de imagem —
+      // evita uma segunda viagem só pra trocar o modo de pareamento.
+      ...(so ? { number: so } : {}),
       integration: 'WHATSAPP-BAILEYS',
       webhook: {
         url: webhookUrl,
@@ -384,10 +409,22 @@ export function consultarWebhook(
   });
 }
 
+/**
+ * Pede o pareamento — por imagem ou por número.
+ *
+ * É a MESMA rota nos dois casos: informando `number`, a Evolution devolve
+ * um código de oito caracteres em vez do QR code. Só os dígitos vão, e com
+ * DDI: um número escrito com parênteses ou sem o 55 gera um código que
+ * nunca funciona, sem erro nenhum — o WhatsApp simplesmente não encontra o
+ * aparelho, e a espera some no vazio.
+ */
 export function conectar(
   credenciais: Credenciais,
+  numero?: string | null,
 ): Promise<RespostaDaEvolution<InstanciaCriada>> {
-  return chamar(credenciais, `/instance/connect/${credenciais.instance}`, {
+  const so = numero?.replace(/\D/g, '');
+  const caminho = `/instance/connect/${credenciais.instance}`;
+  return chamar(credenciais, so ? `${caminho}?number=${so}` : caminho, {
     method: 'GET',
   });
 }

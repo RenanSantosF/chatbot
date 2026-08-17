@@ -78,6 +78,7 @@ export class EvolutionService {
       instance: config.instance,
       estado: config.estado,
       qrCode: config.qrCode,
+      pairingCode: config.pairingCode,
       connectedPhone: config.connectedPhone,
       lastSeenAt: config.lastSeenAt,
       lastError: config.lastError,
@@ -92,7 +93,7 @@ export class EvolutionService {
    * memória do servidor que ninguém sabe apagar — e o nome dela, que é
    * aleatório, se perde junto.
    */
-  async conectar() {
+  async conectar(numero?: string | null) {
     const existente = await this.prisma.db.evolutionSettings.findFirst();
 
     /*
@@ -155,10 +156,10 @@ export class EvolutionService {
     // Criar dá 403 quando a sessão já existe. Não é erro: é o caso de quem
     // está reconectando depois de uma queda, e aí o caminho é pedir o QR
     // code da sessão que já está lá.
-    let resposta = await evolution.criarInstancia(credenciais, url);
+    let resposta = await evolution.criarInstancia(credenciais, url, numero);
     const jaExistia = !resposta.ok && resposta.status === 403;
     if (jaExistia) {
-      resposta = await evolution.conectar(credenciais);
+      resposta = await evolution.conectar(credenciais, numero);
     }
 
     if (!resposta.ok) {
@@ -199,15 +200,21 @@ export class EvolutionService {
     // deixava a tela girando pra sempre esperando uma imagem que nunca
     // vinha, numa sessão que estava funcionando o tempo todo.
     const qrCode = resposta.dados?.qrcode?.base64 ?? null;
+    const pairingCode = evolution.codigoDePareamento(resposta.dados);
     const situacao = await evolution.estado(credenciais);
-    const estado = qrCode
-      ? ('AGUARDANDO_QRCODE' as const)
-      : traduzirEstado(situacao.dados?.instance?.state);
+    // Qualquer um dos dois significa "esperando alguém parear". Olhar só o
+    // QR code deixaria a tela do pareamento por número achando que nada
+    // aconteceu.
+    const estado =
+      qrCode || pairingCode
+        ? ('AGUARDANDO_QRCODE' as const)
+        : traduzirEstado(situacao.dados?.instance?.state);
 
     await this.prisma.db.evolutionSettings.update({
       where: { id: config.id },
       data: {
         qrCode,
+        pairingCode,
         estado,
         lastError: null,
         ...(estado === 'CONECTADO' ? { lastSeenAt: new Date() } : {}),
@@ -227,27 +234,33 @@ export class EvolutionService {
       data: { canal: 'EVOLUTION' },
     });
 
-    return { instance: config.instance, qrCode, estado };
+    return { instance: config.instance, qrCode, pairingCode, estado };
   }
 
-  /** Um QR code novo — o anterior expira em cerca de um minuto. */
-  async renovarQrCode() {
+  /**
+   * Um pareamento novo — o anterior expira em cerca de um minuto.
+   *
+   * Com número, devolve código; sem número, QR code. É a mesma chamada,
+   * então o botão "gerar outro" serve aos dois jeitos sem ramificação.
+   */
+  async renovarQrCode(numero?: string | null) {
     const { config, credenciais } = await this.credenciais();
 
-    const resposta = await evolution.conectar(credenciais);
+    const resposta = await evolution.conectar(credenciais, numero);
     if (!resposta.ok) {
       throw new BadRequestException(
-        resposta.erro ?? 'Não deu pra gerar um QR code novo.',
+        resposta.erro ?? 'Não deu pra gerar um código novo.',
       );
     }
 
     const qrCode = resposta.dados?.qrcode?.base64 ?? null;
+    const pairingCode = evolution.codigoDePareamento(resposta.dados);
     await this.prisma.db.evolutionSettings.update({
       where: { id: config.id },
-      data: { qrCode, estado: 'AGUARDANDO_QRCODE', lastError: null },
+      data: { qrCode, pairingCode, estado: 'AGUARDANDO_QRCODE', lastError: null },
     });
 
-    return { qrCode };
+    return { qrCode, pairingCode };
   }
 
   /**
@@ -277,7 +290,9 @@ export class EvolutionService {
       data: {
         estado,
         lastError: null,
-        ...(estado === 'CONECTADO' ? { lastSeenAt: new Date(), qrCode: null } : {}),
+        ...(estado === 'CONECTADO'
+          ? { lastSeenAt: new Date(), qrCode: null, pairingCode: null }
+          : {}),
       },
     });
 
@@ -308,6 +323,7 @@ export class EvolutionService {
       data: {
         estado: 'DESCONECTADO',
         qrCode: null,
+        pairingCode: null,
         connectedPhone: null,
         lastError: null,
       },

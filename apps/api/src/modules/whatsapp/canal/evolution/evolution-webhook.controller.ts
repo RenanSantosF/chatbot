@@ -274,7 +274,12 @@ export class EvolutionWebhookController {
       data: {
         estado,
         ...(estado === 'CONECTADO'
-          ? { lastSeenAt: new Date(), qrCode: null, lastError: null }
+          ? {
+              lastSeenAt: new Date(),
+              qrCode: null,
+              pairingCode: null,
+              lastError: null,
+            }
           : {}),
         ...(estado === 'DESCONECTADO' ? { lastError } : {}),
       },
@@ -304,13 +309,26 @@ export class EvolutionWebhookController {
     body: EventoDaEvolution,
     config: { id: string; tenantId: string },
   ) {
-    const dados = body.data as { qrcode?: { base64?: string }; base64?: string } | undefined;
-    const qrCode = dados?.qrcode?.base64 ?? dados?.base64;
-    if (!qrCode) return;
+    const dados = body.data as
+      | {
+          qrcode?: { base64?: string; pairingCode?: string };
+          base64?: string;
+          pairingCode?: string;
+        }
+      | undefined;
+    const qrCode = dados?.qrcode?.base64 ?? dados?.base64 ?? null;
+    // O mesmo evento serve aos dois jeitos de parear: com número, a
+    // Evolution renova o CÓDIGO em vez da imagem, e ele expira igual.
+    const pairingCode = dados?.qrcode?.pairingCode ?? dados?.pairingCode ?? null;
+    if (!qrCode && !pairingCode) return;
 
     await this.prisma.client.evolutionSettings.update({
       where: { id: config.id },
-      data: { qrCode, estado: 'AGUARDANDO_QRCODE' },
+      data: {
+        ...(qrCode ? { qrCode } : {}),
+        ...(pairingCode ? { pairingCode } : {}),
+        estado: 'AGUARDANDO_QRCODE',
+      },
     });
 
     /*
@@ -328,7 +346,8 @@ export class EvolutionWebhookController {
      */
     this.realtime.emitToTenant(config.tenantId, 'canal.estado', {
       estado: 'AGUARDANDO_QRCODE' as const,
-      qrCode,
+      ...(qrCode ? { qrCode } : {}),
+      ...(pairingCode ? { pairingCode } : {}),
     });
   }
 }

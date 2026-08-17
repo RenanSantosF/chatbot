@@ -22,6 +22,8 @@ export interface EstadoDoCanal {
   lastError?: string | null;
   /** A imagem do QR code, quando um novo acabou de nascer. */
   qrCode?: string | null;
+  /** O código de 8 caracteres, quando o pareamento é por número. */
+  pairingCode?: string | null;
   /** Quando esta notícia chegou — é o que faz a tela reagir a repetições. */
   em: number;
 }

@@ -1,15 +1,18 @@
 "use client";
 
-import { QrCode, RefreshCw, Unplug } from "lucide-react";
+import { QrCode, RefreshCw, Smartphone, Unplug } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import { useRealtime } from "@/components/realtime-provider";
+import { cn } from "@/lib/utils";
 
 type Estado = "DESCONECTADO" | "AGUARDANDO_QRCODE" | "CONECTADO";
 
@@ -17,6 +20,8 @@ interface StatusDaEvolution {
   instance: string;
   estado: Estado;
   qrCode: string | null;
+  /** O código de 8 caracteres, quando o pareamento foi pedido por número. */
+  pairingCode: string | null;
   connectedPhone: string | null;
   lastSeenAt: string | null;
   lastError: string | null;
@@ -47,6 +52,20 @@ export function ConectarEvolution() {
   const [status, setStatus] = useState<StatusDaEvolution | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [conectando, setConectando] = useState(false);
+  /**
+   * Como parear: mostrando a imagem ou informando o número.
+   *
+   * O padrão é a imagem no computador e o CÓDIGO no celular, e a escolha
+   * não é estética: no telefone não dá pra escanear a própria tela. Abrir
+   * já na opção que funciona no aparelho em uso poupa a descoberta.
+   */
+  const [modo, setModo] = useState<"QRCODE" | "CODIGO">(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse)").matches
+      ? "CODIGO"
+      : "QRCODE",
+  );
+  const [numero, setNumero] = useState("");
   const { canal } = useRealtime();
 
   /** Relê o estado depois de uma ação de quem está olhando a tela. */
@@ -129,6 +148,9 @@ export function ConectarEvolution() {
             ...atual,
             estado: canal.estado,
             ...(canal.qrCode !== undefined ? { qrCode: canal.qrCode } : {}),
+            ...(canal.pairingCode !== undefined
+              ? { pairingCode: canal.pairingCode }
+              : {}),
             ...(canal.lastError !== undefined
               ? { lastError: canal.lastError }
               : {}),
@@ -164,12 +186,22 @@ export function ConectarEvolution() {
     return () => clearInterval(timer);
   }, [status?.estado, carregar, avisarConectado]);
 
+  /** Só os dígitos — é o que a API valida e o que o WhatsApp entende. */
+  const digitos = numero.replace(/\D/g, "");
+  const numeroValido = /^\d{10,15}$/.test(digitos);
+
   async function conectar() {
     setConectando(true);
     try {
-      // Sem corpo: o servidor de mensagens é da plataforma, e a API já
-      // sabe qual é. Ver evolution-servidor.ts, do lado de lá.
-      await apiFetch("/whatsapp/evolution", { method: "POST" });
+      // O servidor de mensagens é da plataforma, e a API já sabe qual é
+      // (ver evolution-servidor.ts). O único dado que sai daqui é o
+      // telefone, e só quando o pareamento é por código.
+      await apiFetch("/whatsapp/evolution", {
+        method: "POST",
+        body: JSON.stringify(
+          modo === "CODIGO" ? { numero: digitos } : {},
+        ),
+      });
       await carregar();
     } catch (erro) {
       toast.error(
@@ -182,7 +214,12 @@ export function ConectarEvolution() {
 
   async function novoQrCode() {
     try {
-      await apiFetch("/whatsapp/evolution/qrcode", { method: "POST" });
+      // Mantém o jeito atual: quem está esperando um código não quer
+      // receber uma imagem ao pedir outro.
+      await apiFetch("/whatsapp/evolution/qrcode", {
+        method: "POST",
+        body: JSON.stringify(modo === "CODIGO" ? { numero: digitos } : {}),
+      });
       await carregar();
     } catch (erro) {
       toast.error(erro instanceof ApiError ? erro.message : "Não deu pra gerar o QR code.");
@@ -249,7 +286,14 @@ export function ConectarEvolution() {
 
         {aguardando ? (
           <div className="flex flex-col items-center gap-3 rounded-md border p-4">
-            {status?.qrCode ? (
+            {status?.pairingCode ? (
+              /* O código é para ser LIDO EM VOZ ALTA e digitado noutro
+                 aparelho, então é grande, espaçado e monoespaçado — zero e
+                 O, 1 e I precisam ser distinguíveis à primeira vista. */
+              <p className="font-mono text-3xl font-semibold tracking-[0.2em] select-all">
+                {status.pairingCode}
+              </p>
+            ) : status?.qrCode ? (
               <Image
                 src={status.qrCode}
                 alt="QR code para conectar o WhatsApp"
@@ -270,8 +314,9 @@ export function ConectarEvolution() {
               </div>
             )}
             <p className="text-center text-xs text-muted-foreground text-pretty">
-              No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. O código expira em
-              cerca de um minuto.
+              {status?.pairingCode
+                ? "No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho → Conectar com número de telefone. O código expira em cerca de um minuto."
+                : "No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. O código expira em cerca de um minuto."}
             </p>
             <Button variant="outline" size="sm" onClick={() => void novoQrCode()}>
               <RefreshCw className="size-4" />
@@ -285,33 +330,111 @@ export function ConectarEvolution() {
         ) : null}
 
         {!conectado ? (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
+            {/* Dois caminhos para o mesmo pareamento.
+
+                A imagem é mais rápida no computador. O código existe pelo
+                que ela não resolve: NO CELULAR NÃO DÁ PRA ESCANEAR A
+                PRÓPRIA TELA — e é assim que boa parte do uso real
+                acontece. Serve também quando quem contrata não é quem tem
+                o aparelho: um código se dita por telefone, um QR code
+                não. */}
+            <div
+              role="radiogroup"
+              aria-label="Como conectar"
+              className="flex items-center gap-1 rounded-lg bg-muted p-0.5"
+            >
+              <OpcaoDeModo
+                ativa={modo === "QRCODE"}
+                onClick={() => setModo("QRCODE")}
+                icone={QrCode}
+                rotulo="Ler QR code"
+              />
+              <OpcaoDeModo
+                ativa={modo === "CODIGO"}
+                onClick={() => setModo("CODIGO")}
+                icone={Smartphone}
+                rotulo="Usar código"
+              />
+            </div>
+
+            {modo === "CODIGO" ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="evolution-numero">Número que vai atender</Label>
+                <Input
+                  id="evolution-numero"
+                  value={numero}
+                  onChange={(e) => setNumero(e.target.value)}
+                  placeholder="5527999998888"
+                  inputMode="tel"
+                  autoComplete="tel"
+                />
+                {/* O engano aqui não dá erro: sem o 55, o WhatsApp gera um
+                    código que nunca reconhece, a pessoa digita no celular e
+                    não acontece nada. */}
+                <p className="text-xs text-muted-foreground text-pretty">
+                  Com o código do país e o DDD, só números. Precisa ser o mesmo
+                  número do celular que vai ler o código.
+                </p>
+              </div>
+            ) : null}
+
             <Button
               onClick={() => void conectar()}
-              disabled={conectando}
+              disabled={conectando || (modo === "CODIGO" && !numeroValido)}
               className="self-start"
             >
               {conectando ? <Spinner className="size-4" /> : <QrCode className="size-4" />}
-              {jaConfigurado ? "Gerar novo QR code" : "Conectar WhatsApp"}
+              {jaConfigurado ? "Gerar novo pareamento" : "Conectar WhatsApp"}
             </Button>
-            {/* Um botão, e nenhum campo.
-                
-                A tela pedia o endereço do servidor de mensagens e a chave
-                da API dele, e as duas coisas saíram. A primeira é
-                infraestrutura nossa — quem contrata um atendimento no
-                WhatsApp não tem por que saber por qual servidor a mensagem
-                passa, e um endereço colado errado produz o pior sintoma
-                que existe aqui: conecta, o QR code funciona, e nada chega.
-                
-                A segunda era mais séria que uma questão de tela: a chave
-                da Evolution é global, e quem a tem apaga a sessão de
-                qualquer empresa do servidor. */}
-            <p className="text-xs text-muted-foreground text-pretty">
-              É só ler o código com o celular que vai atender. Nada para configurar.
-            </p>
+
+            {modo === "QRCODE" ? (
+              <p className="text-xs text-muted-foreground text-pretty">
+                É só ler o código com o celular que vai atender. Nada para configurar.
+              </p>
+            ) : null}
           </div>
         ) : null}
+
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Uma das duas formas de parear, no mesmo interruptor de duas posições da
+ * ordem do Inbox.
+ *
+ * Duas opções lado a lado com a atual acesa, e não um botão que alterna:
+ * lendo "Usar código" num botão só não dá pra saber se é onde estou ou pra
+ * onde vou.
+ */
+function OpcaoDeModo({
+  ativa,
+  onClick,
+  icone: Icone,
+  rotulo,
+}: {
+  ativa: boolean;
+  onClick: () => void;
+  icone: typeof QrCode;
+  rotulo: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={ativa}
+      onClick={onClick}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+        ativa
+          ? "bg-background text-foreground shadow-xs"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icone className="size-3.5 shrink-0" />
+      {rotulo}
+    </button>
   );
 }
