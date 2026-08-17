@@ -7,6 +7,7 @@ import {
   MessageCircleMore,
   LogOut,
   Settings,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -95,6 +96,46 @@ function ConnectionBadge() {
       <Bell className="size-3" />
       Reconectando
     </Badge>
+  );
+}
+
+/**
+ * O WhatsApp da empresa caiu — e isso é diferente do painel ter caído.
+ *
+ * A distinção importa porque as consequências são opostas. "Reconectando"
+ * ali em cima quer dizer que ESTA aba perdeu contato com o servidor: as
+ * mensagens continuam sendo entregues, só não aparecem aqui até voltar.
+ * Isto aqui é o contrário — o painel está ótimo, e é o WhatsApp que não
+ * está mais ligado. Quem atende continua digitando e apertando enviar, e
+ * cada mensagem some no caminho.
+ *
+ * Por isso ocupa uma faixa, e não uma etiqueta discreta: é o único aviso
+ * do produto que significa "pare o que está fazendo".
+ */
+function CanalCaido() {
+  const { canal } = useRealtime();
+  if (!canal || canal.estado === "CONECTADO") return null;
+
+  const desvinculado = canal.estado === "DESCONECTADO";
+
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-xs text-destructive"
+    >
+      <TriangleAlert className="size-3.5 shrink-0" />
+      <span className="font-medium">
+        {desvinculado
+          ? "O WhatsApp desta empresa está desconectado."
+          : "O WhatsApp está aguardando a leitura do QR code."}
+      </span>
+      <span className="text-destructive/80">
+        {canal.lastError ?? "As mensagens enviadas agora não vão chegar."}
+      </span>
+      <Link href="/dashboard/settings/whatsapp" className="font-medium underline underline-offset-2">
+        Reconectar
+      </Link>
+    </div>
   );
 }
 
@@ -236,6 +277,7 @@ function Shell({
             <LogOut className="size-4" />
           </Button>
         </header>
+        <CanalCaido />
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
             <span className="text-amber-800 dark:text-amber-300">

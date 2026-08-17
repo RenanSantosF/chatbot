@@ -8,9 +8,29 @@ import { connectRealtime } from "@/lib/socket";
 import type { ConversationMessage, ConversationSummary } from "@/lib/types";
 import { SITE_NAME } from "@/lib/site";
 
+/**
+ * O estado do WhatsApp da empresa, empurrado pelo servidor.
+ *
+ * Vive aqui, e não na tela de configurações, porque a queda da sessão não
+ * é assunto de quem está configurando: é de quem está ATENDENDO. Sem isso,
+ * o atendente seguia digitando e enviando enquanto as mensagens sumiam no
+ * caminho, e a verdade só aparecia se alguém abrisse as configurações.
+ */
+export interface EstadoDoCanal {
+  estado: "CONECTADO" | "AGUARDANDO_QRCODE" | "DESCONECTADO";
+  /** Por que caiu, quando caiu. */
+  lastError?: string | null;
+  /** A imagem do QR code, quando um novo acabou de nascer. */
+  qrCode?: string | null;
+  /** Quando esta notícia chegou — é o que faz a tela reagir a repetições. */
+  em: number;
+}
+
 interface RealtimeContextValue {
   socket: Socket | null;
   connected: boolean;
+  /** Nulo até o servidor dizer alguma coisa. */
+  canal: EstadoDoCanal | null;
   unreadCounts: Record<string, number>;
   totalUnread: number;
   clearUnread: (conversationId: string) => void;
@@ -40,6 +60,7 @@ export function useRealtime(): RealtimeContextValue {
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(true);
+  const [canal, setCanal] = useState<EstadoDoCanal | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
   const activeConversationRef = useRef<string | null>(null);
@@ -73,6 +94,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     instance.on("connect", () => setConnected(true));
     instance.on("disconnect", () => setConnected(false));
+
+    // O WhatsApp da empresa caiu, voltou, ou tem um QR code novo. Chega
+    // por aqui em vez de por consulta periódica porque os três são
+    // urgentes: os dois primeiros param o produto inteiro, e o terceiro
+    // expira em cerca de um minuto.
+    instance.on("canal.estado", (evento: Omit<EstadoDoCanal, "em">) => {
+      setCanal({ ...evento, em: Date.now() });
+    });
 
     // Guarda o nome do cliente de cada conversa pra a notificação ter um
     // título decente sem precisar buscar na API na hora que chega.
@@ -162,6 +191,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     () => ({
       socket,
       connected,
+      canal,
       unreadCounts,
       totalUnread,
       clearUnread,
@@ -172,6 +202,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     [
       socket,
       connected,
+      canal,
       unreadCounts,
       totalUnread,
       clearUnread,

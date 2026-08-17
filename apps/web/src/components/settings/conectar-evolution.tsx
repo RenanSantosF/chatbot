@@ -2,7 +2,7 @@
 
 import { QrCode, RefreshCw, Unplug } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
+import { useRealtime } from "@/components/realtime-provider";
 
 type Estado = "DESCONECTADO" | "AGUARDANDO_QRCODE" | "CONECTADO";
 
@@ -27,12 +28,13 @@ interface StatusDaEvolution {
 /**
  * De quanto em quanto tempo perguntar se já conectou.
  *
- * A leitura do QR code acontece no celular, e nada avisa esta aba quando
- * ela termina — quem sabe é o servidor, pelo webhook. Cinco segundos é o
- * ponto em que a espera ainda parece imediata sem transformar uma tela
- * aberta e esquecida numa consulta por segundo.
+ * Virou REDE DE SEGURANÇA, e não o caminho principal. O servidor agora
+ * empurra cada mudança por websocket (ver `canal.estado`), e é dali que a
+ * tela reage de imediato. Isto aqui cobre o caso de a conexão de tempo
+ * real ter caído justamente durante a leitura do código — daí o intervalo
+ * mais folgado do que era.
  */
-const INTERVALO_MS = 5_000;
+const INTERVALO_MS = 8_000;
 
 /**
  * Conectar o WhatsApp lendo um QR code, sem passar pela Meta.
@@ -50,6 +52,7 @@ export function ConectarEvolution() {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [conectando, setConectando] = useState(false);
+  const { canal } = useRealtime();
 
   /** Relê o estado depois de uma ação de quem está olhando a tela. */
   const carregar = useCallback(async () => {
@@ -75,18 +78,91 @@ export function ConectarEvolution() {
       .finally(() => setCarregando(false));
   }, []);
 
-  // A espera pela leitura do QR code é a única hora em que vale perguntar
-  // ao servidor de tempos em tempos: fora dela, o estado só muda por ação
-  // de quem está olhando a tela.
+  /**
+   * Quando esta aba viu a conexão acontecer.
+   *
+   * É o que sustenta o aviso de sincronização: assim que o aparelho é
+   * vinculado, o WhatsApp entrega o histórico em lote, e isso leva de
+   * segundos a alguns minutos. Sem dizer nada, a tela mostrava "Conectado"
+   * sobre um Inbox vazio, e a leitura natural era que não estava
+   * funcionando — quando estava, só ainda não tinha chegado.
+   *
+   * Nulo enquanto a conexão não acontece NESTA aba: quem abre a tela com
+   * o WhatsApp já ligado há dias não tem nada a sincronizar.
+   */
+  const [sincronizandoAte, setSincronizandoAte] = useState(false);
+  const jaAvisou = useRef(false);
+
+  /** O aviso de conectado sai UMA vez, venha ele do socket ou da consulta. */
+  const avisarConectado = useCallback(() => {
+    if (jaAvisou.current) return;
+    jaAvisou.current = true;
+    setSincronizandoAte(true);
+    toast.success("WhatsApp conectado.");
+  }, []);
+
+  /**
+   * O aviso se apaga sozinho depois de três minutos.
+   *
+   * Um relógio, e não uma comparação na hora de desenhar: nada re-renderiza
+   * esta tela quando o tempo passa, então a conta só mudaria de resultado
+   * por acaso, no próximo evento que chegasse. Três minutos é estimativa
+   * honesta — ninguém nos avisa que a sincronização terminou, e é por isso
+   * que a frase na tela diz "pode levar alguns minutos" em vez de prometer
+   * um prazo.
+   */
+  useEffect(() => {
+    if (!sincronizandoAte) return;
+    const timer = setTimeout(() => setSincronizandoAte(false), 3 * 60_000);
+    return () => clearTimeout(timer);
+  }, [sincronizandoAte]);
+
+  /**
+   * O que o servidor empurrou vale na hora.
+   *
+   * Duas esperas que eram longas somem aqui. O QR code chega no instante
+   * em que nasce, em vez de esperar a criação da sessão terminar de
+   * responder — a Evolution avisa por webhook bem antes disso, e era essa
+   * diferença que fazia a imagem levar uns vinte segundos pra aparecer. E
+   * a queda da sessão aparece sem ninguém recarregar nada.
+   *
+   * Só mexe no que o evento traz: um aviso de conexão não apaga o QR code
+   * que está na tela, e um QR code novo não muda o telefone conectado.
+   */
+  useEffect(() => {
+    if (!canal) return;
+
+    setStatus((atual) =>
+      atual
+        ? {
+            ...atual,
+            estado: canal.estado,
+            ...(canal.qrCode !== undefined ? { qrCode: canal.qrCode } : {}),
+            ...(canal.lastError !== undefined
+              ? { lastError: canal.lastError }
+              : {}),
+          }
+        : atual,
+    );
+
+    if (canal.estado === "CONECTADO") {
+      avisarConectado();
+      // Uma leitura só, pra buscar o que o evento não carrega — o telefone
+      // conectado, que é o que a tela mostra pra pessoa conferir se
+      // vinculou o aparelho certo.
+      void carregar();
+    }
+  }, [canal, carregar, avisarConectado]);
+
+  // Rede de segurança pro caso de a conexão de tempo real ter caído
+  // justamente durante a leitura do código.
   useEffect(() => {
     if (status?.estado !== "AGUARDANDO_QRCODE") return;
 
     const timer = setInterval(() => {
       void apiFetch<{ estado: Estado }>("/whatsapp/evolution/conferir")
         .then((resultado) => {
-          if (resultado.estado === "CONECTADO") {
-            toast.success("WhatsApp conectado.");
-          }
+          if (resultado.estado === "CONECTADO") avisarConectado();
           return carregar();
         })
         .catch(() => {
@@ -95,7 +171,7 @@ export function ConectarEvolution() {
     }, INTERVALO_MS);
 
     return () => clearInterval(timer);
-  }, [status?.estado, carregar]);
+  }, [status?.estado, carregar, avisarConectado]);
 
   async function conectar(evento: React.FormEvent) {
     evento.preventDefault();
@@ -143,6 +219,7 @@ export function ConectarEvolution() {
   if (carregando) return null;
 
   const conectado = status?.estado === "CONECTADO";
+  const sincronizando = conectado && sincronizandoAte;
   const aguardando = status?.estado === "AGUARDANDO_QRCODE";
   // Já existe servidor guardado: o formulário vira "reconectar", e a
   // chave deixa de ser obrigatória.
@@ -164,12 +241,20 @@ export function ConectarEvolution() {
       <CardContent className="flex flex-col gap-4">
         {conectado ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
-            <span className="min-w-0">
+            <span className="flex min-w-0 items-center gap-2">
+              {/* O giro fica junto do rótulo, e não no lugar dele: a
+                  conexão JÁ existe e o aparelho já envia. O que ainda está
+                  a caminho é o histórico. */}
+              {sincronizando ? <Spinner className="size-4 shrink-0" /> : null}
+              <span className="min-w-0">
               <span className="block text-sm font-medium">
                 Conectado{status?.connectedPhone ? ` · ${status.connectedPhone}` : ""}
               </span>
               <span className="block text-xs text-muted-foreground">
-                As mensagens desta empresa saem por este aparelho.
+                {sincronizando
+                  ? "Trazendo as conversas do aparelho — isso pode levar alguns minutos."
+                  : "As mensagens desta empresa saem por este aparelho."}
+              </span>
               </span>
             </span>
             <Button variant="outline" size="sm" onClick={() => void desconectar()}>

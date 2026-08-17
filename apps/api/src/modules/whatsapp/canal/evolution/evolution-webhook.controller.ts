@@ -16,6 +16,7 @@ import { Public } from '../../../../common/auth/public.decorator';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../../../auth/auth.types';
 import { ConversationsService } from '../../../conversations/conversations.service';
+import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { empacotarId, telefoneDoJid } from './evolution-id';
 import {
   chaveDoEvento,
@@ -47,6 +48,7 @@ export class EvolutionWebhookController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   @Public()
@@ -245,7 +247,7 @@ export class EvolutionWebhookController {
 
   private async conexao(
     body: EventoDaEvolution,
-    config: { id: string; instance: string },
+    config: { id: string; tenantId: string; instance: string },
   ) {
     const dados = body.data as { state?: string; statusReason?: number } | undefined;
     const bruto = dados?.state;
@@ -257,6 +259,16 @@ export class EvolutionWebhookController {
           ? ('AGUARDANDO_QRCODE' as const)
           : ('DESCONECTADO' as const);
 
+    // O código de motivo é o que separa "o celular ficou sem internet" de
+    // "o WhatsApp desvinculou o aparelho" — e só o segundo exige ler o QR
+    // code de novo.
+    const lastError =
+      estado === 'DESCONECTADO'
+        ? dados?.statusReason === 401
+          ? 'o aparelho foi desvinculado no WhatsApp; leia o QR code de novo'
+          : 'a sessão caiu no servidor de mensagens'
+        : null;
+
     await this.prisma.client.evolutionSettings.update({
       where: { id: config.id },
       data: {
@@ -264,18 +276,25 @@ export class EvolutionWebhookController {
         ...(estado === 'CONECTADO'
           ? { lastSeenAt: new Date(), qrCode: null, lastError: null }
           : {}),
-        ...(estado === 'DESCONECTADO'
-          ? {
-              // O código de motivo é o que separa "o celular ficou sem
-              // internet" de "o WhatsApp desvinculou o aparelho" — e só o
-              // segundo exige ler o QR code de novo.
-              lastError:
-                dados?.statusReason === 401
-                  ? 'o aparelho foi desvinculado no WhatsApp; leia o QR code de novo'
-                  : 'a sessão caiu no servidor de mensagens',
-            }
-          : {}),
+        ...(estado === 'DESCONECTADO' ? { lastError } : {}),
       },
+    });
+
+    /*
+     * A queda aparece na tela na hora, sem ninguém recarregar nada.
+     *
+     * Antes isto só ia pro banco. Quem estivesse no painel continuava
+     * atendendo normalmente — digitando resposta, apertando enviar — e as
+     * mensagens sumiam no caminho, porque do outro lado não havia mais
+     * sessão. A tela só contava a verdade na próxima vez que alguém
+     * abrisse as configurações.
+     *
+     * Desconectar é o evento mais urgente que este webhook entrega: é o
+     * único que faz TODO o resto do produto parar de funcionar.
+     */
+    this.realtime.emitToTenant(config.tenantId, 'canal.estado', {
+      estado,
+      lastError,
     });
 
     this.logger.log(`Sessão ${config.instance}: ${estado}.`);
@@ -283,7 +302,7 @@ export class EvolutionWebhookController {
 
   private async qrCode(
     body: EventoDaEvolution,
-    config: { id: string },
+    config: { id: string; tenantId: string },
   ) {
     const dados = body.data as { qrcode?: { base64?: string }; base64?: string } | undefined;
     const qrCode = dados?.qrcode?.base64 ?? dados?.base64;
@@ -292,6 +311,24 @@ export class EvolutionWebhookController {
     await this.prisma.client.evolutionSettings.update({
       where: { id: config.id },
       data: { qrCode, estado: 'AGUARDANDO_QRCODE' },
+    });
+
+    /*
+     * O QR code chega por aqui ANTES de a tela conseguir pedi-lo.
+     *
+     * Criar a sessão leva uns bons segundos no servidor de mensagens
+     * (ele sobe um socket do WhatsApp inteiro), e a tela ficava esperando
+     * a resposta daquela chamada pra só então mostrar a imagem. Mas a
+     * Evolution avisa o QR code por webhook assim que ele existe — que é
+     * bem antes de ela terminar de responder à criação.
+     *
+     * Empurrando por aqui, a imagem aparece no instante em que nasce. O
+     * mesmo vale pra cada renovação: o código expira em cerca de um
+     * minuto, e a troca passa a ser automática em vez de um botão.
+     */
+    this.realtime.emitToTenant(config.tenantId, 'canal.estado', {
+      estado: 'AGUARDANDO_QRCODE' as const,
+      qrCode,
     });
   }
 }

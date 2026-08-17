@@ -30,13 +30,16 @@ function montar() {
     },
   };
 
+  const realtime = { emitToTenant: jest.fn() };
+
   const controller = new EvolutionWebhookController(
     prisma as unknown as PrismaService,
     conversations as unknown as ConversationsService,
+    realtime as never,
   );
 
   const req = {} as AuthenticatedRequest;
-  return { controller, conversations, prisma, req };
+  return { controller, conversations, prisma, req, realtime };
 }
 
 function mensagem(extra: Record<string, unknown> = {}) {
@@ -423,5 +426,82 @@ describe('anexo recebido ganha por onde ser buscado', () => {
       metadata?: Record<string, unknown>;
     };
     expect(recebida.metadata).toBeUndefined();
+  });
+});
+
+describe('a tela fica sabendo na hora', () => {
+  /**
+   * O relato: "mostrar através de websocket na hora quando desconectar do
+   * aparelho". Antes a queda só ia pro banco — quem estivesse no painel
+   * continuava atendendo, digitando resposta e apertando enviar, enquanto
+   * as mensagens sumiam no caminho. A verdade só aparecia na próxima vez
+   * que alguém abrisse as configurações.
+   */
+  it('avisa a queda assim que ela acontece', async () => {
+    const { controller, req, realtime } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'connection.update',
+      instance: 'inteliwa-1',
+      data: { state: 'close', statusReason: 401 },
+    });
+
+    expect(realtime.emitToTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'canal.estado',
+      expect.objectContaining({ estado: 'DESCONECTADO' }),
+    );
+  });
+
+  it('o aviso diz se o aparelho foi desvinculado', async () => {
+    // A diferença é acionável: desvinculado exige ler o QR code de novo,
+    // queda de rede volta sozinha.
+    const { controller, req, realtime } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'connection.update',
+      instance: 'inteliwa-1',
+      data: { state: 'close', statusReason: 401 },
+    });
+
+    const aviso = realtime.emitToTenant.mock.calls[0][2] as {
+      lastError: string;
+    };
+    expect(aviso.lastError).toContain('desvinculado');
+  });
+
+  it('avisa a volta, sem erro pendurado', async () => {
+    const { controller, req, realtime } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'connection.update',
+      instance: 'inteliwa-1',
+      data: { state: 'open' },
+    });
+
+    expect(realtime.emitToTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'canal.estado',
+      { estado: 'CONECTADO', lastError: null },
+    );
+  });
+
+  it('empurra o QR code no instante em que ele nasce', async () => {
+    // A criação da sessão demora segundos pra responder, mas a Evolution
+    // avisa o código bem antes disso. Esperar a resposta era o que fazia a
+    // tela levar vinte segundos pra mostrar a imagem.
+    const { controller, req, realtime } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'qrcode.updated',
+      instance: 'inteliwa-1',
+      data: { qrcode: { base64: 'data:image/png;base64,AAA' } },
+    });
+
+    expect(realtime.emitToTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'canal.estado',
+      { estado: 'AGUARDANDO_QRCODE', qrCode: 'data:image/png;base64,AAA' },
+    );
   });
 });
