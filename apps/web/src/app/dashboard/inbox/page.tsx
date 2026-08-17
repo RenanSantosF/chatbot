@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { SquarePen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { StartConversationDialog } from "@/components/customers/start-conversation-dialog";
 import { ChatPanel } from "@/components/inbox/chat-panel";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerPanel } from "@/components/inbox/customer-panel";
@@ -759,7 +762,40 @@ export default function InboxPage() {
             de o WhatsApp estar conectado. Com o canal no ar ele só criava
             conversa falsa no meio das de verdade. O endpoint continua na
             API pros testes automatizados. */}
-        <InboxFilterBar value={filters} counts={counts} onChange={setFilters} />
+        {/* Puxar conversa mora AQUI, ao lado da busca.
+            Ele nasceu na tela de Clientes, com o argumento de que só faz
+            sentido depois de escolher com quem falar. O argumento valia
+            enquanto a ação exigia um cliente já cadastrado; agora ela
+            aceita um número digitado na hora, e o gesto de "quero falar
+            com alguém" acontece no Inbox — é onde a mão vai procurar,
+            como o lápis do WhatsApp Web. */}
+        <InboxFilterBar
+          value={filters}
+          counts={counts}
+          onChange={setFilters}
+          action={
+            <StartConversationDialog
+              onStarted={(id) => {
+                // Abre a conversa na hora e recarrega a lista: a conversa
+                // acabou de nascer e ainda não está no recorte carregado.
+                setSelectedId(id);
+                void loadConversations(filters);
+                loadCounts(filters);
+              }}
+              gatilho={
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Nova conversa"
+                  title="Nova conversa"
+                  className="size-10 shrink-0 rounded-lg"
+                >
+                  <SquarePen className="size-4.5" />
+                </Button>
+              }
+            />
+          }
+        />
         <ConversationList
           conversations={conversations}
           selectedId={selectedId}
