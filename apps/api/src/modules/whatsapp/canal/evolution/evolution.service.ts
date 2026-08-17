@@ -135,7 +135,51 @@ export class EvolutionService {
     // é único na plataforma inteira, e nome de empresa se repete. Uma vez
     // sorteado, nunca muda — trocá-lo abandonaria a sessão antiga no
     // servidor.
-    const instance = existente?.instance ?? `inteliwa-${randomUUID()}`;
+    /*
+     * Código de pareamento novo exige SOCKET novo — e socket novo, aqui,
+     * quer dizer NOME novo.
+     *
+     * O servidor só pede um código ao WhatsApp quando o socket emite o
+     * evento de pareamento, o que acontece uma vez, ao subir. Depois
+     * disso ele devolve o que está guardado na memória dele: o mesmo
+     * código de antes, já vencido. A tela mostra oito caracteres
+     * novinhos, a pessoa digita, e o WhatsApp recusa — sempre, e sem
+     * nunca dizer que o código já tinha morrido.
+     *
+     * Apagar a instância e recriar com o MESMO nome não resolve: o
+     * servidor apaga a linha e mantém o socket vivo, que segue tentando
+     * gravar num registro inexistente (`P2025`) e nunca completa o
+     * pareamento. Nome novo evita a colisão inteira — a sessão velha
+     * morre sozinha e a nova nasce limpa, com registro próprio.
+     *
+     * Só quando não está conectada, e só quando não há pareamento recém
+     * emitido: rotacionar o nome de uma sessão viva a abandonaria no
+     * servidor, com o atendimento junto.
+     */
+    const pareamentoFresco =
+      Boolean(existente?.pairingCode || existente?.qrCode) &&
+      Boolean(existente?.updatedAt) &&
+      Date.now() - existente!.updatedAt.getTime() < VALIDADE_DO_PAREAMENTO_MS;
+
+    const precisaDeSocketNovo =
+      Boolean(existente) && existente!.estado !== 'CONECTADO' && !pareamentoFresco;
+
+    if (precisaDeSocketNovo) {
+      // Melhor esforço: o servidor guarda a sessão velha sem uso nenhum, e
+      // falhar aqui não pode impedir a nova de nascer.
+      await evolution
+        .apagarInstancia({
+          baseUrl,
+          apiKey,
+          instance: existente!.instance,
+        })
+        .catch(() => undefined);
+    }
+
+    const instance =
+      !existente || precisaDeSocketNovo
+        ? `inteliwa-${randomUUID()}`
+        : existente.instance;
     const webhookSecret = existente?.webhookSecret ?? randomBytes(24).toString('hex');
 
     const config = existente
@@ -144,6 +188,7 @@ export class EvolutionService {
           data: {
             baseUrl,
             apiKeyEncrypted,
+            instance,
             estado: 'AGUARDANDO_QRCODE',
             qrCode: null,
             lastError: null,
@@ -159,6 +204,18 @@ export class EvolutionService {
             estado: 'AGUARDANDO_QRCODE',
           },
         });
+
+    if (pareamentoFresco) {
+      this.logger.log(
+        `Sessão ${config.instance}: pareamento ainda válido, devolvido sem recriar.`,
+      );
+      return {
+        instance: config.instance,
+        qrCode: existente!.qrCode,
+        pairingCode: existente!.pairingCode,
+        estado: 'AGUARDANDO_QRCODE' as const,
+      };
+    }
 
     const credenciais = { baseUrl, apiKey, instance: config.instance };
     const url = this.urlDoWebhook(config.webhookSecret);
