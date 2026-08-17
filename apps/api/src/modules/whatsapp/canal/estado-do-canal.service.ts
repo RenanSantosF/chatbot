@@ -51,6 +51,7 @@ export class EstadoDoCanalService {
         lastError: true,
         historicoEstado: true,
         historicoMensagens: true,
+        historicoProgresso: true,
         historicoIniciadoEm: true,
       },
     });
@@ -71,6 +72,7 @@ export class EstadoDoCanalService {
       historico: {
         importando: sincronizando(config),
         mensagens: config?.historicoMensagens ?? 0,
+        progresso: config?.historicoProgresso ?? 0,
       },
     };
   }
@@ -106,7 +108,14 @@ export interface EstadoDoCanal {
   /** As conversas do aparelho ainda estão chegando? */
   historico: {
     importando: boolean;
-    /** Quantas vieram até agora, pra tela ter o que mostrar de progresso. */
+    /** Quantas vieram até agora. */
     mensagens: number;
+    /**
+     * De 0 a 100, contado pelo aparelho.
+     *
+     * É o que separa "trazendo" de "travado". A contagem de mensagens
+     * sozinha não servia: ela sobe sem teto e ninguém sabe se falta muito.
+     */
+    progresso: number;
   };
 }

@@ -363,6 +363,7 @@ describe('troca de canal', () => {
       'MESSAGES_UPDATE',
       'CONNECTION_UPDATE',
       'QRCODE_UPDATED',
+      'MESSAGES_SET',
     ]);
   });
 

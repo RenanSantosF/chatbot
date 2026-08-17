@@ -44,6 +44,13 @@ export interface HistoricoDoCanal {
   importando: boolean;
   /** Quantas já vieram. Serve de sinal de vida durante a espera. */
   mensagens: number;
+  /**
+   * De 0 a 100, contado pelo aparelho.
+   *
+   * A contagem de mensagens sozinha não diz se falta muito — ela sobe sem
+   * teto. É o percentual que transforma a espera em algo que se acompanha.
+   */
+  progresso: number;
 }
 
 interface RealtimeContextValue {
@@ -163,8 +170,8 @@ export function RealtimeProvider({
       // aparelho do outro lado pra mandar lote nenhum.
       setHistorico(
         evento.estado === "CONECTADO"
-          ? { importando: true, mensagens: 0 }
-          : { importando: false, mensagens: 0 },
+          ? { importando: true, mensagens: 0, progresso: 0 }
+          : { importando: false, mensagens: 0, progresso: 0 },
       );
     });
 
@@ -179,10 +186,11 @@ export function RealtimeProvider({
      */
     instance.on(
       "canal.historico",
-      (evento: { estado: string; mensagens: number }) => {
+      (evento: { estado: string; mensagens: number; progresso?: number }) => {
         setHistorico({
           importando: evento.estado === "IMPORTANDO",
           mensagens: evento.mensagens,
+          progresso: evento.progresso ?? 0,
         });
       },
     );

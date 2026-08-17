@@ -113,6 +113,7 @@ export class EvolutionWebhookController {
       case 'CONNECTION_UPDATE':
         await this.conexao(body, config);
         break;
+      case 'MESSAGES_SET':
       case 'MESSAGING_HISTORY_SET':
         await this.historico(body, config);
         break;
@@ -297,15 +298,42 @@ export class EvolutionWebhookController {
    */
   private async historico(
     body: EventoDaEvolution,
-    config: { id: string; tenantId: string; instance: string },
+    config: {
+      id: string;
+      tenantId: string;
+      instance: string;
+      historicoProgresso?: number;
+    },
   ) {
     const dados = body.data as
       | { messages?: DadosDaMensagem[]; isLatest?: boolean; progress?: number }
+      | DadosDaMensagem[]
       | undefined;
 
-    const lote = Array.isArray(dados?.messages) ? dados.messages : [];
+    /*
+     * O lote vem de dois jeitos, e o andamento vem de fora.
+     *
+     * No webhook de verdade, `data` É a lista de mensagens, e o "é o
+     * último?" sobe pra raiz do evento. A forma com `data.messages` é a
+     * de dentro da Evolution. Aceitar as duas custa uma linha; aceitar só
+     * a de dentro fazia a importação nunca começar nem terminar — sem
+     * erro nenhum, porque o formato simplesmente não batia.
+     */
+    const lote = Array.isArray(dados)
+      ? dados
+      : Array.isArray(dados?.messages)
+        ? dados.messages
+        : [];
     // O lote final costuma vir vazio, só pra avisar que acabou.
-    const ultimo = dados?.isLatest === true;
+    const ultimo =
+      body.isLatest === true || (!Array.isArray(dados) && dados?.isLatest === true);
+
+    // O percentual vem na raiz do evento, ao lado do `isLatest`.
+    const bruto = body.progresso ?? body.progress;
+    const progresso =
+      typeof bruto === 'number' && Number.isFinite(bruto)
+        ? Math.min(100, Math.max(0, Math.round(bruto)))
+        : null;
 
     const porContato = new Map<
       string,
@@ -388,19 +416,32 @@ export class EvolutionWebhookController {
       where: { id: config.id },
       data: {
         historicoMensagens: { increment: importadas },
+        // O percentual NÃO anda sozinho pra trás: os lotes chegam fora de
+        // ordem (o de 100% já veio antes do de 95%), e obedecer a ordem de
+        // chegada faria a barra recuar na cara de quem está olhando.
+        ...(progresso !== null && progresso > (config.historicoProgresso ?? 0)
+          ? { historicoProgresso: progresso }
+          : {}),
         ...(ultimo
           ? {
               historicoEstado: 'CONCLUIDO' as const,
               historicoConcluidoEm: new Date(),
+              // Terminou é cem, mesmo que o último lote não diga.
+              historicoProgresso: 100,
             }
           : { historicoEstado: 'IMPORTANDO' as const }),
       },
-      select: { historicoMensagens: true, historicoEstado: true },
+      select: {
+        historicoMensagens: true,
+        historicoEstado: true,
+        historicoProgresso: true,
+      },
     });
 
     this.realtime.emitToTenant(config.tenantId, 'canal.historico', {
       estado: settings.historicoEstado,
       mensagens: settings.historicoMensagens,
+      progresso: settings.historicoProgresso,
     });
 
     this.logger.log(

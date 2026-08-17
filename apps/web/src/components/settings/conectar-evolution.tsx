@@ -279,6 +279,17 @@ export function ConectarEvolution() {
                     : "Trazendo as conversas do aparelho — isso pode levar alguns minutos."
                   : "As mensagens desta empresa saem por este aparelho."}
               </span>
+              {/* A barra só aparece quando há percentual de verdade: uma
+                  barra parada no zero passa a impressão contrária da que
+                  ela existe pra dar. */}
+              {sincronizando && (historico?.progresso ?? 0) > 0 ? (
+                <span className="mt-2 block h-1 w-full overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full bg-primary transition-[width] duration-500"
+                    style={{ width: `${Math.min(100, historico?.progresso ?? 0)}%` }}
+                  />
+                </span>
+              ) : null}
               </span>
             </span>
             <Button variant="outline" size="sm" onClick={() => void desconectar()}>

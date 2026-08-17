@@ -45,14 +45,21 @@ const EVENTOS = [
   'MESSAGES_UPDATE',
   'CONNECTION_UPDATE',
   'QRCODE_UPDATED',
-  // Por onde chegam as conversas que JÁ existiam no aparelho. Sem assinar
-  // este, o pareamento trazia o telefone e mais nada: conversa antiga não
-  // aparecia, e a que aconteceu pelo celular enquanto o painel estava
-  // desconectado sumia pra sempre.
-  // NÃO acrescente 'MESSAGING_HISTORY_SET' aqui: o servidor valida esta
-  // lista contra um enum e recusa a CHAMADA INTEIRA ao encontrar um nome
-  // que não conhece. O endereço de retorno deixa de ser registrado e a
-  // conexão falha — por um item que só queria trazer conversa antiga.
+  /*
+   * Por onde chegam as conversas que JÁ existiam no aparelho.
+   *
+   * O nome é `MESSAGES_SET`, e não `MESSAGING_HISTORY_SET`. O segundo é
+   * como o evento se chama DENTRO da Evolution, no Baileys; o que sai pelo
+   * webhook é o primeiro. Assinar só o nome de dentro deixava o
+   * pareamento trazer o telefone e mais nada — sem erro em lugar nenhum,
+   * porque o servidor simplesmente não tinha esse evento pra mandar.
+   *
+   * E é SÓ ele. O servidor valida esta lista contra um enum e recusa a
+   * chamada inteira quando encontra um nome que não conhece — não é um
+   * item ignorado, é o registro do endereço de retorno que não acontece.
+   * Mandar os dois nomes "por garantia" derrubava a conexão toda.
+   */
+  'MESSAGES_SET',
 ];
 
 export interface RespostaDaEvolution<T = unknown> {
@@ -421,9 +428,21 @@ export function definirWebhook(
 export function pedirHistoricoCompleto(
   credenciais: Credenciais,
 ): Promise<RespostaDaEvolution> {
+  // O servidor exige a configuração INTEIRA, não um campo só: mandar
+  // apenas `syncFullHistory` é recusado com "instance requires property"
+  // pra cada um dos que faltam. Os valores abaixo são os padrões dele —
+  // o único que muda de fato é o histórico.
   return chamar(credenciais, `/settings/set/${credenciais.instance}`, {
     method: 'POST',
-    body: { syncFullHistory: true },
+    body: {
+      rejectCall: false,
+      msgCall: '',
+      groupsIgnore: false,
+      alwaysOnline: false,
+      readMessages: false,
+      readStatus: false,
+      syncFullHistory: true,
+    },
   });
 }
 

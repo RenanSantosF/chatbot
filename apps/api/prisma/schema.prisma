@@ -349,6 +349,12 @@ model EvolutionSettings {
   historicoEstado      EvolutionHistorico @default(NUNCA)
   /// Quantas mensagens vieram do aparelho na importação atual.
   historicoMensagens   Int                @default(0)
+  /// De 0 a 100, do jeito que o aparelho conta.
+  ///
+  /// Vem no evento do histórico, e é o que separa "trazendo" de "travado":
+  /// sem ele a tela só tinha um giro, que a partir de um minuto parece
+  /// defeito mesmo quando está tudo indo bem.
+  historicoProgresso   Int                @default(0)
   /// Quando o pareamento pediu o histórico.
   ///
   /// É o que permite desistir de esperar: ninguém garante que o aparelho

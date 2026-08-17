@@ -36,7 +36,12 @@ export interface EstadoDoCanalSessao {
    * um lote chegou, e a conta dele sobrevive a recarregar a página e a
    * uma aba de celular congelada em segundo plano.
    */
-  historico: { importando: boolean; mensagens: number };
+  historico: {
+    importando: boolean;
+    mensagens: number;
+    /** De 0 a 100, contado pelo aparelho. */
+    progresso: number;
+  };
 }
 
 export interface MeResponse {
