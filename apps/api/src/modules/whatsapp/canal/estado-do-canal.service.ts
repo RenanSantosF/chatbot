@@ -89,11 +89,17 @@ export class EstadoDoCanalService {
  */
 function sincronizando(
   config: {
+    estado: 'CONECTADO' | 'AGUARDANDO_QRCODE' | 'DESCONECTADO';
     historicoEstado: 'NUNCA' | 'IMPORTANDO' | 'CONCLUIDO';
     historicoIniciadoEm: Date | null;
   } | null,
 ): boolean {
-  if (config?.historicoEstado !== 'IMPORTANDO') return false;
+  // Sessão fora do ar não está trazendo nada: quem manda o histórico é o
+  // aparelho, e ele não tem por onde. Sem esta linha, desconectar deixava
+  // as duas faixas na tela ao mesmo tempo — "está desconectado" e "está
+  // trazendo as conversas" — que juntas não fazem sentido nenhum.
+  if (config?.estado !== 'CONECTADO') return false;
+  if (config.historicoEstado !== 'IMPORTANDO') return false;
   if (!config.historicoIniciadoEm) return false;
   return Date.now() - config.historicoIniciadoEm.getTime() < HISTORICO_PACIENCIA_MS;
 }

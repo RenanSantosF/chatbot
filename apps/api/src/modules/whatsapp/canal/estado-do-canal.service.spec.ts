@@ -97,3 +97,30 @@ describe('a importação do histórico tem fim', () => {
     expect(estado.historico.importando).toBe(false);
   });
 });
+
+describe('importação e conexão juntas', () => {
+  it('não diz que está trazendo conversas com a sessão fora do ar', async () => {
+    // Quem manda o histórico é o aparelho, e sem sessão ele não tem por
+    // onde. As duas faixas na tela ao mesmo tempo — "desconectado" e
+    // "trazendo as conversas" — não fazem sentido juntas.
+    const prisma = {
+      client: {
+        tenant: { findUnique: jest.fn().mockResolvedValue({ canal: 'EVOLUTION' }) },
+        evolutionSettings: {
+          findFirst: jest.fn().mockResolvedValue({
+            estado: 'DESCONECTADO',
+            lastError: null,
+            historicoEstado: 'IMPORTANDO',
+            historicoMensagens: 44038,
+            historicoIniciadoEm: new Date(),
+          }),
+        },
+      },
+    };
+
+    const service = new EstadoDoCanalService(prisma as never);
+    const estado = await service.doTenant('tenant-1');
+
+    expect(estado.historico.importando).toBe(false);
+  });
+});
