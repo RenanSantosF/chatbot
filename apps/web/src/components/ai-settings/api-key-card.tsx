@@ -1,13 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SelectField } from "@/components/ui/select-field";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import type { AiSettings } from "@/lib/types";
+
+interface CatalogoDeModelos {
+  modelos: { id: string; rotulo: string; recomendado: boolean }[];
+  /** O modelo que a API usa quando a empresa não escolheu nenhum. */
+  padrao: string;
+  /** A lista veio do Google, ou é a recomendada de reserva? */
+  verificado: boolean;
+}
+
+/**
+ * O valor que abre o campo de texto.
+ *
+ * Um id de modelo nunca tem espaço, então não há como colidir com um nome
+ * de verdade vindo do Google.
+ */
+const OUTRO = "outro modelo";
 
 export function ApiKeyCard({
   settings,
@@ -21,6 +38,46 @@ export function ApiKeyCard({
   const [saving, setSaving] = useState(false);
   const [model, setModel] = useState(settings.model ?? "");
   const [savingModel, setSavingModel] = useState(false);
+  const [catalogo, setCatalogo] = useState<CatalogoDeModelos | null>(null);
+  const [outro, setOutro] = useState(false);
+
+  /*
+   * O catálogo é buscado uma vez, na montagem do cartão.
+   *
+   * A consulta sai daqui pra API e de lá pro Google com a chave da
+   * empresa — a chave nunca chega ao navegador. Falhar não trava nada: o
+   * servidor devolve os recomendados e a tela segue funcionando (ver
+   * AiSettingsService.listarModelos).
+   */
+  useEffect(() => {
+    apiFetch<CatalogoDeModelos>("/ai/settings/modelos")
+      .then(setCatalogo)
+      .catch(() => setCatalogo(null));
+  }, []);
+
+  /*
+   * O que aparece no seletor.
+   *
+   * O modelo GRAVADO entra na lista mesmo quando não está no catálogo:
+   * sem isso, uma empresa que escolheu um modelo hoje aposentado abriria
+   * a tela e veria outro selecionado — e sairia achando que estava usando
+   * aquele. Melhor mostrar o que está valendo, ainda que marcado.
+   */
+  const opcoes = useMemo(() => {
+    const padrao = catalogo?.padrao ?? "";
+    const disponiveis = catalogo?.modelos ?? [];
+    const lista = disponiveis.map((m) => ({
+      value: m.id,
+      label: m.recomendado ? `${m.rotulo} — recomendado` : m.rotulo,
+    }));
+
+    const atual = model || padrao;
+    if (atual && !disponiveis.some((m) => m.id === atual)) {
+      lista.unshift({ value: atual, label: `${atual} — fora da lista` });
+    }
+
+    return [...lista, { value: OUTRO, label: "Outro modelo…" }];
+  }, [catalogo, model]);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -123,12 +180,53 @@ export function ApiKeyCard({
         )}
 
         <form onSubmit={handleSaveModel} className="mt-4 flex flex-col gap-2 border-t pt-4">
-          <label htmlFor="ai-model" className="text-sm font-medium">
-            Modelo do Gemini
-          </label>
+          <span className="text-sm font-medium">Modelo do Gemini</span>
           <p className="text-xs text-muted-foreground">
-            O Google descontinua modelos de vez em quando — se a IA parar de responder e o motivo for
-            algo como &ldquo;model is no longer available&rdquo;, troque aqui pelo nome atual (confira em{" "}
+            {catalogo?.verificado
+              ? "Os modelos que a sua chave alcança, perguntados ao Google agora. Os recomendados para atendimento vêm primeiro."
+              : "Modelos recomendados para atendimento. Configure a chave para ver a lista completa da sua conta."}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <SelectField
+              title="Modelo do Gemini"
+              className="max-w-xs flex-1"
+              // Sem escolha gravada, o seletor mostra o padrão da API — o
+              // mesmo que ela vai usar de fato. Deixar vazio faria o
+              // navegador exibir a primeira opção enquanto o valor
+              // controlado dizia outra coisa.
+              value={outro ? OUTRO : model || catalogo?.padrao || ""}
+              options={opcoes}
+              onChange={(next) => {
+                if (next === OUTRO) return setOutro(true);
+                setOutro(false);
+                setModel(next);
+              }}
+            />
+            <Button type="submit" size="sm" variant="outline" disabled={savingModel}>
+              {savingModel ? "Salvando..." : "Salvar modelo"}
+            </Button>
+          </div>
+
+          {/* A saída de emergência. O Google lança modelo sem avisar, e um
+              seletor fechado transformaria "quero usar o que saiu ontem"
+              numa espera por deploy — que é justamente o que este campo
+              existe pra evitar. */}
+          {outro ? (
+            <Input
+              id="ai-model"
+              autoFocus
+              placeholder={catalogo?.padrao ?? "gemini-3.1-flash-lite"}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="max-w-xs"
+            />
+          ) : null}
+
+          <p className="text-xs text-muted-foreground">
+            Se a IA parar de responder com algo como &ldquo;model is no longer
+            available&rdquo;, o Google aposentou esse modelo — escolha outro aqui, sem
+            precisar de deploy. A lista completa fica em{" "}
             <a
               href="https://ai.google.dev/gemini-api/docs/models"
               target="_blank"
@@ -137,20 +235,8 @@ export function ApiKeyCard({
             >
               ai.google.dev/gemini-api/docs/models
             </a>
-            ), sem precisar de deploy.
+            .
           </p>
-          <div className="flex gap-2">
-            <Input
-              id="ai-model"
-              placeholder="gemini-2.5-flash"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="max-w-xs"
-            />
-            <Button type="submit" size="sm" variant="outline" disabled={savingModel}>
-              {savingModel ? "Salvando..." : "Salvar modelo"}
-            </Button>
-          </div>
         </form>
       </CardContent>
     </Card>

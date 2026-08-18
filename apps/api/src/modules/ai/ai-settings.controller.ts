@@ -12,6 +12,18 @@ export class AiSettingsController {
     return this.aiSettingsService.get();
   }
 
+  /**
+   * Os modelos que a chave desta empresa alcança, pro seletor da tela.
+   *
+   * Sem `ai.manage`: quem só olha as configurações precisa ver qual modelo
+   * está em uso e o que ele quer dizer. Escolher continua exigindo a
+   * permissão, no PUT.
+   */
+  @Get('modelos')
+  modelos() {
+    return this.aiSettingsService.listarModelos();
+  }
+
   @Put()
   @RequiresPermission('ai.manage')
   update(@Body() dto: UpdateAiSettingsDto) {

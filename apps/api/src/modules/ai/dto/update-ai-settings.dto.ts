@@ -49,9 +49,15 @@ export class UpdateAiSettingsDto {
   apiKey?: string;
 
   /**
-   * Nome do modelo (ex: "gemini-2.5-flash"). Sem isso, usa o padrão do
-   * código — que o Google pode descontinuar a qualquer momento. Expor esse
-   * campo evita depender de deploy toda vez que isso acontecer.
+   * Nome do modelo (ex: "gemini-3.1-flash-lite"). Sem isso, usa o padrão
+   * do código — que o Google pode descontinuar a qualquer momento. Expor
+   * esse campo evita depender de deploy toda vez que isso acontecer.
+   *
+   * Continua string livre, e de propósito: a tela oferece um seletor com o
+   * que a chave da empresa alcança (ver AiSettingsService.listarModelos),
+   * mas travar o formato AQUI faria um modelo novo do Google precisar de
+   * deploy pra poder ser usado — que é exatamente o que este campo existe
+   * pra evitar.
    */
   @IsOptional()
   @IsString()

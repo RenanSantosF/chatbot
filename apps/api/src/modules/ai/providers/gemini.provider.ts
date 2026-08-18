@@ -11,8 +11,9 @@ import type {
   AiMessage,
   AiProvider,
 } from './ai-provider.interface';
+import { MODELO_PADRAO } from '../modelos';
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = MODELO_PADRAO;
 const EMBEDDING_MODEL = 'gemini-embedding-001';
 export const EMBEDDING_DIMENSIONS = 768;
 
