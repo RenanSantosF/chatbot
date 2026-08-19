@@ -269,12 +269,49 @@ export function traduzirMensagem(
          * que é a verdade nesse caso.
          */
         evolutionPendente: true,
+        /*
+         * O endereço do arquivo no WhatsApp, guardado junto da mensagem.
+         *
+         * A chave da mensagem sozinha só funciona enquanto a Evolution
+         * ainda tiver aquela mensagem no banco DELA: ela procura por
+         * `key.id` e, não achando, responde "Message not found" — que foi
+         * exatamente o que apareceu no log pras conversas que já estavam
+         * no aparelho antes de conectar. Elas nunca passaram pela
+         * Evolution ao vivo; chegaram na sincronização e ela não as tem.
+         *
+         * Mas o download não depende do banco dela: este bloco é o que o
+         * WhatsApp devolve com o endereço criptografado do arquivo
+         * (`url`, `directPath`, `mediaKey`, os sha256), e a Evolution usa
+         * o que for mandado quando o pedido já vem com ele — sem
+         * procurar nada. Guardando aqui, o anexo de uma conversa antiga
+         * volta a abrir.
+         *
+         * A miniatura embutida NÃO entra: são vários KB de base64 por
+         * mensagem, e a tela nunca a usa (o balão mostra o arquivo de
+         * verdade, buscado por este mesmo endereço).
+         */
+        evolutionMedia: { [chave]: semMiniatura(midia) },
       },
       citando: citacao(midia as unknown as ContextoDaCitacao) ?? citadoNaRaiz,
     };
   }
 
   return null;
+}
+
+/**
+ * O bloco de mídia sem o peso que não serve pra nada aqui.
+ *
+ * `jpegThumbnail` é a pré-visualização em base64 — alguns KB por
+ * mensagem, multiplicados por um histórico inteiro. `contextInfo` pode
+ * trazer a mensagem citada inteira dentro dele, com a mídia dela junto.
+ * Nenhum dos dois entra no download: o que baixa o arquivo é o endereço
+ * criptografado, que fica nos outros campos.
+ */
+function semMiniatura(midia: ConteudoDeMidia): Record<string, unknown> {
+  const { jpegThumbnail: _miniatura, contextInfo: _citacao, ...resto } =
+    midia as Record<string, unknown>;
+  return resto;
 }
 
 function citacao(parte: ContextoDaCitacao | undefined): string | undefined {

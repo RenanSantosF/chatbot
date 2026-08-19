@@ -352,6 +352,17 @@ export interface MidiaEmBase64 {
 export function baixarMidia(
   credenciais: Credenciais,
   chave: { remoteJid: string; fromMe: boolean; id: string },
+  /**
+   * O bloco de mídia que veio na mensagem, quando ele foi guardado.
+   *
+   * Muda QUAL das duas coisas a Evolution faz. Só com a chave, ela
+   * procura a mensagem no banco dela e responde "Message not found"
+   * quando não acha — o caso de toda conversa que já estava no aparelho
+   * antes de conectar, que chegou pela sincronização e ela nunca teve.
+   * Com o bloco junto, ela pula a busca e baixa direto do WhatsApp com o
+   * endereço criptografado que está aqui dentro.
+   */
+  midia?: Record<string, unknown> | null,
 ): Promise<RespostaDaEvolution<MidiaEmBase64>> {
   return chamar(
     credenciais,
@@ -359,7 +370,10 @@ export function baixarMidia(
     {
       method: 'POST',
       tempoLimiteMs: TEMPO_LIMITE_MIDIA_MS,
-      body: { message: { key: chave }, convertToMp4: false },
+      body: {
+        message: { key: chave, ...(midia ? { message: midia } : {}) },
+        convertToMp4: false,
+      },
     },
   );
 }

@@ -3021,6 +3021,63 @@ export class ConversationsService {
     });
   }
 
+  /**
+   * O anexo antigo ganha o endereço que faltava nele.
+   *
+   * As mensagens importadas antes desta mudança foram gravadas só com a
+   * chave, e a chave sozinha não abre anexo de conversa que já estava no
+   * aparelho: o servidor de mensagens procura aquela mensagem no banco
+   * dele, não acha, e responde "Message not found" (ver `evolutionMedia`,
+   * em evolution-mensagem). O aparelho manda o histórico de novo a cada
+   * pareamento, e é essa segunda passagem que conserta as antigas.
+   *
+   * Só escreve onde falta: mensagem que já tem o endereço não é tocada, e
+   * mensagem sem mídia nenhuma também não. Sem esse recorte, todo lote
+   * repetido reescreveria o histórico inteiro.
+   */
+  private async completarEnderecoDaMidia(
+    gravadas: { id: string; externalId: string | null; metadata: Prisma.JsonValue }[],
+    chegando: { externalId?: string; metadata?: Prisma.InputJsonValue }[],
+  ) {
+    const comEndereco = new Map<string, Record<string, unknown>>();
+    for (const m of chegando) {
+      const midia = (m.metadata as Record<string, unknown> | undefined)
+        ?.evolutionMedia;
+      if (m.externalId && midia) {
+        comEndereco.set(m.externalId, midia as Record<string, unknown>);
+      }
+    }
+    if (comEndereco.size === 0) return;
+
+    for (const gravada of gravadas) {
+      if (!gravada.externalId) continue;
+
+      const endereco = comEndereco.get(gravada.externalId);
+      if (!endereco) continue;
+
+      const metadata = (gravada.metadata ?? {}) as Record<string, unknown>;
+      if (metadata.evolutionMedia) continue;
+
+      try {
+        await this.prisma.db.message.update({
+          where: { id: gravada.id },
+          data: {
+            metadata: {
+              ...metadata,
+              evolutionMedia: endereco,
+            } as Prisma.InputJsonValue,
+          },
+        });
+      } catch (erro) {
+        // Um anexo que continua sem endereço é um balão sem imagem, e não
+        // um lote de histórico perdido.
+        this.logger.warn(
+          `Não deu pra completar o endereço da mídia de ${gravada.externalId}: ${erro instanceof Error ? erro.message : erro}`,
+        );
+      }
+    }
+  }
+
   async importarHistorico(entrada: {
     customerPhone: string;
     customerName?: string;
@@ -3052,16 +3109,15 @@ export class ConversationsService {
     const ids = entrada.mensagens
       .map((m) => m.externalId)
       .filter((id): id is string => Boolean(id));
-    const jaGravadas = ids.length
-      ? new Set(
-          (
-            await this.prisma.db.message.findMany({
-              where: { externalId: { in: ids } },
-              select: { externalId: true },
-            })
-          ).map((m) => m.externalId),
-        )
-      : new Set<string>();
+    const gravadasAntes = ids.length
+      ? await this.prisma.db.message.findMany({
+          where: { externalId: { in: ids } },
+          select: { id: true, externalId: true, metadata: true },
+        })
+      : [];
+    const jaGravadas = new Set(gravadasAntes.map((m) => m.externalId));
+
+    await this.completarEnderecoDaMidia(gravadasAntes, entrada.mensagens);
 
     /*
      * O lote também se repete por DENTRO.

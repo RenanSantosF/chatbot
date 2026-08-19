@@ -60,7 +60,21 @@ export class WhatsappMediaService {
 
     if (tenant?.canal !== 'EVOLUTION') return this.baixarDaMeta(handle);
 
-    const baixada = await this.evolution.baixarMidia(handle);
+    /*
+     * O endereço do arquivo vai junto do pedido, quando a mensagem o tem.
+     *
+     * Sem ele a Evolution procura a mensagem no banco dela e responde
+     * "Message not found" — o caso de tudo que já estava no aparelho
+     * antes de conectar, que chegou pela sincronização e ela nunca teve.
+     * Ver `evolutionMedia`, em evolution-mensagem.
+     */
+    const dona = await this.mensagemDaMidia(handle);
+    const metadata = (dona?.metadata ?? {}) as Record<string, unknown>;
+
+    const baixada = await this.evolution.baixarMidia(
+      handle,
+      metadata.evolutionMedia,
+    );
     if (!baixada) {
       throw new NotFoundException(
         'Não deu pra buscar este anexo no WhatsApp. Ele pode ter sido apagado no aparelho.',

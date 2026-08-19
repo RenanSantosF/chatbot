@@ -124,8 +124,18 @@ export interface CanalDeMensagem {
    * `null` quer dizer "não consegui buscar", e não "não existe": quem
    * chama decide se tenta outra fonte (o arquivamento próprio) ou se
    * mostra o balão sem o anexo.
+   *
+   * `pista` é o que o provedor guardou junto da mensagem quando ela
+   * chegou, opaco pra quem chama. Na Meta não existe — o handle é um id
+   * hospedado e basta sozinho. Na Evolution é o endereço criptografado do
+   * arquivo no WhatsApp, e sem ele o anexo de uma conversa que já estava
+   * no aparelho não abre: a chave da mensagem só funciona enquanto o
+   * servidor de mensagens ainda tiver aquela mensagem no banco dele.
    */
-  baixarMidia(handle: string): Promise<MidiaBaixada | null>;
+  baixarMidia(
+    handle: string,
+    pista?: unknown,
+  ): Promise<MidiaBaixada | null>;
 
   /** O porquê da última falha, em português, pra mostrar a quem atende. */
   readonly motivoDaUltimaFalha: string | null;

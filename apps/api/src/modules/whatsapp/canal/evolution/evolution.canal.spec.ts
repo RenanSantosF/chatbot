@@ -335,6 +335,32 @@ describe('buscar o binário de volta', () => {
     expect(midia?.mimeType).toBe('image/jpeg');
   });
 
+  it('manda junto o endereço do arquivo quando a mensagem o tem', async () => {
+    /*
+     * Só com a chave, o servidor de mensagens procura a mensagem no banco
+     * DELE e responde "Message not found" — o caso de tudo que já estava
+     * no aparelho antes de conectar. Com o bloco de mídia junto, ele pula
+     * a busca e baixa direto do WhatsApp.
+     */
+    const rede = servidor();
+    rede.responder(200, {
+      base64: Buffer.from('foto').toString('base64'),
+      mimetype: 'image/jpeg',
+    });
+    const canal = montar({});
+
+    await canal.baixarMidia(HANDLE, {
+      imageMessage: { url: 'https://mmg.whatsapp.net/x', mediaKey: 'abc' },
+    });
+
+    expect(rede.chamadas[0].corpo).toMatchObject({
+      message: {
+        key: { id: 'RECEBIDA1' },
+        message: { imageMessage: { mediaKey: 'abc' } },
+      },
+    });
+  });
+
   it('devolve null quando o arquivo não vem, em vez de estourar', async () => {
     // O balão fica sem o anexo; a conversa continua funcionando. Uma
     // exceção aqui derrubaria a abertura da conversa inteira.

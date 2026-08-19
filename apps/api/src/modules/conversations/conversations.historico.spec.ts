@@ -12,7 +12,9 @@ import { ConversationsService } from './conversations.service';
  * duas vezes: repetida dentro do lote, repetida entre lotes, e as duas
  * gravações correndo juntas — esta última só o banco resolve.
  */
-function montar(jaGravadas: string[] = []) {
+function montar(
+  jaGravadas: (string | { externalId: string; metadata?: unknown })[] = [],
+) {
   const criadas: { data: Record<string, unknown>[]; skipDuplicates?: boolean }[] =
     [];
 
@@ -30,9 +32,14 @@ function montar(jaGravadas: string[] = []) {
       update: jest.fn().mockResolvedValue({ id: 'conversa-1' }),
     },
     message: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue(jaGravadas.map((externalId) => ({ externalId }))),
+      findMany: jest.fn().mockResolvedValue(
+        jaGravadas.map((m, i) =>
+          typeof m === 'string'
+            ? { id: `msg-${i}`, externalId: m, metadata: null }
+            : { id: `msg-${i}`, metadata: null, ...m },
+        ),
+      ),
+      update: jest.fn().mockResolvedValue({}),
       createMany: jest.fn().mockImplementation((args) => {
         criadas.push(args);
         return { count: (args.data as unknown[]).length };
@@ -116,6 +123,59 @@ describe('importação do histórico', () => {
     });
 
     expect(criadas[0].skipDuplicates).toBe(true);
+  });
+
+  it('completa o endereço do anexo antigo, sem reescrever quem já o tem', async () => {
+    /*
+     * As mensagens importadas antes desta mudança foram gravadas só com a
+     * chave, e a chave sozinha não abre anexo de conversa que já estava
+     * no aparelho. O aparelho remanda o histórico a cada pareamento, e é
+     * essa segunda passagem que conserta as antigas.
+     */
+    const { service, prisma } = montar([
+      { externalId: 'chave-a', metadata: { mimeType: 'image/jpeg' } },
+      {
+        externalId: 'chave-b',
+        metadata: { evolutionMedia: { imageMessage: { url: 'já tinha' } } },
+      },
+    ]);
+
+    await service.importarHistorico({
+      customerPhone: '5527999998888',
+      mensagens: [
+        {
+          ...linha('chave-a'),
+          metadata: { evolutionMedia: { imageMessage: { url: 'novo' } } },
+        },
+        {
+          ...linha('chave-b'),
+          metadata: { evolutionMedia: { imageMessage: { url: 'novo' } } },
+        },
+      ],
+    });
+
+    expect(prisma.db.message.update).toHaveBeenCalledTimes(1);
+    expect(prisma.db.message.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          metadata: {
+            mimeType: 'image/jpeg',
+            evolutionMedia: { imageMessage: { url: 'novo' } },
+          },
+        },
+      }),
+    );
+  });
+
+  it('não escreve nada quando o lote não traz endereço de mídia', async () => {
+    const { service, prisma } = montar(['chave-a']);
+
+    await service.importarHistorico({
+      customerPhone: '5527999998888',
+      mensagens: [linha('chave-a')],
+    });
+
+    expect(prisma.db.message.update).not.toHaveBeenCalled();
   });
 
   it('trava por cliente antes de procurar a conversa', async () => {

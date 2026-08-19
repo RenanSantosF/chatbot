@@ -214,7 +214,10 @@ export class EvolutionCanal implements CanalDeMensagem {
    * ele é buscado na hora. Por isso o handle aqui é a chave, e por isso
    * uma mensagem apagada no WhatsApp deixa de ter anexo pra sempre.
    */
-  async baixarMidia(handle: string): Promise<MidiaBaixada | null> {
+  async baixarMidia(
+    handle: string,
+    pista?: unknown,
+  ): Promise<MidiaBaixada | null> {
     const credenciais = await this.credenciais();
     if (!credenciais) return null;
 
@@ -226,10 +229,19 @@ export class EvolutionCanal implements CanalDeMensagem {
       return null;
     }
 
-    const resposta = await evolution.baixarMidia(credenciais, chave);
+    // O bloco de mídia guardado com a mensagem (ver `evolutionMedia`, em
+    // evolution-mensagem). Com ele a Evolution baixa direto do WhatsApp;
+    // sem ele, ela depende de ter a mensagem no banco dela.
+    const midia =
+      pista && typeof pista === 'object'
+        ? (pista as Record<string, unknown>)
+        : null;
+
+    const resposta = await evolution.baixarMidia(credenciais, chave, midia);
     if (!resposta.ok || !resposta.dados?.base64) {
       this.logger.warn(
-        `Não deu pra buscar a mídia na Evolution: ${resposta.erro ?? 'resposta sem o arquivo'}`,
+        `Não deu pra buscar a mídia na Evolution: ${resposta.erro ?? 'resposta sem o arquivo'}` +
+          (midia ? '' : ' (a mensagem foi gravada sem o endereço do arquivo)'),
       );
       return null;
     }

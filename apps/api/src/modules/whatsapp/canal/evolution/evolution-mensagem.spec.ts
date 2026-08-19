@@ -139,6 +139,41 @@ describe('tradução da mensagem', () => {
     expect(gravado?.metadata).toMatchObject({ voice: true });
   });
 
+  it('guarda o endereço do arquivo, e não a miniatura', () => {
+    /*
+     * O endereço criptografado é o que faz o anexo abrir depois — sem
+     * ele, o servidor de mensagens procura a mensagem no banco dele e
+     * responde "Message not found" pra tudo que já estava no aparelho
+     * antes de conectar.
+     *
+     * A miniatura fica de fora: são vários KB de base64 por mensagem,
+     * multiplicados por um histórico inteiro, e a tela nunca a usa.
+     */
+    const traduzida = traduzirMensagem({
+      message: {
+        imageMessage: {
+          mimetype: 'image/jpeg',
+          url: 'https://mmg.whatsapp.net/d/f/abc.enc',
+          mediaKey: 'chave-do-arquivo',
+          fileEncSha256: 'hash',
+          jpegThumbnail: 'A'.repeat(4000),
+          contextInfo: { quotedMessage: { imageMessage: { url: 'outra' } } },
+        },
+      },
+    });
+
+    const endereco = (
+      traduzida?.metadata?.evolutionMedia as Record<string, Record<string, unknown>>
+    ).imageMessage;
+    expect(endereco).toMatchObject({
+      url: 'https://mmg.whatsapp.net/d/f/abc.enc',
+      mediaKey: 'chave-do-arquivo',
+      fileEncSha256: 'hash',
+    });
+    expect(endereco.jpegThumbnail).toBeUndefined();
+    expect(endereco.contextInfo).toBeUndefined();
+  });
+
   it('lê a localização', () => {
     expect(
       traduzirMensagem({
