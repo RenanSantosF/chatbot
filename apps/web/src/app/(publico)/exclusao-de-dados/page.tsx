@@ -50,13 +50,16 @@ export default function ExclusaoDeDados() {
           itens={[
             "Apagar uma conversa ou um cliente específico, pela ficha dele.",
             "Definir por quanto tempo mensagens e anexos são guardados, em Configurações › Armazenamento — o que estiver fora do prazo é apagado sozinho.",
-            "Encerrar a conta inteira. Nesse caso apagamos as conversas, os clientes, os anexos e os usuários vinculados a ela.",
+            "Encerrar a conta inteira, em Configurações › Conta. Vão junto as conversas, os clientes, os anexos guardados e os acessos de todo mundo.",
           ]}
         />
         <p>
-          Para encerrar a conta e apagar tudo, peça pelo canal de contato abaixo a partir do
-          e-mail do dono da conta. Confirmamos a identidade antes de executar, porque um
-          pedido de exclusão feito por quem não deveria é irreversível.
+          Encerrar a conta é coisa do dono, e o painel confirma duas vezes antes: pede a
+          senha e o nome da empresa digitado à mão. Não tem como voltar atrás — não
+          guardamos cópia pra restaurar. Se você não conseguir chegar na tela, peça pelo
+          canal de contato abaixo a partir do e-mail do dono da conta; confirmamos a
+          identidade antes de executar, porque um pedido de exclusão feito por quem não
+          deveria é irreversível.
         </p>
       </Secao>
 
