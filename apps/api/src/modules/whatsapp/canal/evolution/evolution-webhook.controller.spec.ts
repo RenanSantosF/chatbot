@@ -918,6 +918,58 @@ describe('reconexão não derruba sessão de pé', () => {
     );
   });
 
+  it('o pareamento abre a janela de importação', async () => {
+    // Quem estava esperando leitura acabou de parear: é aqui, e só aqui,
+    // que o aparelho despeja o que já existia nele.
+    const { controller, prisma, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockResolvedValue({
+      id: 'config-1',
+      tenantId: 'tenant-1',
+      instance: 'inteliwa-1',
+      webhookSecret: SEGREDO,
+      lastSeenAt: null,
+      estado: 'AGUARDANDO_QRCODE',
+    });
+
+    await controller.receber(SEGREDO, req, conexao('open'));
+
+    expect(prisma.client.evolutionSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          estado: 'CONECTADO',
+          historicoEstado: 'IMPORTANDO',
+          historicoMensagens: 0,
+        }),
+      }),
+    );
+  });
+
+  it('o socket voltando NÃO reabre a importação', async () => {
+    /*
+     * `open` chega toda vez que o socket sobe — oscilação de rede,
+     * reinício do servidor, várias vezes por dia. Reabrindo a janela em
+     * todos eles, o painel voltava a dizer "trazendo as conversas", com o
+     * contador zerado, numa sessão que já tinha trazido tudo — e ficava
+     * assim os dez minutos da paciência, sem nenhum lote pra chegar.
+     */
+    const { controller, prisma, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockResolvedValue({
+      id: 'config-1',
+      tenantId: 'tenant-1',
+      instance: 'inteliwa-1',
+      webhookSecret: SEGREDO,
+      lastSeenAt: new Date('2026-08-17T04:00:00Z'),
+      estado: 'CONECTADO',
+    });
+
+    await controller.receber(SEGREDO, req, conexao('open'));
+
+    const escrito = prisma.client.evolutionSettings.update.mock.calls[0][0].data;
+    expect(escrito).toMatchObject({ estado: 'CONECTADO' });
+    expect(escrito).not.toHaveProperty('historicoEstado');
+    expect(escrito).not.toHaveProperty('historicoMensagens');
+  });
+
   it('a queda de verdade continua chegando', async () => {
     // O guarda vale só pro `connecting`. Se a sessão cair mesmo, o
     // `close` chega e o aviso tem que aparecer — senão o defeito vira o

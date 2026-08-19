@@ -212,12 +212,27 @@ export class WhatsappMediaService {
     // esconderia o balão e deixaria o arquivo acessível por quem tivesse
     // guardado o endereço — apagar pela metade não é apagar.
     const dona = await this.mensagemDaMidia(mediaId);
-    if (dona?.deletedAt) {
+
+    /*
+     * O anexo é de uma mensagem DESTA empresa, ou não é servido.
+     *
+     * A busca já é isolada por empresa, então "não achei" aqui quer dizer
+     * uma de duas coisas: o identificador não existe, ou existe no painel
+     * de outra empresa. Sem esta conferência, o segundo caso seguia adiante
+     * e ia pedir o arquivo ao provedor com a credencial de quem pediu —
+     * dava errado por sorte (o provedor não acha mensagem de outra sessão),
+     * e "por sorte" não é controle de acesso.
+     */
+    if (!dona) {
+      throw new NotFoundException('Anexo não encontrado.');
+    }
+
+    if (dona.deletedAt) {
       throw new NotFoundException('Esta mensagem foi apagada.');
     }
 
     if (this.storage.ligado) {
-      const metadata = (dona?.metadata ?? {}) as Record<string, unknown>;
+      const metadata = (dona.metadata ?? {}) as Record<string, unknown>;
 
       if (typeof metadata.storageKey === 'string') {
         const guardado = await this.storage.buscar(metadata.storageKey);

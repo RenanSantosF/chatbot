@@ -2561,7 +2561,23 @@ export class ConversationsService {
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
-      data: { status: 'RESOLVED' },
+      data: {
+        status: 'RESOLVED',
+        /*
+         * O relógio de espera para junto.
+         *
+         * Ele mede há quanto tempo o cliente aguarda resposta, e uma
+         * conversa encerrada não aguarda mais nada. Ficando ligado, a
+         * conversa resolvida continuava contando como "esperando" no
+         * contador da barra, aparecia com o selo de espera na lista e —
+         * na ordenação por fila — subia pro topo, na frente de quem
+         * realmente estava sem resposta.
+         *
+         * O encerramento pela IA já fazia isto (ver ai-tools); o botão de
+         * quem atende, não.
+         */
+        waitingSince: null,
+      },
       include: conversationInclude,
     });
 

@@ -125,6 +125,61 @@ describe('a IA disse que encerrou', () => {
   });
 });
 
+describe('o botão Resolver, de quem atende', () => {
+  /**
+   * O mesmo relógio, no caminho manual.
+   *
+   * A IA parava o relógio da fila ao encerrar; o botão do painel não. A
+   * conversa acabava e continuava contando como "esperando resposta": no
+   * contador da barra, com o selo de espera na lista, e — na ordenação por
+   * fila — na frente de quem realmente estava sem resposta.
+   */
+  function montarResolver() {
+    const atualizacoes: Record<string, unknown>[] = [];
+    const prisma = {
+      tenantId: 'tenant-teste',
+      db: {
+        conversation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'conversa-1' }),
+          update: jest.fn().mockImplementation((args: { data: unknown }) => {
+            atualizacoes.push(args.data as Record<string, unknown>);
+            return { id: 'conversa-1', messages: [] };
+          }),
+        },
+      },
+    };
+
+    const service = new ConversationsService(
+      prisma as never,
+      {} as never,
+      { emitToTenant: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      // Sem aviso ao cliente: este teste é sobre o estado da conversa.
+      { get: jest.fn().mockResolvedValue({ notifyOnResolve: false, resolveMessage: '' }) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { transcreverSeAutomatico: jest.fn() } as never,
+      { registrar: jest.fn() } as never,
+    );
+
+    return { service, atualizacoes };
+  }
+
+  it('para o relógio da fila junto', async () => {
+    const { service, atualizacoes } = montarResolver();
+
+    await service.resolve('conversa-1');
+
+    expect(atualizacoes[0]).toMatchObject({
+      status: 'RESOLVED',
+      waitingSince: null,
+    });
+  });
+});
+
 describe('quando encerrar seria errado', () => {
   it('conversa que já tem dono não encerra', async () => {
     // Encerrar aqui tiraria da mesa de alguém um caso que essa pessoa

@@ -108,7 +108,10 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
 
       await this.prisma.client.conversation.updateMany({
         where: { id: { in: ids }, tenantId: config.tenantId },
-        data: { status: 'RESOLVED' },
+        // O relógio de espera para junto: conversa encerrada não aguarda
+        // resposta, e deixá-lo ligado a mantinha no contador de "esperando"
+        // e no topo da fila. Mesmo motivo do `resolve` manual.
+        data: { status: 'RESOLVED', waitingSince: null },
       });
 
       // Nota na conversa: quem abrir depois precisa saber que foi o sistema

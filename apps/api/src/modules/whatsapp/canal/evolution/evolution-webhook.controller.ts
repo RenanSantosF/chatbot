@@ -462,6 +462,8 @@ export class EvolutionWebhookController {
       tenantId: string;
       instance: string;
       historicoProgresso?: number;
+      /** Se já estávamos importando — ver a janela de paciência abaixo. */
+      historicoEstado?: 'NUNCA' | 'IMPORTANDO' | 'CONCLUIDO';
     },
   ) {
     const dados = body.data as
@@ -614,7 +616,23 @@ export class EvolutionWebhookController {
               // Terminou é cem, mesmo que o último lote não diga.
               historicoProgresso: 100,
             }
-          : { historicoEstado: 'IMPORTANDO' as const }),
+          : {
+              historicoEstado: 'IMPORTANDO' as const,
+              /*
+               * Chegou lote sem a janela estar aberta: abre agora.
+               *
+               * A janela normalmente nasce no pareamento (ver `conexao`),
+               * que é onde dá pra saber que ela começou. Mas o aparelho
+               * pode mandar histórico fora desse momento, e aí o
+               * `historicoIniciadoEm` guardado é de horas atrás — a
+               * paciência de dez minutos já venceu, e o painel diria
+               * "importação concluída" com os lotes entrando na frente de
+               * quem está olhando.
+               */
+              ...(config.historicoEstado === 'IMPORTANDO'
+                ? {}
+                : { historicoIniciadoEm: new Date(), historicoConcluidoEm: null }),
+            }),
       },
       select: {
         historicoMensagens: true,
@@ -693,6 +711,8 @@ export class EvolutionWebhookController {
        * apoiar a decisão nele seria apoiá-la em algo sempre nulo.
        */
       lastSeenAt: Date | null;
+      /** Onde a sessão estava antes deste evento — ver `pareamentoNovo`. */
+      estado: string;
     },
   ) {
     const dados = body.data as { state?: string; statusReason?: number } | undefined;
@@ -732,6 +752,12 @@ export class EvolutionWebhookController {
      * sessão realmente caída precisa aparecer.
      */
     const reinicioDoProtocolo = dados?.statusReason === 515;
+
+    // Quem estava esperando leitura acabou de parear; quem nunca esteve de
+    // pé, idem. O resto é o socket voltando. Lido ANTES do update, que é o
+    // que apaga o estado anterior.
+    const pareamentoNovo =
+      config.estado === 'AGUARDANDO_QRCODE' || !config.lastSeenAt;
 
     const estado =
       bruto === 'open'
@@ -774,17 +800,37 @@ export class EvolutionWebhookController {
               pairingCode: null,
               lastError: null,
               /*
-               * Parear abre uma janela de importação.
+               * Parear abre uma janela de importação — PAREAR, e não
+               * qualquer `open`.
                *
                * A marca é feita aqui e não quando o primeiro lote chega
                * porque é aqui que dá pra saber que ela COMEÇOU. Se o
                * aparelho não mandar nada, `historicoIniciadoEm` é o que
                * permite desistir de esperar — ver `sincronizando()`.
+               *
+               * Mas `open` chega toda vez que o socket sobe: depois de uma
+               * oscilação de rede, depois de um reinício do servidor de
+               * mensagens, várias vezes por dia. Reabrindo a janela em
+               * todos eles, o painel voltava a dizer "trazendo as
+               * conversas" — com o contador zerado — numa sessão que já
+               * tinha trazido tudo, e ficava assim os dez minutos da
+               * paciência, sem nenhum lote pra chegar: o aparelho só
+               * despeja o histórico num pareamento NOVO.
+               *
+               * Pareamento novo é o que vinha de uma sessão esperando
+               * leitura, ou de uma que nunca esteve de pé. Reconexão é
+               * todo o resto — e se mesmo assim vier lote, `historico()`
+               * abre a janela ao gravá-lo, que é quando ela é verdade.
                */
-              historicoEstado: 'IMPORTANDO' as const,
-              historicoMensagens: 0,
-              historicoIniciadoEm: new Date(),
-              historicoConcluidoEm: null,
+              ...(pareamentoNovo
+                ? {
+                    historicoEstado: 'IMPORTANDO' as const,
+                    historicoMensagens: 0,
+                    historicoProgresso: 0,
+                    historicoIniciadoEm: new Date(),
+                    historicoConcluidoEm: null,
+                  }
+                : {}),
             }
           : {}),
         ...(estado === 'DESCONECTADO' ? { lastError } : {}),
