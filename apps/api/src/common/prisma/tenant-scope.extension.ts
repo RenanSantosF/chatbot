@@ -19,6 +19,18 @@ const TENANT_SCOPED_MODELS = new Set([
   'Queue',
   'QueueMember',
   'WhatsAppSettings',
+  /*
+   * A conexão por QR code é DA EMPRESA, e faltar aqui não era detalhe.
+   *
+   * Todo acesso a esta tabela passa por `findFirst()` sem `where` — o
+   * serviço confia no isolamento desta lista pra achar "a sessão desta
+   * empresa". Fora dela, o `findFirst` devolvia a PRIMEIRA linha da
+   * plataforma inteira: a segunda empresa a conectar reescrevia a sessão
+   * da primeira (mesmo segredo de webhook, nome de sessão trocado), o
+   * painel de uma mostrava o estado da outra, e as mensagens de saída
+   * iam pelo WhatsApp de quem não era.
+   */
+  'EvolutionSettings',
   'InboxSettings',
   'RoutingRule',
   'RolePermission',
@@ -27,6 +39,12 @@ const TENANT_SCOPED_MODELS = new Set([
   'BillingAccount',
   'CustomerNote',
   'AuditLog',
+  // Mesma história das configurações da Evolution, com sintoma mais
+  // visível: sem isolamento, a lista de etiquetas e a de respostas
+  // rápidas mostravam as de todas as empresas juntas.
+  'Tag',
+  'ConversationTag',
+  'QuickReply',
   // KnowledgeChunk não entra aqui: seu campo de embedding é Unsupported,
   // então toda leitura/escrita dele já é SQL raw (ver KnowledgeService),
   // que não passa pela extensão de query do Prisma de jeito nenhum — o

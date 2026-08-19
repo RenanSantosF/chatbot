@@ -138,7 +138,20 @@ export function motivoDaEvolution(corpo: string, status: number): string {
     };
 
     const bruto = json.response?.message ?? json.message ?? json.error;
-    const texto = Array.isArray(bruto) ? bruto.join('; ') : bruto;
+    /*
+     * A lista de erros de validação vem com OBJETOS dentro.
+     *
+     * `join` chama `String()` em cada item, e `String({...})` é
+     * "[object Object]" — que foi exatamente o que apareceu no log no
+     * lugar do motivo de uma sessão não ter sido apagada. Um erro
+     * ilegível custa mais que um erro feio: ele manda quem está
+     * investigando procurar no lugar errado.
+     */
+    const texto = Array.isArray(bruto)
+      ? bruto
+          .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
+          .join('; ')
+      : bruto;
     if (typeof texto === 'string' && texto.trim()) return texto.trim();
   } catch {
     // Corpo que não é JSON cai no genérico abaixo.

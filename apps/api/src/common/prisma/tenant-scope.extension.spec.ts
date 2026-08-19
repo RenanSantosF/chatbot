@@ -148,6 +148,30 @@ describe('escrita', () => {
   });
 });
 
+describe('os modelos que faltavam', () => {
+  /*
+   * Um por defeito relatado, e não por completude.
+   *
+   * `EvolutionSettings` é o caro: todo acesso a ela é `findFirst()` sem
+   * `where`, confiando nesta lista pra achar "a sessão desta empresa".
+   * Fora dela, a segunda empresa a conectar reescrevia a sessão da
+   * primeira — o painel de uma mostrando o estado da outra, e a mensagem
+   * de saída indo pelo WhatsApp de quem não era.
+   */
+  it('a conexão por QR code é de uma empresa só', async () => {
+    const args = await argumentoFinal('EvolutionSettings', 'findFirst', {});
+    expect(args.where).toEqual({ tenantId: 'tenant-a' });
+  });
+
+  it.each(['Tag', 'ConversationTag', 'QuickReply'])(
+    '%s não vaza pra lista da empresa vizinha',
+    async (model) => {
+      const args = await argumentoFinal(model, 'findMany', {});
+      expect(args.where).toEqual({ tenantId: 'tenant-a' });
+    },
+  );
+});
+
 describe('modelos fora do isolamento', () => {
   it('Tenant não é filtrado por tenantId — ele é o tenant', async () => {
     const args = await argumentoFinal('Tenant', 'findMany', {});

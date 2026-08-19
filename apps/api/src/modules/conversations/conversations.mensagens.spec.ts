@@ -603,6 +603,63 @@ describe('entrega repetida do webhook', () => {
     expect(respondeu).not.toHaveBeenCalled();
   });
 
+  it('as duas entregas correndo juntas: quem perde não estoura', async () => {
+    /*
+     * A conferência de "já tenho?" é ler e depois escrever. Quando a
+     * mesma mensagem chega duas vezes no mesmo instante, as duas leem
+     * que não tem e a segunda a gravar esbarra no índice único do banco
+     * (`P2002`).
+     *
+     * Devolver erro aqui seria o pior desfecho: a Evolution reenvia o
+     * que não recebeu 2xx, e reenviar é como a duplicação começa.
+     */
+    const { service, prisma } = montar({ mensagemJaGravada: null });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+      },
+      aiEngine: {
+        generateReply: jest.fn().mockResolvedValue({ tipo: 'semPergunta' }),
+      },
+    });
+    prisma.db.message.create.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+
+    const resultado = await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'Oi',
+      externalId: 'wamid.CORRIDA',
+    });
+
+    expect(resultado.message).toBeNull();
+  });
+
+  it('erro que não é duplicidade continua subindo', async () => {
+    // Engolir qualquer erro aqui esconderia uma falha de gravação de
+    // verdade — a mensagem sumiria sem ninguém saber.
+    const { service, prisma } = montar({ mensagemJaGravada: null });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+      },
+      aiEngine: {
+        generateReply: jest.fn().mockResolvedValue({ tipo: 'semPergunta' }),
+      },
+    });
+    prisma.db.message.create.mockRejectedValue(new Error('banco fora do ar'));
+
+    await expect(
+      service.receiveInbound({
+        customerPhone: '5527999998888',
+        customerName: 'Ana',
+        content: 'Oi',
+        externalId: 'wamid.QUALQUER',
+      }),
+    ).rejects.toThrow('banco fora do ar');
+  });
+
   it('mensagem sem id externo (simulador) segue o caminho normal', async () => {
     // O simulador de cliente não tem wamid; barrar por ausência de id
     // quebraria o teste que o dono usa pra experimentar a IA.

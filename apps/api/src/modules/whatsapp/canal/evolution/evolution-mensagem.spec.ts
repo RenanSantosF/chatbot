@@ -258,6 +258,17 @@ describe('motivo da recusa', () => {
     ).toBe('number is required');
   });
 
+  it('a lista de objetos não vira "[object Object]"', () => {
+    // Foi o que apareceu no log no lugar do motivo de uma sessão não ter
+    // sido apagada — e mandou quem investigava procurar no lugar errado.
+    const motivo = motivoDaEvolution(
+      '{"response":{"message":[{"instance":"não pode ser apagada"}]}}',
+      400,
+    );
+    expect(motivo).not.toContain('[object Object]');
+    expect(motivo).toContain('não pode ser apagada');
+  });
+
   it('explica o 401 em vez de mostrar o código', () => {
     expect(motivoDaEvolution('não é json', 401)).toContain('chave da API');
   });

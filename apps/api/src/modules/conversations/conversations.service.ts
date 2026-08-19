@@ -146,6 +146,26 @@ const OPEN_STATUSES: ConversationStatus[] = [
   'WAITING_AGENT',
 ];
 
+/**
+ * O banco recusou porque esta mensagem JÁ está gravada.
+ *
+ * `P2002` é a violação de índice único — aqui, sempre o de
+ * `(tenantId, externalId)`. Ele acontece quando duas entregas da mesma
+ * mensagem correm juntas: as duas conferem "já tenho?", as duas leem que
+ * não, e a segunda a gravar esbarra no índice.
+ *
+ * Não é erro de ninguém, e principalmente não é um 500: devolver erro faz
+ * a Evolution reenviar, e reenviar é como o problema começou. Quem chama
+ * trata como o que é — a mesma entrega, de novo.
+ */
+function entregaRepetida(erro: unknown): boolean {
+  return (
+    typeof erro === 'object' &&
+    erro !== null &&
+    (erro as { code?: unknown }).code === 'P2002'
+  );
+}
+
 // Ordem de progressão do ciclo de entrega — usada só pra impedir que um
 // webhook fora de ordem faça o status andar pra trás. FAILED fica no topo
 // porque é terminal: se a Meta disse que falhou, não volta pra "entregue".
@@ -2697,15 +2717,33 @@ export class ConversationsService {
         })
       : null;
 
-    const inbound = await this.persistMessage(conversation.id, {
-      senderType: 'CUSTOMER',
-      content: input.content,
-      messageType: input.messageType,
-      metadata: input.metadata,
-      externalId: input.externalId,
-      replyToId: replyTo?.id,
-      createdAt: input.createdAt,
-    });
+    let inbound: Awaited<ReturnType<ConversationsService['persistMessage']>>;
+    try {
+      inbound = await this.persistMessage(conversation.id, {
+        senderType: 'CUSTOMER',
+        content: input.content,
+        messageType: input.messageType,
+        metadata: input.metadata,
+        externalId: input.externalId,
+        replyToId: replyTo?.id,
+        createdAt: input.createdAt,
+      });
+    } catch (erro) {
+      // A conferência lá em cima perdeu a corrida pra outra entrega da
+      // mesma mensagem — ver `entregaRepetida`. Ela está gravada, a IA já
+      // foi acordada pela outra, e o que falta aqui é só não estourar.
+      if (!entregaRepetida(erro)) throw erro;
+      this.logger.log(
+        `Entrega repetida ignorada no ato de gravar: ${input.externalId}.`,
+      );
+      return {
+        conversation: await this.prisma.db.conversation.findFirst({
+          where: { id: conversation.id },
+          include: conversationInclude,
+        }),
+        message: null,
+      };
+    }
 
     let latestConversation = inbound.conversation;
 
@@ -2944,6 +2982,45 @@ export class ConversationsService {
    *
    * @returns quantas mensagens entraram de fato (ignora as repetidas)
    */
+  /**
+   * Uma conversa só pro histórico inteiro daquele cliente, já encerrada.
+   *
+   * O que veio do celular é assunto do passado. Se o cliente escrever de
+   * novo, o agrupamento (ver `reabrirParaAgrupamento`) reabre esta mesma
+   * conversa com o histórico à vista, que é exatamente o desejado.
+   *
+   * A trava do Postgres existe porque o aparelho manda o histórico em
+   * vários lotes AO MESMO TEMPO, e o mesmo contato aparece em mais de um.
+   * Procurar e depois criar, sem trava, fazia dois lotes não acharem nada
+   * e criarem duas conversas pro mesmo cliente — a pessoa aparecendo duas
+   * vezes na lista, com metade da conversa em cada.
+   *
+   * É por cliente e dura o que dura a transação (duas consultas curtas):
+   * lotes de contatos diferentes seguem entrando em paralelo, como antes.
+   */
+  private async conversaDoHistorico(customerId: string, maisRecente: Date) {
+    return this.prisma.db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${customerId})::bigint)`;
+
+      const existente = await tx.conversation.findFirst({
+        where: { customerId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existente) return existente;
+
+      return tx.conversation.create({
+        data: {
+          tenantId: this.prisma.tenantId,
+          customerId,
+          channel: 'WHATSAPP',
+          status: 'RESOLVED',
+          aiMode: 'HUMAN_ACTIVE',
+          lastMessageAt: maisRecente,
+        },
+      });
+    });
+  }
+
   async importarHistorico(entrada: {
     customerPhone: string;
     customerName?: string;
@@ -2963,32 +3040,12 @@ export class ConversationsService {
       name: entrada.customerName,
     });
 
-    // Uma conversa só pro histórico inteiro daquele cliente, já encerrada:
-    // o que veio do celular é assunto do passado. Se ele escrever de novo, o
-    // agrupamento (ver reabrirParaAgrupamento) reabre esta mesma conversa
-    // com o histórico à vista, que é exatamente o desejado.
-    let conversation = await this.prisma.db.conversation.findFirst({
-      where: { customerId: customer.id },
-      orderBy: { createdAt: 'desc' },
-    });
-
     const maisRecente = entrada.mensagens.reduce(
       (maior, m) => (m.createdAt > maior ? m.createdAt : maior),
       entrada.mensagens[0].createdAt,
     );
 
-    if (!conversation) {
-      conversation = await this.prisma.db.conversation.create({
-        data: {
-          tenantId: this.prisma.tenantId,
-          customerId: customer.id,
-          channel: 'WHATSAPP',
-          status: 'RESOLVED',
-          aiMode: 'HUMAN_ACTIVE',
-          lastMessageAt: maisRecente,
-        },
-      });
-    }
+    const conversation = await this.conversaDoHistorico(customer.id, maisRecente);
 
     // Idempotência em lote: a Meta reenvia pedaços do histórico, e sem isto
     // uma reentrega duplicaria conversas inteiras.
@@ -3006,12 +3063,35 @@ export class ConversationsService {
         )
       : new Set<string>();
 
-    const novas = entrada.mensagens.filter(
-      (m) => !m.externalId || !jaGravadas.has(m.externalId),
-    );
+    /*
+     * O lote também se repete por DENTRO.
+     *
+     * A Evolution manda o histórico em janelas que se sobrepõem, e a
+     * mesma mensagem aparece duas vezes no mesmo `messaging-history.set`.
+     * A conferência acima só sabe o que já estava no banco — as duas
+     * cópias do mesmo lote passavam juntas por ela.
+     */
+    const noLote = new Set<string>();
+    const novas = entrada.mensagens.filter((m) => {
+      if (!m.externalId) return true;
+      if (jaGravadas.has(m.externalId) || noLote.has(m.externalId)) return false;
+      noLote.add(m.externalId);
+      return true;
+    });
     if (novas.length === 0) return 0;
 
-    await this.prisma.db.message.createMany({
+    /*
+     * `skipDuplicates` é a última linha de defesa, e a única que não é uma
+     * corrida.
+     *
+     * Tudo acima é ler e depois escrever: dois lotes chegando no mesmo
+     * segundo leem "não tem" ao mesmo tempo e gravam os dois. Com o
+     * aparelho despejando milhares de mensagens de uma vez, isso não é
+     * caso raro — era o que duplicava a conversa inteira na reconexão.
+     * Aqui quem decide é o índice único do banco.
+     */
+    const gravadas = await this.prisma.db.message.createMany({
+      skipDuplicates: true,
       data: novas.map((m) => ({
         tenantId: this.prisma.tenantId,
         conversationId: conversation.id,
@@ -3037,7 +3117,10 @@ export class ConversationsService {
       },
     });
 
-    return novas.length;
+    // O que o BANCO gravou, e não o que tentamos gravar: é este número que
+    // vira a contagem de "trazidas até agora" na tela, e contar as puladas
+    // fazia o painel anunciar milhares de mensagens que não existiam.
+    return gravadas?.count ?? novas.length;
   }
 
   /**
@@ -3170,17 +3253,24 @@ export class ConversationsService {
       if (jaTemos) return null;
     }
 
-    const gravada = await this.persistMessage(conversation.id, {
-      senderType: 'AGENT',
-      content: input.content,
-      messageType: input.messageType,
-      metadata: input.metadata,
-      externalId: input.externalId,
-      status: 'SENT',
-      // Quem entregou foi o WhatsApp do celular. Reenviar daqui faria o
-      // cliente receber a mesma resposta duas vezes.
-      jaEntregue: true,
-    });
+    let gravada: Awaited<ReturnType<ConversationsService['persistMessage']>>;
+    try {
+      gravada = await this.persistMessage(conversation.id, {
+        senderType: 'AGENT',
+        content: input.content,
+        messageType: input.messageType,
+        metadata: input.metadata,
+        externalId: input.externalId,
+        status: 'SENT',
+        // Quem entregou foi o WhatsApp do celular. Reenviar daqui faria o
+        // cliente receber a mesma resposta duas vezes.
+        jaEntregue: true,
+      });
+    } catch (erro) {
+      // Outra entrega do mesmo eco chegou primeiro — ver `entregaRepetida`.
+      if (!entregaRepetida(erro)) throw erro;
+      return null;
+    }
 
     if (conversation.aiMode === 'AI_ACTIVE') {
       const atualizada = await this.prisma.db.conversation.update({

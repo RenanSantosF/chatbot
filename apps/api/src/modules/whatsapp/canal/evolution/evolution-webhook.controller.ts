@@ -170,17 +170,27 @@ export class EvolutionWebhookController {
     @Req() req: AuthenticatedRequest,
     @Body() body: EventoDaEvolution,
   ) {
-    const config = await this.acharPeloSegredo(secret);
+    const config = await this.acharSessao(secret, body.instance);
     if (!config) {
       throw new ForbiddenException('Segredo inválido.');
     }
 
-    // O nome da sessão vem em todo evento. Conferir contra o que está
-    // gravado pega o caso de um servidor mal configurado apontando duas
-    // sessões pra mesma URL — que criaria mensagem de uma empresa dentro
-    // do painel de outra.
+    /*
+     * O evento é de uma sessão que esta empresa não tem mais.
+     *
+     * Acontece o tempo todo depois de um pareamento novo: o nome da
+     * sessão é sorteado de novo (ver `conectar`), e a sessão velha
+     * continua viva no servidor de mensagens mandando evento pelo mesmo
+     * endereço. Ela não é de ninguém — entregar o que ela manda seria
+     * gravar, na conversa de hoje, o que chegou num pareamento
+     * abandonado.
+     *
+     * Em nível de depuração porque não é problema nosso e acontece às
+     * dezenas: em WARN, ele afogava o log justamente na hora em que
+     * alguém estaria lendo pra entender por que nada chega.
+     */
     if (body.instance && body.instance !== config.instance) {
-      this.logger.warn(
+      this.logger.debug(
         `Evento da sessão ${body.instance} chegou pela URL da sessão ${config.instance}; ignorado.`,
       );
       return { ok: true };
@@ -241,14 +251,41 @@ export class EvolutionWebhookController {
     return { ok: true };
   }
 
-  private async acharPeloSegredo(secret: string) {
+  /**
+   * De qual empresa é esta entrega.
+   *
+   * Duas perguntas, nesta ordem, e a ordem é o conserto: PRIMEIRO quem é
+   * o dono da sessão que o evento diz ser, depois quem é o dono do
+   * segredo.
+   *
+   * Buscar só pelo segredo dava certo enquanto cada empresa tinha o seu.
+   * Não tinham: um defeito de isolamento (ver `TENANT_SCOPED_MODELS`)
+   * fez empresas diferentes compartilharem a mesma linha de configuração,
+   * e com ela o mesmo segredo. A busca então devolvia uma delas — a que o
+   * banco quisesse — e todo evento das outras era descartado com a
+   * mensagem de "sessão diferente". Do lado de fora: conecta, diz
+   * conectado, e nenhuma conversa aparece.
+   *
+   * O segredo continua sendo quem autentica. Achar a linha pelo nome da
+   * sessão não afrouxa nada: se o segredo daquela linha não for o que
+   * veio na URL, a entrega é recusada do mesmo jeito — e é o que impede
+   * que quem tenha o segredo de uma empresa entregue evento em nome de
+   * outra.
+   */
+  private async acharSessao(secret: string, instance?: string) {
     // Só busca no banco depois de conferir o formato: sem isto, qualquer
     // string vira uma consulta, e o endereço do webhook é público.
     if (!/^[0-9a-f]{48}$/.test(secret)) return null;
 
-    const config = await this.prisma.client.evolutionSettings.findFirst({
-      where: { webhookSecret: secret },
-    });
+    const config =
+      (instance
+        ? await this.prisma.client.evolutionSettings.findFirst({
+            where: { instance },
+          })
+        : null) ??
+      (await this.prisma.client.evolutionSettings.findFirst({
+        where: { webhookSecret: secret },
+      }));
     if (!config) return null;
 
     // A consulta acima já é por igualdade exata, mas a comparação em tempo

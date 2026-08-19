@@ -325,7 +325,12 @@ model EvolutionSettings {
   /// lugar, quem descobrisse o endereço poderia inventar mensagem de
   /// cliente no painel de outra empresa. O segredo vai no caminho da URL e
   /// é conferido em tempo constante.
-  webhookSecret String
+  ///
+  /// Único na plataforma: é por ele que a entrega é autenticada, e duas
+  /// linhas com o mesmo segredo faziam a busca devolver uma empresa
+  /// qualquer das duas — foi assim que a mensagem de uma apareceu (e
+  /// sumiu) no painel da outra.
+  webhookSecret String @unique
 
   estado         EvolutionEstado @default(DESCONECTADO)
   /// O último QR code gerado, em data URI. Vale poucos segundos.
@@ -767,7 +772,22 @@ model Message {
 
   @@index([tenantId])
   @@index([conversationId, createdAt])
-  @@index([externalId])
+  /// A mesma mensagem do WhatsApp não entra duas vezes — regra do BANCO,
+  /// e não mais só uma conferência antes de gravar.
+  ///
+  /// A conferência continua lá (ela evita o trabalho), mas ela é ler e
+  /// depois escrever: dois lotes do histórico chegando no mesmo segundo
+  /// liam "não tem" ao mesmo tempo e gravavam os dois. Com o aparelho
+  /// despejando milhares de mensagens em lotes que se sobrepõem, isso não
+  /// é caso raro — é o que aconteceu na reconexão, com a conversa inteira
+  /// aparecendo em dobro.
+  ///
+  /// Composto com o tenant porque o id externo só é único dentro da
+  /// empresa (duas empresas podem falar com o mesmo cliente), e é assim
+  /// que toda busca chega até aqui — a extensão de isolamento já fixa o
+  /// tenant. Substitui o índice que existia só por `externalId`: este
+  /// serve às mesmas buscas.
+  @@unique([tenantId, externalId])
   // Composto e nesta ordem: a busca sempre chega com o tenant já fixado
   // pela extensão de isolamento, então o filtro mais seletivo vem primeiro.
   @@index([tenantId, mediaId])

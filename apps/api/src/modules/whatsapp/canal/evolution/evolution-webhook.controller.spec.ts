@@ -113,6 +113,69 @@ describe('porta de entrada', () => {
 
     expect(req.user).toMatchObject({ tenantId: 'tenant-1' });
   });
+
+  it('entrega na empresa DONA DA SESSÃO quando duas dividem o segredo', async () => {
+    /*
+     * O defeito de isolamento (ver TENANT_SCOPED_MODELS) fez empresas
+     * diferentes compartilharem a mesma linha de configuração, e com ela
+     * o mesmo segredo. Buscando só pelo segredo, o banco devolvia uma
+     * delas — a que quisesse — e todo evento das outras era descartado
+     * como "sessão diferente". Do lado de fora: conecta, diz conectado, e
+     * nenhuma conversa aparece.
+     */
+    const { controller, prisma, conversations, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockImplementation(
+      ({ where }: { where: { instance?: string; webhookSecret?: string } }) =>
+        Promise.resolve(
+          where.instance === 'inteliwa-2'
+            ? {
+                id: 'config-2',
+                tenantId: 'tenant-2',
+                instance: 'inteliwa-2',
+                webhookSecret: SEGREDO,
+                lastSeenAt: null,
+                estado: 'CONECTADO',
+              }
+            : where.instance
+              ? null
+              : {
+                  id: 'config-1',
+                  tenantId: 'tenant-1',
+                  instance: 'inteliwa-1',
+                  webhookSecret: SEGREDO,
+                  lastSeenAt: null,
+                  estado: 'CONECTADO',
+                },
+        ),
+    );
+
+    await controller.receber(SEGREDO, req, {
+      ...mensagem(),
+      instance: 'inteliwa-2',
+    });
+
+    expect(req.user).toMatchObject({ tenantId: 'tenant-2' });
+    expect(conversations.receiveInbound).toHaveBeenCalled();
+  });
+
+  it('recusa quando o segredo não é o da sessão que o evento diz ser', async () => {
+    // Achar a linha pelo nome da sessão não pode afrouxar a autenticação:
+    // quem tem o segredo de uma empresa não entrega evento em nome de
+    // outra.
+    const { controller, prisma, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockResolvedValue({
+      id: 'config-2',
+      tenantId: 'tenant-2',
+      instance: 'inteliwa-2',
+      webhookSecret: 'c'.repeat(48),
+      lastSeenAt: null,
+      estado: 'CONECTADO',
+    });
+
+    await expect(
+      controller.receber(SEGREDO, req, { ...mensagem(), instance: 'inteliwa-2' }),
+    ).rejects.toThrow(ForbiddenException);
+  });
 });
 
 describe('mensagem que chega', () => {
