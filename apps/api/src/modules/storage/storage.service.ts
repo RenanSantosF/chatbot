@@ -147,6 +147,37 @@ export class StorageService {
   }
 
   /**
+   * Apaga uma lista de chaves conhecidas, sem precisar listar o bucket.
+   *
+   * É o caminho principal ao encerrar uma conta, e não o varredor de
+   * prefixo abaixo: `ListObjectsV2` exige a permissão `s3:ListBucket` na
+   * política de IAM, e uma chave de acesso criada só pra guardar e servir
+   * anexo costuma NÃO tê-la — foi o que aconteceu na primeira tentativa
+   * real ("not authorized to perform: s3:ListBucket"). As chaves que
+   * importam já estão gravadas com as mensagens; daqui só é preciso
+   * apagar, que é a permissão que essa mesma chave de acesso já usa.
+   *
+   * Em lotes de mil, que é o teto do `DeleteObjects` da API S3.
+   */
+  async apagarChaves(chaves: string[]): Promise<number> {
+    if (!this.cliente || !this.bucket || chaves.length === 0) return 0;
+
+    let apagados = 0;
+    for (let i = 0; i < chaves.length; i += 1000) {
+      const lote = chaves.slice(i, i + 1000);
+      await this.cliente.send(
+        new DeleteObjectsCommand({
+          Bucket: this.bucket,
+          Delete: { Objects: lote.map((Key) => ({ Key })), Quiet: true },
+        }),
+      );
+      apagados += lote.length;
+    }
+
+    return apagados;
+  }
+
+  /**
    * Tudo o que é de uma empresa, de uma vez.
    *
    * É pra isso que o caminho começa pelo tenant (ver `caminho`). Sem esta
@@ -157,6 +188,10 @@ export class StorageService {
    *
    * Em páginas de mil, que é o teto do `DeleteObjects` da API S3, e
    * devolve quantos saíram — o número vai pro log de quem apagou a conta.
+   *
+   * É uma VARREDURA DE SOBRA, não o caminho principal: ela depende de
+   * `s3:ListBucket`, que nem toda chave de acesso tem. Quem apaga o que
+   * importa é `apagarChaves`, com as chaves gravadas junto das mensagens.
    */
   async apagarDaEmpresa(tenantId: string): Promise<number> {
     if (!this.cliente || !this.bucket) return 0;
