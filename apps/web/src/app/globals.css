@@ -454,6 +454,50 @@ button:disabled,
   animation: emoji-entrando 160ms ease-out backwards;
 }
 
+/**
+ * A conversa resolvida saindo da lista.
+ *
+ * Ela vai sumir de qualquer jeito — o recorte de Pendentes não mostra o
+ * que já terminou —, e sumir sem aviso é o que fazia a lista dar um
+ * solavanco: a linha de baixo pulava pro lugar da que saiu e o olho perdia
+ * onde estava. Deslizando pro lado e fechando o espaço, o movimento conta
+ * o que aconteceu: esta conversa acabou e saiu daqui.
+ *
+ * Em dois tempos de propósito. Primeiro ela desliza e some (a parte que se
+ * lê como "saiu"); só depois o espaço fecha, senão as duas coisas
+ * acontecem juntas e o resultado parece a lista inteira tremendo.
+ *
+ * `forwards` porque a linha continua na tela até a lista voltar do
+ * servidor sem ela; sem isso ela reapareceria no último quadro.
+ */
+@keyframes conversa-saindo {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 6rem;
+  }
+  55% {
+    opacity: 0;
+    transform: translateX(55%);
+    max-height: 6rem;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(55%);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+.conversa-saindo {
+  animation: conversa-saindo 340ms ease-in forwards;
+  overflow: hidden;
+  /* A linha que está saindo não recebe mais clique: sem isto dá pra
+     abrir uma conversa que já não está mais ali. */
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer::after {
     animation: none;
@@ -463,6 +507,13 @@ button:disabled,
   .reacoes-abrindo,
   .emoji-entrando,
   ::view-transition-group(*) {
+    animation: none;
+  }
+
+  /* Sem movimento, mas a linha ainda precisa sair da tela — senão ela
+     fica visível até a lista voltar do servidor. */
+  .conversa-saindo {
+    opacity: 0;
     animation: none;
   }
 

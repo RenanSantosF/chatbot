@@ -37,6 +37,9 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
     WhatsappSenderService,
     WhatsappMediaService,
     EstadoDoCanalService,
+    // Apagar a conta precisa derrubar a sessão do WhatsApp antes, senão
+    // ela fica órfã no servidor de mensagens (ver AccountService).
+    EvolutionService,
   ],
 })
 export class WhatsappModule {}

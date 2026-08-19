@@ -1,6 +1,8 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -142,5 +144,55 @@ export class StorageService {
     await this.cliente.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: chave }),
     );
+  }
+
+  /**
+   * Tudo o que é de uma empresa, de uma vez.
+   *
+   * É pra isso que o caminho começa pelo tenant (ver `caminho`). Sem esta
+   * varredura, apagar a conta apagaria as linhas do banco e deixaria os
+   * arquivos no bucket pra sempre: ninguém mais saberia que existem, a
+   * conta segue sendo paga, e são documentos de cliente de uma empresa
+   * que pediu pra sumir.
+   *
+   * Em páginas de mil, que é o teto do `DeleteObjects` da API S3, e
+   * devolve quantos saíram — o número vai pro log de quem apagou a conta.
+   */
+  async apagarDaEmpresa(tenantId: string): Promise<number> {
+    if (!this.cliente || !this.bucket) return 0;
+
+    let apagados = 0;
+    let continuacao: string | undefined;
+
+    do {
+      const pagina = await this.cliente.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: `${tenantId}/`,
+          ContinuationToken: continuacao,
+        }),
+      );
+
+      const chaves = (pagina.Contents ?? [])
+        .map((objeto) => objeto.Key)
+        .filter((chave): chave is string => Boolean(chave));
+
+      if (chaves.length > 0) {
+        await this.cliente.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: chaves.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        apagados += chaves.length;
+      }
+
+      // `IsTruncated` diz que ficou coisa pra trás; sem seguir o token, um
+      // bucket grande ficaria com tudo depois do milésimo arquivo.
+      continuacao = pagina.IsTruncated ? pagina.NextContinuationToken : undefined;
+    } while (continuacao);
+
+    this.logger.log(`Anexos da empresa ${tenantId} apagados: ${apagados}.`);
+    return apagados;
   }
 }

@@ -8,6 +8,7 @@ import {
   MessageCircle,
   Route,
   ShieldCheck,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 import type { PermissionKey } from "@/lib/use-permissions";
@@ -87,6 +88,14 @@ export const SETTINGS_SECTIONS = [
     label: "Armazenamento",
     icon: HardDrive,
     roles: ["OWNER", "ADMIN"],
+  },
+  // Por último, e só pro dono: é a única tela daqui que não configura
+  // nada — ela encerra a empresa e leva o histórico de todo mundo junto.
+  {
+    href: "/dashboard/settings/account",
+    label: "Conta",
+    icon: TriangleAlert,
+    roles: ["OWNER"],
   },
 ] as const satisfies readonly {
   href: string;

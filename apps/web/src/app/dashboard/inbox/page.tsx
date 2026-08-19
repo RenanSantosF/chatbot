@@ -94,6 +94,20 @@ function buildQuery(
   return query ? `${caminho}?${query}` : caminho;
 }
 
+/**
+ * O recorte atual mostra conversa já resolvida?
+ *
+ * É o que decide se resolver uma conversa a tira da lista — e, portanto,
+ * se vale animá-la saindo. Estado escolhido à mão ganha do grupo porque é
+ * assim que a barra de filtros funciona: escolher um zera o outro.
+ */
+function mostraResolvidas(filtros: InboxFilters): boolean {
+  if (filtros.status !== "ALL") {
+    return filtros.status === "RESOLVED" || filtros.status === "CLOSED";
+  }
+  return filtros.grupo === "ALL" || filtros.grupo === "DONE";
+}
+
 export default function InboxPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -101,6 +115,13 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  /**
+   * A conversa resolvida que está deslizando pra fora da lista.
+   *
+   * Existe só entre o "resolvido" do servidor e a lista voltar sem ela —
+   * ver `handleResolve` e a animação em globals.css.
+   */
+  const [saindoDaLista, setSaindoDaLista] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("c"));
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [messagesCursor, setMessagesCursor] = useState<string | null>(null);
@@ -759,6 +780,41 @@ export default function InboxPage() {
   }
 
   /**
+   * Resolver, com a conversa saindo da lista à vista.
+   *
+   * A animação só existe quando ela REALMENTE vai sair — em "Resolvidas",
+   * ou sem filtro de estado nenhum, a conversa continua ali e deslizá-la
+   * pra fora seria mentir sobre o que aconteceu.
+   *
+   * A ordem importa: primeiro a chamada, e só depois o movimento. Animar
+   * antes deixaria a linha sair da tela pra reaparecer quando a rede
+   * falhasse — e o erro apareceria num canto com a lista já mexida.
+   */
+  async function handleResolve() {
+    if (!selectedId) return;
+    const id = selectedId;
+    try {
+      await apiFetch(`/conversations/${id}/resolve`, { method: "POST" });
+      await loadDetail(id).catch(() => {});
+
+      if (mostraResolvidas(filters)) {
+        await loadConversations(filters).catch(() => {});
+      } else {
+        setSaindoDaLista(id);
+        // O mesmo tempo da animação em globals.css. Recarregar antes faria
+        // a linha sumir no meio do movimento; depois, ela já saiu.
+        await new Promise((pronto) => setTimeout(pronto, 340));
+        await loadConversations(filters).catch(() => {});
+        setSaindoDaLista(null);
+      }
+      loadCounts();
+    } catch {
+      setSaindoDaLista(null);
+      toast.error("Não deu pra resolver essa conversa.");
+    }
+  }
+
+  /**
    * Apaga do painel. A confirmação (com o aviso de que a mensagem continua
    * no celular do cliente) já aconteceu no ChatPanel — aqui é só a chamada.
    */
@@ -852,6 +908,7 @@ export default function InboxPage() {
           onLoadMore={loadMore}
           onSelect={abrirConversa}
           relogio={relogio}
+          saindo={saindoDaLista}
         />
       </div>
       {/* Remontar ao trocar de conversa zera rascunho e busca — que é o
@@ -874,7 +931,7 @@ export default function InboxPage() {
         onSend={handleSend}
         onSendFile={handleSendFile}
         onRefresh={refreshCurrent}
-        onResolve={() => handleAction("resolve", "Não deu pra resolver essa conversa.")}
+        onResolve={handleResolve}
         onReopen={() => handleAction("reopen", "Não deu pra reabrir essa conversa.")}
         onChangePriority={handlePriority}
       />

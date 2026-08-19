@@ -47,8 +47,17 @@ export function ConversationList({
   onLoadMore,
   onSelect,
   relogio,
+  saindo,
 }: {
   conversations: ConversationSummary[];
+  /**
+   * A conversa que acabou de ser resolvida e está saindo daqui.
+   *
+   * Só vem preenchida quando o recorte atual REALMENTE não mostra o que
+   * já terminou — em "Resolvidas", ou sem filtro de estado, a conversa
+   * continua na lista e animá-la seria mentir sobre o que aconteceu.
+   */
+  saindo?: string | null;
   /**
    * Expediente e fuso da empresa, pro selo de espera saber quando calar.
    *
@@ -144,10 +153,19 @@ export function ConversationList({
             className={cn(
               "mx-1.5 flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors duration-150",
               selected ? "bg-accent" : "hover:bg-accent/60",
+              // Resolvida: desliza pro lado e fecha o espaço (globals.css).
+              saindo === conversation.id && "conversa-saindo",
             )}
             // A ordem muda quando chega mensagem. Sem animação a lista
             // "pisca" e a pessoa perde de vista onde estava.
-            style={{ viewTransitionName: `conversa-${conversation.id}` }}
+            style={
+              // A transição de ordem e a saída são dois movimentos no mesmo
+              // elemento; deixar as duas ligadas fazia a linha saltar pro
+              // lugar novo no meio do deslize.
+              saindo === conversation.id
+                ? undefined
+                : { viewTransitionName: `conversa-${conversation.id}` }
+            }
           >
             <Avatar className="size-11 shrink-0">
               <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
