@@ -40,7 +40,10 @@ function montar() {
 
   const realtime = { emitToTenant: jest.fn() };
   const media = { arquivar: jest.fn().mockResolvedValue(undefined) };
-  const customers = { upsertFromAddressBook: jest.fn().mockResolvedValue({}) };
+  const customers = {
+    upsertFromAddressBook: jest.fn().mockResolvedValue({}),
+    importarAgenda: jest.fn().mockResolvedValue({ recebidos: 1, salvos: 1 }),
+  };
 
   const controller = new EvolutionWebhookController(
     prisma as unknown as PrismaService,
@@ -1084,8 +1087,38 @@ describe('nome do cliente', () => {
     const chamada = conversations.importarHistorico.mock.calls[0][0];
     expect(chamada.customerName).toBe('Richard');
   });
+});
 
-  it('salva a agenda que vem junto do histórico', async () => {
+/**
+ * A agenda chega por dois caminhos, e os dois têm que descer no mesmo
+ * lugar.
+ *
+ * O QUE fazer com cada contato — qual nome vale, quem vira cliente — é
+ * regra de cliente e mora em CustomersService (ver customers.agenda.spec).
+ * Aqui só se garante o encaminhamento: nenhum dos dois caminhos pode
+ * silenciosamente parar de entregar a agenda, que foi exatamente o
+ * sintoma de quem conectou e não viu contato nenhum.
+ */
+describe('a agenda chega ao painel', () => {
+  it('pelo evento de contatos', async () => {
+    const { controller, customers, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'contacts.upsert',
+      instance: 'inteliwa-1',
+      data: [
+        { remoteJid: '5511999999999@s.whatsapp.net', pushName: 'Richard' },
+      ] as never,
+    });
+
+    expect(customers.importarAgenda).toHaveBeenCalledWith([
+      { remoteJid: '5511999999999@s.whatsapp.net', pushName: 'Richard' },
+    ]);
+  });
+
+  it('e junto do histórico, no mesmo lote das mensagens', async () => {
+    // Descartá-la ali era jogar fora, de graça, a única fonte do nome de
+    // verdade das pessoas.
     const { controller, customers, req } = montar();
 
     await controller.receber(SEGREDO, req, {
@@ -1093,132 +1126,24 @@ describe('nome do cliente', () => {
       instance: 'inteliwa-1',
       data: {
         messages: [],
-        contacts: [
-          { id: '5511999999999@s.whatsapp.net', name: 'Richard Oliveira' },
-        ],
+        contacts: [{ id: '5511999999999@s.whatsapp.net', name: 'Richard' }],
       },
     });
 
-    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith({
-      phone: '5511999999999',
-      name: 'Richard Oliveira',
-      daAgenda: true,
-      criarSeNovo: true,
-    });
+    expect(customers.importarAgenda).toHaveBeenCalledWith([
+      { id: '5511999999999@s.whatsapp.net', name: 'Richard' },
+    ]);
   });
 
-  it('o nome SALVO na agenda ganha do apelido público', async () => {
+  it('lote vazio não vira chamada', async () => {
     const { controller, customers, req } = montar();
 
     await controller.receber(SEGREDO, req, {
       event: 'contacts.upsert',
       instance: 'inteliwa-1',
-      data: [
-        {
-          id: '5511999999999@s.whatsapp.net',
-          name: 'Richard do Mercado',
-          notify: 'Rick 🔥',
-        },
-      ] as never,
+      data: [] as never,
     });
 
-    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Richard do Mercado', daAgenda: true }),
-    );
-  });
-
-  /*
-   * O apelido não é cadastro.
-   *
-   * A lista que a Evolution entrega é tudo que o aparelho conhece — quem
-   * escreveu uma vez, participante de grupo, quem caiu numa transmissão —
-   * e todos eles têm `notify`. Aceitá-lo como prova de agenda enchia a
-   * base de "contatos" que a empresa nunca salvou.
-   */
-  it('sem nome salvo, o apelido melhora quem já é cliente mas não cria ninguém', async () => {
-    const { controller, customers, req } = montar();
-
-    await controller.receber(SEGREDO, req, {
-      event: 'contacts.upsert',
-      instance: 'inteliwa-1',
-      data: [{ id: '5511999999999@s.whatsapp.net', notify: 'Rick' }] as never,
-    });
-
-    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Rick',
-        daAgenda: false,
-        criarSeNovo: false,
-      }),
-    );
-  });
-
-  /*
-   * Empresa verificada fica no meio: o nome comercial identifica de
-   * verdade, mas ela aparece na lista sem nunca ter sido salva. Corrige um
-   * registro existente, não cria um novo.
-   */
-  it('nome comercial verificado corrige, mas também não cria', async () => {
-    const { controller, customers, req } = montar();
-
-    await controller.receber(SEGREDO, req, {
-      event: 'contacts.upsert',
-      instance: 'inteliwa-1',
-      data: [
-        { id: '5511999999999@s.whatsapp.net', verifiedName: 'Padaria Aurora' },
-      ] as never,
-    });
-
-    expect(customers.upsertFromAddressBook).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Padaria Aurora',
-        daAgenda: true,
-        criarSeNovo: false,
-      }),
-    );
-  });
-
-  it('grupo não vira cliente', async () => {
-    const { controller, customers, req } = montar();
-
-    await controller.receber(SEGREDO, req, {
-      event: 'contacts.upsert',
-      instance: 'inteliwa-1',
-      data: [{ id: '120363000000000000@g.us', name: 'Fornecedores' }] as never,
-    });
-
-    expect(customers.upsertFromAddressBook).not.toHaveBeenCalled();
-  });
-
-  it('contato sem nome nenhum é ignorado em vez de virar linha vazia', async () => {
-    const { controller, customers, req } = montar();
-
-    await controller.receber(SEGREDO, req, {
-      event: 'contacts.upsert',
-      instance: 'inteliwa-1',
-      data: [{ id: '5511999999999@s.whatsapp.net' }] as never,
-    });
-
-    expect(customers.upsertFromAddressBook).not.toHaveBeenCalled();
-  });
-
-  it('um contato problemático não derruba a agenda inteira', async () => {
-    const { controller, customers, req } = montar();
-    customers.upsertFromAddressBook
-      .mockRejectedValueOnce(new Error('telefone impossível'))
-      .mockResolvedValueOnce({});
-
-    await expect(
-      controller.receber(SEGREDO, req, {
-        event: 'contacts.upsert',
-        instance: 'inteliwa-1',
-        data: [
-          { id: '5511999999999@s.whatsapp.net', name: 'Um' },
-          { id: '5527888888888@s.whatsapp.net', name: 'Dois' },
-        ] as never,
-      }),
-    ).resolves.toEqual({ ok: true });
-
-    expect(customers.upsertFromAddressBook).toHaveBeenCalledTimes(2);
+    expect(customers.importarAgenda).not.toHaveBeenCalled();
   });
 });

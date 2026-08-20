@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { ParsedContact } from './contact-import';
 
@@ -81,8 +81,36 @@ export function temNomeDeVerdade(
   return !NOMES_QUE_NAO_SAO_NOME.has(simples);
 }
 
+/**
+ * Um contato, do jeito que a Evolution entrega.
+ *
+ * Os quatro nomes querem dizer coisas diferentes no BAILEYS, que é a
+ * biblioteca por baixo: `name` é o que está salvo na agenda do aparelho,
+ * `verifiedName` é o nome comercial verificado, e `notify`/`pushName` são
+ * o apelido que a própria pessoa escolheu.
+ *
+ * A Evolution NÃO repassa essa diferença. O que sai dela é
+ *
+ *     { remoteJid, pushName, profilePicUrl, instanceId }
+ *
+ * com `pushName = contact.name || contact.verifiedName || <o número>` —
+ * os três campos originais viram um só, e o campo que sobra tem o nome do
+ * que menos vale. Os outros continuam declarados porque uma versão
+ * diferente (ou um Baileys direto, um dia) ainda os manda.
+ */
+export interface ContatoDoAparelho {
+  id?: string;
+  remoteJid?: string;
+  name?: string;
+  notify?: string;
+  pushName?: string;
+  verifiedName?: string;
+}
+
 @Injectable()
 export class CustomersService {
+  private readonly logger = new Logger(CustomersService.name);
+
   constructor(private readonly prisma: TenantPrismaService) {}
 
   /**
@@ -220,6 +248,94 @@ export class CustomersService {
     return existing;
   }
 
+  /**
+   * A agenda do aparelho virando o nome que aparece no painel.
+   *
+   * Sem isto, o nome de um cliente era o apelido que ele mesmo escolheu no
+   * WhatsApp — quando escolheu. Quem não pôs nada virava um telefone na
+   * tela, e não havia como achar ninguém pesquisando por nome.
+   *
+   * Vive aqui, e não no webhook, porque tem DOIS chamadores: o evento de
+   * agenda que o aparelho manda ao parear, e a leitura sob demanda ao
+   * conectar (ver `EvolutionService.conectar`) — que é o que conserta quem
+   * já estava pareado quando o critério abaixo ainda deixava tudo de fora.
+   *
+   * Nada aqui lança: uma agenda que não veio é um painel com menos nomes,
+   * não um webhook quebrado.
+   */
+  async importarAgenda(
+    contatos: ContatoDoAparelho[],
+  ): Promise<{ recebidos: number; salvos: number }> {
+    let salvos = 0;
+
+    for (const contato of contatos) {
+      const telefone = telefoneDoContato(contato.id ?? contato.remoteJid ?? '');
+      // Grupo e transmissão não são pessoa.
+      if (!telefone) continue;
+
+      /*
+       * Qual nome vale, e por que o critério teve de mudar.
+       *
+       * A regra anterior era exigir `name` — o campo que, no Baileys, só
+       * existe pra quem está salvo na agenda do aparelho. Ela nasceu de um
+       * defeito real: aceitar o apelido público como prova de cadastro
+       * enchia a lista de "nova conversa" de gente que a empresa nunca
+       * salvou, porque TODO usuário do WhatsApp tem apelido.
+       *
+       * Só que a Evolution não entrega `name`. Ela entrega
+       * `pushName = contact.name || contact.verifiedName || <o número>`, e
+       * nada mais — a agenda e o apelido chegam pelo mesmo campo, com o
+       * nome do apelido. Exigir `name` numa mensagem que nunca o traz não
+       * era rigor: era não importar contato NENHUM, que foi o relato de
+       * quem conectou uma conta nova e viu a agenda vazia.
+       *
+       * O que sobrou de sinal é o fallback dela: sem nome nenhum, o
+       * `pushName` vem sendo o próprio número. Então "tem nome que não é o
+       * número" é o mais perto de "alguém batizou esta pessoa" que dá pra
+       * saber daqui — e é o critério agora.
+       *
+       * O que NÃO mudou é o outro caminho, que é onde o defeito original
+       * de fato acontecia: o `pushName` que vem dentro de uma MENSAGEM
+       * continua não criando contato nenhum (ver `receiveInbound`, em
+       * ConversationsService). Ali o campo é mesmo o apelido escolhido
+       * pela pessoa, sem ambiguidade.
+       */
+      const nome = (
+        contato.name ??
+        contato.verifiedName ??
+        contato.notify ??
+        contato.pushName ??
+        ''
+      ).trim();
+
+      // Sem nome, ou com o número no lugar do nome, não há o que salvar:
+      // gravar "5527999998888" como nome do 5527999998888 é ruído.
+      if (!nome || nome.replace(/\D/g, '') === telefone) continue;
+
+      const daAgenda = Boolean(
+        contato.name?.trim() || contato.verifiedName?.trim(),
+      );
+
+      try {
+        const salvo = await this.upsertFromAddressBook({
+          phone: telefone,
+          name: nome,
+          // Nome de agenda ganha do que estiver gravado — é o que conserta
+          // quem foi batizado de "Você" pela importação do histórico.
+          daAgenda,
+          criarSeNovo: true,
+        });
+        if (salvo) salvos += 1;
+      } catch (erro) {
+        this.logger.warn(
+          `Não deu pra salvar o contato ${telefone}: ${erro instanceof Error ? erro.message : erro}`,
+        );
+      }
+    }
+
+    return { recebidos: contatos.length, salvos };
+  }
+
   async findOrCreateByPhone({ phone, name }: FindOrCreateInput) {
     const existing = await this.prisma.db.customer.findFirst({ where: { phone } });
     if (existing) {
@@ -246,4 +362,17 @@ export class CustomersService {
       throw error;
     }
   }
+}
+
+/**
+ * O telefone dentro do identificador do WhatsApp.
+ *
+ * Grupo (`@g.us`) e transmissão não são pessoa, e devolvem `null` — tratar
+ * um deles como cliente criaria um "contato" com o id do grupo.
+ */
+function telefoneDoContato(jid: string): string | null {
+  const SUFIXO = '@s.whatsapp.net';
+  if (!jid.endsWith(SUFIXO)) return null;
+  const numero = jid.slice(0, -SUFIXO.length).split(':')[0];
+  return /^\d{8,15}$/.test(numero) ? numero : null;
 }

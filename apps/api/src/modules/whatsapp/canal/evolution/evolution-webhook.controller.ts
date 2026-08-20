@@ -16,7 +16,10 @@ import { Public } from '../../../../common/auth/public.decorator';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../../../auth/auth.types';
 import { ConversationsService } from '../../../conversations/conversations.service';
-import { CustomersService } from '../../../customers/customers.service';
+import {
+  CustomersService,
+  type ContatoDoAparelho,
+} from '../../../customers/customers.service';
 import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { WhatsappMediaService } from '../../whatsapp-media.service';
 import { empacotarId, telefoneDoJid } from './evolution-id';
@@ -30,23 +33,6 @@ import {
   type DadosDaMensagem,
   type EventoDaEvolution,
 } from './evolution-mensagem';
-
-/**
- * Um contato da agenda, do jeito que a Evolution entrega.
- *
- * Os quatro nomes existem e querem dizer coisas diferentes: `name` é o
- * que está salvo na agenda do aparelho, `verifiedName` é o nome
- * comercial verificado, e `notify`/`pushName` são o apelido que a própria
- * pessoa escolheu.
- */
-interface ContatoDaEvolution {
-  id?: string;
-  remoteJid?: string;
-  name?: string;
-  notify?: string;
-  pushName?: string;
-  verifiedName?: string;
-}
 
 /** Uma linha do histórico, no formato que `importarHistorico` espera. */
 type MensagemImportada = Parameters<
@@ -92,74 +78,17 @@ export class EvolutionWebhookController {
    * Nada aqui lança: uma agenda que não veio é um painel com menos nomes,
    * não um webhook quebrado.
    */
-  private async salvarContatos(contatos?: ContatoDaEvolution[]) {
+  private async salvarContatos(contatos?: ContatoDoAparelho[]) {
     if (!Array.isArray(contatos) || contatos.length === 0) return;
 
-    let salvos = 0;
-    for (const contato of contatos) {
-      const telefone = telefoneDoJid(contato.id ?? contato.remoteJid ?? '');
-      // Grupo e transmissão não são pessoa; o próprio número da empresa
-      // também não é cliente dela.
-      if (!telefone) continue;
+    const { recebidos, salvos } = await this.customers.importarAgenda(contatos);
 
-      /*
-       * O que separa "está na minha agenda" de "o WhatsApp conhece".
-       *
-       * `name` é o único campo que vem da agenda do APARELHO — é o que a
-       * empresa digitou ao salvar aquela pessoa. Os outros três não
-       * significam isso: `notify` e `pushName` são o apelido que a própria
-       * pessoa escolheu pra si, e TODO usuário do WhatsApp tem um.
-       *
-       * A lista que a Evolution entrega não é a agenda: é tudo que o
-       * aparelho conhece — quem escreveu uma vez, participante de grupo,
-       * quem entrou numa transmissão. Aceitando o apelido como prova de
-       * cadastro, cada um deles virava cliente com nome e cara de contato
-       * salvo, e a lista de "nova conversa" ficava cheia de gente que a
-       * empresa nunca salvou. Era exatamente o sintoma relatado.
-       *
-       * `verifiedName` é o nome comercial verificado, e fica no meio: ele
-       * identifica de verdade, mas uma empresa verificada aparece aqui sem
-       * nunca ter sido salva. Por isso ele CORRIGE um registro existente e
-       * não CRIA um novo.
-       */
-      const naAgenda = Boolean(contato.name?.trim());
-      const verificado = Boolean(contato.verifiedName?.trim());
-
-      const nome = (
-        contato.name ??
-        contato.verifiedName ??
-        contato.notify ??
-        contato.pushName ??
-        ''
-      ).trim();
-      if (!nome) continue;
-
-      try {
-        const salvo = await this.customers.upsertFromAddressBook({
-          phone: telefone,
-          name: nome,
-          // Veio da agenda: ganha do que estiver gravado. É o que
-          // conserta quem foi batizado de "Você" pela importação.
-          daAgenda: naAgenda || verificado,
-          /*
-           * Sem cadastro na agenda, o nome só serve pra melhorar quem JÁ é
-           * cliente — alguém que conversou com a empresa e está gravado
-           * como um telefone sem nome. Criar a partir daqui é o que
-           * inventava contato.
-           */
-          criarSeNovo: naAgenda,
-        });
-        if (salvo) salvos += 1;
-      } catch (erro) {
-        this.logger.warn(
-          `Não deu pra salvar o contato ${telefone}: ${erro instanceof Error ? erro.message : erro}`,
-        );
-      }
-    }
-
-    if (salvos > 0) {
-      this.logger.log(`${salvos} contatos da agenda salvos.`);
-    }
+    // Os dois números, e não só o que entrou: "0 de 312" é uma pista —
+    // chegou agenda e nada serviu. Nenhuma linha no log, que era o que
+    // acontecia antes, não distingue isso de "a agenda nunca chegou".
+    this.logger.log(
+      `Agenda do aparelho: ${salvos} de ${recebidos} contatos salvos.`,
+    );
   }
 
   @Public()
@@ -233,7 +162,7 @@ export class EvolutionWebhookController {
       case 'CONTACTS_SET':
       case 'CONTACTS_UPSERT':
       case 'CONTACTS_UPDATE':
-        await this.salvarContatos(body.data as ContatoDaEvolution[] | undefined);
+        await this.salvarContatos(body.data as ContatoDoAparelho[] | undefined);
         break;
       case 'MESSAGES_SET':
       case 'MESSAGING_HISTORY_SET':
@@ -469,7 +398,7 @@ export class EvolutionWebhookController {
     const dados = body.data as
       | {
           messages?: DadosDaMensagem[];
-          contacts?: ContatoDaEvolution[];
+          contacts?: ContatoDoAparelho[];
           isLatest?: boolean;
           progress?: number;
         }

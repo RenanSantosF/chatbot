@@ -48,13 +48,19 @@ function montar(config: Record<string, unknown> | null = null) {
     decrypt: jest.fn().mockReturnValue('chave-crua'),
   };
 
+  // A agenda é lida ao conectar; nestes testes ela só não pode atrapalhar.
+  const customers = {
+    importarAgenda: jest.fn().mockResolvedValue({ recebidos: 0, salvos: 0 }),
+  };
+
   const service = new EvolutionService(
     prisma as unknown as TenantPrismaService,
     global as unknown as PrismaService,
     encryption as unknown as EncryptionService,
+    customers as never,
   );
 
-  return { service, prisma, global };
+  return { service, prisma, global, customers };
 }
 
 /**

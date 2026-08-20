@@ -518,6 +518,32 @@ export async function definirWebhook(
 }
 
 /**
+ * A agenda que o servidor já tem guardada.
+ *
+ * Existe porque o evento de agenda chega UMA vez, no pareamento: quem já
+ * está conectado não o recebe de novo, e uma empresa que pareou antes de
+ * a importação funcionar ficaria sem os nomes pra sempre — a menos que
+ * desconectasse e lesse o QR code outra vez, o que é caro demais pra pedir.
+ *
+ * O formato do que volta é o mesmo do webhook (`remoteJid`, `pushName`),
+ * então quem consome é a mesma função (ver `importarAgenda`).
+ */
+export function buscarContatos(
+  credenciais: Credenciais,
+): Promise<RespostaDaEvolution<ContatoGuardado[]>> {
+  return chamar(credenciais, `/chat/findContacts/${credenciais.instance}`, {
+    method: 'POST',
+    body: { where: {} },
+  });
+}
+
+export interface ContatoGuardado {
+  id?: string;
+  remoteJid?: string;
+  pushName?: string;
+}
+
+/**
  * Pede ao servidor que o aparelho mande o histórico ao parear.
  *
  * Separado da criação pelo mesmo motivo do webhook: criar acontece UMA

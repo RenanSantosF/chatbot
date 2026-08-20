@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { EncryptionService } from '../../../../common/crypto/encryption.service';
+import { CustomersService } from '../../../customers/customers.service';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../../../common/prisma/tenant-prisma.service';
 import * as evolution from './evolution.client';
@@ -44,6 +45,7 @@ export class EvolutionService {
     private readonly prisma: TenantPrismaService,
     private readonly global: PrismaService,
     private readonly encryption: EncryptionService,
+    private readonly customers: CustomersService,
   ) {}
 
   /**
@@ -291,6 +293,32 @@ export class EvolutionService {
       this.logger.warn(
         `O servidor não aceitou o pedido de histórico completo: ${historico.erro}. ` +
           'A conexão segue; as conversas antigas do aparelho podem não vir.',
+      );
+    }
+
+    /*
+     * A agenda, lida agora em vez de esperada por evento.
+     *
+     * O evento de contatos chega uma vez, no pareamento. Quem já está
+     * conectado não o recebe de novo — então, sem esta leitura, uma
+     * empresa que pareou antes de a importação funcionar ficaria sem os
+     * nomes até desconectar e ler o QR code outra vez. Com ela, apertar
+     * "conectar" basta.
+     *
+     * Falha aqui não derruba nada: o painel funciona mostrando telefone
+     * onde falta nome, que é como ele já vivia.
+     */
+    const agenda = await evolution.buscarContatos(credenciais);
+    if (agenda.ok && Array.isArray(agenda.dados)) {
+      const { recebidos, salvos } = await this.customers.importarAgenda(
+        agenda.dados,
+      );
+      this.logger.log(
+        `Agenda do servidor: ${salvos} de ${recebidos} contatos salvos.`,
+      );
+    } else if (!agenda.ok) {
+      this.logger.warn(
+        `Não deu pra ler a agenda no servidor de mensagens: ${agenda.erro}`,
       );
     }
 

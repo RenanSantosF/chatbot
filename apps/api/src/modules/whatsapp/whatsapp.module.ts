@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CustomersModule } from '../customers/customers.module';
 import { CanalService } from './canal/canal.service';
 import { EvolutionCanal } from './canal/evolution/evolution.canal';
 import { EvolutionController } from './canal/evolution/evolution.controller';
@@ -13,6 +14,8 @@ import { WhatsappSettingsController } from './whatsapp-settings.controller';
 import { WhatsappSettingsService } from './whatsapp-settings.service';
 
 @Module({
+  // A agenda do aparelho vira cliente no painel — ver `importarAgenda`.
+  imports: [CustomersModule],
   controllers: [
     WhatsappSettingsController,
     WhatsappMediaController,
