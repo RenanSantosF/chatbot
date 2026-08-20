@@ -1,0 +1,14 @@
+-- A citação entre mensagens, indexada.
+--
+-- `messages.replyToId` aponta pra outra linha da mesma tabela com
+-- `ON DELETE SET NULL`. O Postgres não cria índice pra chave estrangeira
+-- sozinho, e sem ele CADA mensagem apagada obriga uma varredura completa
+-- da tabela de mensagens pra descobrir quem a citava.
+--
+-- O efeito medido em 60 mil linhas: apagar 2 mil levava 9,2 segundos sem
+-- o índice e 26 milissegundos com ele. Foi o que derrubou o encerramento
+-- de conta por tempo limite (`57014`) e, na tentativa seguinte, o que
+-- segurou trava por tempo bastante pra dar impasse entre transações
+-- (`40P01`). A varredura do prazo de guarda, que também apaga mensagem em
+-- lote, pagava o mesmo preço em silêncio a cada seis horas.
+CREATE INDEX IF NOT EXISTS "messages_replyToId_idx" ON "messages"("replyToId");

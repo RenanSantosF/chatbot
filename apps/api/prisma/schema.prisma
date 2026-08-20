@@ -772,6 +772,21 @@ model Message {
 
   @@index([tenantId])
   @@index([conversationId, createdAt])
+  /// A citação, indexada — e isto NÃO é sobre buscar resposta na tela.
+  ///
+  /// `replyToId` aponta pra outra linha desta mesma tabela com
+  /// `ON DELETE SET NULL`. O Postgres não indexa chave estrangeira
+  /// sozinho, e sem índice cada mensagem apagada obriga uma varredura
+  /// COMPLETA da tabela pra achar quem a citava. Numa tabela de mensagens
+  /// isso é a tabela que mais cresce no sistema, varrida uma vez por
+  /// linha apagada.
+  ///
+  /// Medido em 60 mil linhas: apagar 2 mil levava 9,2 segundos sem o
+  /// índice e 26 milissegundos com ele. Era o que estourava o tempo
+  /// limite do banco ao encerrar uma conta, o que segurava trava tempo
+  /// bastante pra dar impasse entre duas transações — e o que fazia a
+  /// varredura do prazo de guarda arrastar sem ninguém ver.
+  @@index([replyToId])
   /// A mesma mensagem do WhatsApp não entra duas vezes — regra do BANCO,
   /// e não mais só uma conferência antes de gravar.
   ///

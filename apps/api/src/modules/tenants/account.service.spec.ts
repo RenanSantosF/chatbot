@@ -58,6 +58,8 @@ async function montar(extra: { assinatura?: string | null } = {}) {
       // Um lote por tabela e acabou: menos que o tamanho do lote é o sinal
       // de que a tabela esvaziou.
       $executeRawUnsafe: jest.fn().mockResolvedValue(3),
+      // Solta as citações entre mensagens antes dos DELETEs.
+      $executeRaw: jest.fn().mockResolvedValue(1),
       $queryRaw: jest.fn().mockResolvedValue([
         { chave: 'tenant-1/2026/08/a.jpg' },
         { chave: 'tenant-1/2026/08/b.ogg' },
@@ -154,6 +156,48 @@ describe('apagar a conta', () => {
 });
 
 describe('o que o banco não alcança', () => {
+  it('solta as citações antes de apagar as mensagens', async () => {
+    /*
+     * Uma mensagem cita outra da mesma tabela, com `ON DELETE SET NULL`:
+     * apagar uma obriga o banco a atualizar quem a citava. Zerando a
+     * coluna antes, o DELETE não dispara mais nenhuma dessas atualizações
+     * — menos linhas travadas por transação, que é de onde vinha o
+     * impasse.
+     */
+    const { service, global } = await montar();
+
+    await service.excluir('user-1', pedido);
+
+    const sql = String(global.client.$executeRaw.mock.calls[0][0]);
+    expect(sql).toContain('replyToId');
+  });
+
+  it('refaz o lote que o banco matou por impasse', async () => {
+    // Impasse não deixa nada inconsistente: a instrução simplesmente não
+    // aconteceu. Refazer é o tratamento normal — e é o que separa "a
+    // conta não foi apagada" de "um lote demorou um pouco mais".
+    const { service, global } = await montar();
+    global.client.$executeRawUnsafe
+      .mockRejectedValueOnce(
+        new Error("Raw query failed. Code: `40P01`. Message: `deadlock detected`"),
+      )
+      .mockResolvedValue(3);
+
+    await expect(service.excluir('user-1', pedido)).resolves.toEqual({
+      apagada: true,
+    });
+  });
+
+  it('erro de banco que não é impasse sobe na hora', async () => {
+    // Engolir tudo aqui esconderia uma exclusão pela metade.
+    const { service, global } = await montar();
+    global.client.$executeRawUnsafe.mockRejectedValue(new Error('banco fora do ar'));
+
+    await expect(service.excluir('user-1', pedido)).rejects.toThrow(
+      'banco fora do ar',
+    );
+  });
+
   it('apaga as linhas grandes em lotes, e não numa instrução só', async () => {
     /*
      * Um `DELETE` no tenant desce em cascata por vinte e cinco tabelas, e
@@ -220,6 +264,42 @@ describe('o que o banco não alcança', () => {
       apagada: true,
     });
     expect(global.client.tenant.delete).toHaveBeenCalled();
+  });
+
+  it('recusa a segunda exclusão da mesma conta ao mesmo tempo', async () => {
+    /*
+     * Apagar uma conta grande demora, e a tela não mostra progresso: a
+     * pessoa acha que travou, recarrega e aperta de novo. Duas exclusões
+     * apagando as mesmas linhas é exatamente o par que o banco mata por
+     * impasse.
+     */
+    const { service, global } = await montar();
+    let liberar!: () => void;
+    global.client.tenant.delete.mockImplementation(
+      () => new Promise((pronto) => (liberar = () => pronto({}))),
+    );
+
+    const primeira = service.excluir('user-1', pedido);
+    await expect(service.excluir('user-1', pedido)).rejects.toThrow(
+      ConflictException,
+    );
+
+    liberar();
+    await primeira;
+  });
+
+  it('a trava sai do caminho quando a exclusão falha', async () => {
+    // Depois de um erro, tentar de novo é justamente o que se quer poder
+    // fazer.
+    const { service, global } = await montar();
+    global.client.tenant.delete.mockImplementationOnce(() => {
+      throw new Error('caiu no meio');
+    });
+
+    await expect(service.excluir('user-1', pedido)).rejects.toThrow('caiu no meio');
+    await expect(service.excluir('user-1', pedido)).resolves.toEqual({
+      apagada: true,
+    });
   });
 
   it('apaga mesmo quando o armazenamento recusa', async () => {

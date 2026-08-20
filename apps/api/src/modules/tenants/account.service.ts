@@ -100,6 +100,26 @@ const TABELAS_GRANDES = [
  * empresa com o WhatsApp já desconectado e a conta viva: o pior estado
  * possível, porque o atendimento para e ninguém sabe que parou.
  */
+/**
+ * As empresas cujo encerramento está em curso AGORA.
+ *
+ * Apagar uma conta grande leva tempo, e a tela não tem como mostrar
+ * progresso: quem aperta o botão vê uma espera sem fim, acha que travou,
+ * recarrega e aperta de novo. Aí passam a existir duas exclusões da mesma
+ * empresa apagando as mesmas linhas, cada uma travando o que a outra
+ * espera — o impasse que o banco resolve matando uma delas.
+ *
+ * Fora da classe porque o serviço é criado a cada requisição (ele depende
+ * do tenant de quem pediu): um campo de instância nasceria vazio no
+ * segundo clique e não guardaria nada.
+ *
+ * Vale dentro de UM processo, que é como esta API roda hoje (uma réplica
+ * só — ver DEPLOY.md). Se algum dia forem duas, isto vira uma trava
+ * consultiva no Postgres; enquanto for uma, o conjunto basta e não custa
+ * ida ao banco.
+ */
+const APAGANDO = new Set<string>();
+
 @Injectable()
 export class AccountService {
   private readonly logger = new Logger(AccountService.name);
@@ -216,25 +236,39 @@ export class AccountService {
       );
     }
 
-    // 1. O que vai ser preciso DEPOIS, anotado enquanto as linhas existem.
-    const sessao = await this.sessaoDoWhatsapp(tenantId);
-    const anexos = await this.chavesDosAnexos(tenantId);
+    if (APAGANDO.has(tenantId)) {
+      throw new ConflictException(
+        'Esta conta já está sendo apagada. Aguarde — numa conta grande isso leva alguns minutos.',
+      );
+    }
+    APAGANDO.add(tenantId);
 
-    // 2. O banco, em lotes.
-    const apagadas = await this.apagarLinhas(tenantId);
-    await this.global.client.tenant.delete({ where: { id: tenantId } });
+    try {
+      // 1. O que vai ser preciso DEPOIS, anotado enquanto as linhas existem.
+      const sessao = await this.sessaoDoWhatsapp(tenantId);
+      const anexos = await this.chavesDosAnexos(tenantId);
 
-    // 3. E agora o mundo lá fora, com a conta já apagada. Nenhuma falha
-    //    daqui pra baixo desfaz o que foi feito — só vira aviso no log.
-    await this.desligarSessao(tenantId, sessao);
-    const removidos = await this.apagarAnexos(tenantId, anexos);
+      // 2. O banco, em lotes.
+      const apagadas = await this.apagarLinhas(tenantId);
+      await this.global.client.tenant.delete({ where: { id: tenantId } });
 
-    this.logger.warn(
-      `Conta apagada: empresa ${tenantId} ("${tenant.name}") a pedido de ${usuario.email}; ` +
-        `${apagadas} linhas e ${removidos} anexos removidos.`,
-    );
+      // 3. E agora o mundo lá fora, com a conta já apagada. Nenhuma falha
+      //    daqui pra baixo desfaz o que foi feito — só vira aviso no log.
+      await this.desligarSessao(tenantId, sessao);
+      const removidos = await this.apagarAnexos(tenantId, anexos);
 
-    return { apagada: true as const };
+      this.logger.warn(
+        `Conta apagada: empresa ${tenantId} ("${tenant.name}") a pedido de ${usuario.email}; ` +
+          `${apagadas} linhas e ${removidos} anexos removidos.`,
+      );
+
+      return { apagada: true as const };
+    } finally {
+      // No `finally` pra que uma falha no meio não deixe a conta trancada
+      // contra uma segunda tentativa — que é justamente o que se quer
+      // poder fazer depois de um erro.
+      APAGANDO.delete(tenantId);
+    }
   }
 
   /**
@@ -246,18 +280,54 @@ export class AccountService {
    * tenant, que é o único valor vindo de fora, continua parametrizado.
    *
    * O `IN (SELECT ... LIMIT)` é o jeito de limitar um DELETE no Postgres:
-   * ele não aceita `LIMIT` direto.
+   * ele não aceita `LIMIT` direto. E o `ORDER BY "id"` não é enfeite: ele
+   * faz duas transações que estejam apagando ao mesmo tempo pegarem as
+   * travas na MESMA ordem. Sem isso elas se cruzam, cada uma segurando o
+   * que a outra espera, e o banco mata uma das duas por impasse — foi o
+   * `40P01` que apareceu na segunda tentativa real.
    */
   private async apagarLinhas(tenantId: string): Promise<number> {
     let total = 0;
 
+    /*
+     * Primeiro as citações são soltas.
+     *
+     * Uma mensagem pode citar outra da mesma tabela, e a chave é
+     * `ON DELETE SET NULL`: apagar uma obriga o banco a atualizar quem a
+     * citava. Zerando a coluna antes, o DELETE seguinte não dispara mais
+     * nenhuma dessas atualizações — menos trabalho e, principalmente,
+     * menos linhas travadas por transação, que é de onde vinha o impasse.
+     *
+     * Isto só é rápido porque a coluna passou a ter índice (ver a
+     * migração `citacao_indexada`); sem ele, cada linha custava uma
+     * varredura da tabela inteira.
+     */
+    for (let volta = 0; volta < MAXIMO_DE_LOTES; volta += 1) {
+      const soltas = await this.comRetentativa(() =>
+        this.global.client.$executeRaw`
+          UPDATE "messages" SET "replyToId" = NULL
+          WHERE "id" IN (
+            SELECT "id" FROM "messages"
+            WHERE "tenantId" = ${tenantId} AND "replyToId" IS NOT NULL
+            ORDER BY "id"
+            LIMIT ${LOTE}
+          )`,
+      );
+      if (soltas < LOTE) break;
+    }
+
     for (const tabela of TABELAS_GRANDES) {
       for (let volta = 0; volta < MAXIMO_DE_LOTES; volta += 1) {
-        const apagadas = await this.global.client.$executeRawUnsafe(
-          `DELETE FROM "${tabela}" WHERE "id" IN (
-             SELECT "id" FROM "${tabela}" WHERE "tenantId" = $1 LIMIT ${LOTE}
-           )`,
-          tenantId,
+        const apagadas = await this.comRetentativa(() =>
+          this.global.client.$executeRawUnsafe(
+            `DELETE FROM "${tabela}" WHERE "id" IN (
+               SELECT "id" FROM "${tabela}"
+               WHERE "tenantId" = $1
+               ORDER BY "id"
+               LIMIT ${LOTE}
+             )`,
+            tenantId,
+          ),
         );
         total += apagadas;
         if (apagadas < LOTE) break;
@@ -265,6 +335,36 @@ export class AccountService {
     }
 
     return total;
+  }
+
+  /**
+   * O lote que morreu de impasse é refeito, não perdido.
+   *
+   * Impasse (`40P01`) é o banco escolhendo uma vítima entre duas
+   * transações que se cruzaram: nada ficou inconsistente, e a instrução
+   * simplesmente não aconteceu. Refazer é o tratamento normal, e aqui é o
+   * que separa "a conta não foi apagada" de "um lote demorou um pouco
+   * mais".
+   *
+   * Três tentativas com espera crescente. O que não for impasse sobe na
+   * hora — engolir erro de banco aqui esconderia uma exclusão pela metade.
+   */
+  private async comRetentativa(operacao: () => Promise<number>): Promise<number> {
+    for (let tentativa = 1; ; tentativa += 1) {
+      try {
+        return await operacao();
+      } catch (erro) {
+        const impasse = /deadlock|40P01/i.test(
+          erro instanceof Error ? erro.message : String(erro),
+        );
+        if (!impasse || tentativa >= 3) throw erro;
+
+        this.logger.warn(
+          `Impasse no banco ao apagar (tentativa ${tentativa}); refazendo o lote.`,
+        );
+        await new Promise((pronto) => setTimeout(pronto, 250 * tentativa));
+      }
+    }
   }
 
   /**
