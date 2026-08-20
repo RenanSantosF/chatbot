@@ -2938,19 +2938,45 @@ export class ConversationsService {
     });
     const iaAssume = Boolean(ia?.active && ia.apiKeyEncrypted);
 
+    /*
+     * E a rodada nova também não nasce com dono.
+     *
+     * O card é o mesmo, mas o atendimento é outro. Mantendo o dono da
+     * rodada anterior, a conversa voltava já atribuída — e aceita — a quem
+     * atendeu antes: pulava a fila, pulava as regras de direcionamento e
+     * caía na mesa de alguém que podia estar de folga, em outro setor ou
+     * fora do expediente. Era o que se via como "resolvi e, quando o
+     * cliente escreveu de novo, foi direto pro atendente".
+     *
+     * Pior quando a IA reassume: a conversa ficava com a IA no comando e
+     * na mesa de um humano ao mesmo tempo, que são duas coisas que não
+     * podem valer juntas.
+     *
+     * Sem dono, ela entra em Pendentes como qualquer atendimento novo e
+     * quem estiver disponível assume — pela fila, pelas regras, ou porque
+     * respondeu (ver `assumirAoResponder`).
+     *
+     * O SETOR fica. Ele não é "de quem é", é "que tipo de assunto é" — e é
+     * por ele que a equipe certa enxerga a conversa. Zerá-lo esconderia o
+     * cliente de quem sempre o atende; quando o assunto novo for de outro
+     * setor, as regras de direcionamento corrigem no primeiro
+     * escalonamento.
+     */
     const reaberta = await this.prisma.db.conversation.update({
       where: { id: anterior.id },
       data: {
         status: 'OPEN',
-        ...(iaAssume
-          ? {
-              aiMode: 'AI_ACTIVE',
-              // O motivo do escalonamento anterior já foi resolvido; deixá-lo
-              // faria o painel explicar a rodada nova com a história da velha.
-              escalationReason: null,
-              escalationSummary: null,
-            }
-          : {}),
+        assignedUserId: null,
+        assignmentAccepted: false,
+        /*
+         * O motivo do escalonamento anterior sai SEMPRE, e não só quando a
+         * IA reassume: ele explica por que a rodada passada foi parar com
+         * gente, e deixá-lo faria o painel contar a história velha na
+         * conversa nova.
+         */
+        escalationReason: null,
+        escalationSummary: null,
+        ...(iaAssume ? { aiMode: 'AI_ACTIVE' as const } : {}),
       },
     });
 
@@ -2959,7 +2985,11 @@ export class ConversationsService {
         tenantId: this.prisma.tenantId,
         conversationId: reaberta.id,
         senderType: 'SYSTEM',
-        content: 'O cliente voltou a escrever e o atendimento foi reaberto.',
+        // Dizer que voltou pra fila é o que responde, pra quem atendeu a
+        // rodada anterior, por que a conversa saiu da mesa dele.
+        content: anterior.assignedUserId
+          ? 'O cliente voltou a escrever. O atendimento foi reaberto e devolvido à fila.'
+          : 'O cliente voltou a escrever e o atendimento foi reaberto.',
         messageType: 'TEXT',
       },
     });
