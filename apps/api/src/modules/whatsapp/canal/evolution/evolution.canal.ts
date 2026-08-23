@@ -77,6 +77,40 @@ export class EvolutionCanal implements CanalDeMensagem {
     };
   }
 
+  /**
+   * Este número existe no WhatsApp?
+   *
+   * `null` quer dizer "não deu pra conferir" — servidor fora do ar, sessão
+   * caída —, e é diferente de `false`. Quem chama precisa dessa distinção:
+   * barrar o envio porque a conferência falhou seria transformar uma
+   * indisponibilidade nossa em "esse cliente não existe".
+   *
+   * Existe por causa do risco de bloqueio: disparar pra número inexistente
+   * é o que quem varre faixas de número faz, e é dos sinais mais fortes de
+   * spam que existem. Como a Evolution é um cliente NÃO OFICIAL, a conta
+   * pode ser bloqueada por padrão de comportamento — e um dígito digitado
+   * errado no painel produz exatamente esse padrão.
+   */
+  async numeroExiste(para: string): Promise<boolean | null> {
+    const credenciais = await this.credenciais();
+    if (!credenciais) return null;
+
+    const numero = para.replace(/\D/g, '');
+    const resposta = await evolution.conferirNumeros(credenciais, [numero]);
+    if (!resposta.ok || !Array.isArray(resposta.dados)) {
+      this.logger.warn(
+        `Não deu pra conferir o número ${numero} no WhatsApp: ${resposta.erro ?? 'resposta inesperada'}.`,
+      );
+      return null;
+    }
+
+    const conferido = resposta.dados[0];
+    // Campo ausente também é "não sei": versões diferentes da Evolution
+    // respondem formatos diferentes, e assumir `false` num formato que não
+    // reconhecemos bloquearia envio pra cliente de verdade.
+    return typeof conferido?.exists === 'boolean' ? conferido.exists : null;
+  }
+
   async enviarTexto(
     para: string,
     texto: string,

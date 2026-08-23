@@ -128,6 +128,22 @@ export class CanalService {
   }
 
   /**
+   * Este número existe no WhatsApp?
+   *
+   * Fica no CanalService, e não no contrato `CanalDeMensagem`, porque a
+   * pergunta não faz sentido nos dois provedores: na Cloud API da Meta não
+   * há como perguntar isso, e a plataforma recusa sozinha o que não existe.
+   * Amarrá-la ao contrato obrigaria o provedor oficial a fingir uma
+   * resposta.
+   *
+   * `null` é "não deu pra conferir", e não "não existe" — quem chama tem
+   * que tratar os dois de forma diferente.
+   */
+  numeroExiste(para: string): Promise<boolean | null> {
+    return this.evolution.numeroExiste(para);
+  }
+
+  /**
    * O motivo da última falha, vindo de quem tentou entregar.
    *
    * Cada implementação guarda o seu; aqui só devolvemos o de quem foi

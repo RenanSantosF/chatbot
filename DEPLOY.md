@@ -486,4 +486,21 @@ Para escalar de verdade seria preciso, no mínimo, um adaptador de Redis no gate
 
 - **Custo do Gemini**: cada empresa paga a própria conta do Google AI Studio — a plataforma não intermedia cobrança de IA.
 - **Números de teste da Meta**: por padrão, um app novo só manda mensagem pra até 5 números cadastrados como testadores, até passar pela revisão do Meta (App Review) pedindo a permissão `whatsapp_business_messaging` pra produção.
+### ⚠️ O número pode ser bloqueado, e isso não é hipótese remota
+
+A conexão por QR code usa a Evolution, um cliente **não oficial** do WhatsApp. Isso viola os Termos de Serviço da Meta, e a conta pode ser bloqueada por padrão de comportamento — sem aviso, sem recurso e a qualquer momento. O que dá pra fazer é reduzir a probabilidade; o risco continua existindo por definição.
+
+Por isso: **não use o número pessoal de ninguém**, e tenha um plano pro dia em que cair (segundo número, ou a migração pro canal oficial da Meta).
+
+O que o sistema já faz sozinho:
+
+- **Cadência de envio.** Toda mensagem sai com 1,5 s de espera e com o "digitando" aceso no aparelho do cliente. Sem isso, a IA respondendo dez conversas dispararia as dez no mesmo instante — o padrão que mais denuncia automação.
+- **Confere o número antes da primeira abordagem.** Disparar pra número inexistente é o que quem varre faixas de número faz, e é dos sinais mais fortes de spam que existem. Um dígito errado no painel produzia exatamente esse sinal.
+- **Teto de 30 primeiras abordagens por dia.** Responder quem escreveu **não tem limite** — não é isso que derruba conta. O teto vale só pra falar primeiro com quem nunca escreveu.
+
+O que depende de você:
+
+- **Aqueça o número.** Chip novo que conecta e já começa a disparar é o perfil clássico de conta descartável. Use normalmente por alguns dias antes de ligar o atendimento em volume.
+- **Não use pra prospecção.** A tela de puxar conversa existe pra retomar um orçamento ou avisar que o pedido chegou — não pra oferecer serviço a quem não pediu. É o uso que mais bloqueia número.
+
 - **Backup do `ENCRYPTION_KEY`**: se rotacionar essa chave sem migrar os dados já criptografados, toda API key e token de WhatsApp salvos ficam ilegíveis. Guarde em um cofre de senhas separado do resto.

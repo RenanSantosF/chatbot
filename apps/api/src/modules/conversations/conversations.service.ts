@@ -232,6 +232,20 @@ const RESUMO_DE_MIDIA: Partial<Record<MessageType, string>> = {
   LOCATION: 'Localização',
 };
 
+/**
+ * Quantas pessoas a empresa pode abordar primeiro por dia.
+ *
+ * Trinta é conservador de propósito. Não existe número publicado pelo
+ * WhatsApp — a detecção não é documentada, e quem promete um limite
+ * "seguro" está chutando. O que se sabe é a direção: quanto mais gente
+ * nova por dia, maior o risco, e o salto perigoso é de dezenas pra
+ * centenas.
+ *
+ * Trinta cobre com folga o uso legítimo (retomar um orçamento, avisar que
+ * o pedido chegou) e impede que a tela vire ferramenta de prospecção.
+ */
+const TETO_DE_ABORDAGENS_POR_DIA = 30;
+
 const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
@@ -2010,6 +2024,71 @@ export class ConversationsService {
   }
 
   /**
+   * As duas travas que separam "puxar conversa" de "disparar em massa".
+   *
+   * O canal por QR code é um cliente NÃO OFICIAL do WhatsApp, e a conta
+   * pode ser bloqueada por PADRÃO DE COMPORTAMENTO, sem aviso e sem
+   * recurso. Falar primeiro com quem nunca escreveu é justamente o
+   * comportamento que mais se parece com o de quem faz spam — então é aqui,
+   * e só aqui, que vale gastar duas conferências antes de deixar sair.
+   *
+   * Nenhuma das duas protege contra um bloqueio decidido do outro lado.
+   * Elas reduzem a chance; o risco continua existindo por definição, e é
+   * por isso que o número usado nunca deveria ser o pessoal de ninguém.
+   */
+  private async protegerContraBloqueio(phone: string): Promise<void> {
+    /*
+     * 1. O número existe mesmo?
+     *
+     * Disparar pra número inexistente é o que quem varre faixas de número
+     * faz, e é dos sinais mais fortes de spam que há. Um dígito digitado
+     * errado no painel produz exatamente esse sinal.
+     *
+     * Só barra quando a resposta é um "não" CLARO: `null` quer dizer que
+     * não deu pra conferir (servidor fora do ar, sessão caída), e
+     * transformar uma indisponibilidade nossa em "esse cliente não existe"
+     * seria travar o atendimento por um problema que não é dele.
+     */
+    const existe = await this.whatsapp.numeroExiste(phone);
+    if (existe === false) {
+      throw new BadRequestException(
+        'Esse número não tem WhatsApp. Confira os dígitos antes de enviar — ' +
+          'mandar mensagem pra número que não existe põe a conexão da empresa em risco.',
+      );
+    }
+
+    /*
+     * 2. Quantas abordagens já saíram hoje?
+     *
+     * Sem teto, esta tela vira ferramenta de prospecção em massa — e é o
+     * caminho mais curto pro bloqueio. O limite conta só conversa NASCIDA
+     * daqui (`WAITING_CUSTOMER` sem nenhuma mensagem de cliente ainda), e
+     * não o volume de atendimento: responder quem escreveu não tem teto
+     * nenhum, porque não é isso que derruba conta.
+     */
+    const desdeMeiaNoite = new Date();
+    desdeMeiaNoite.setHours(0, 0, 0, 0);
+
+    const abordagensHoje = await this.prisma.db.conversation.count({
+      where: {
+        channel: 'WHATSAPP',
+        createdAt: { gte: desdeMeiaNoite },
+        status: 'WAITING_CUSTOMER',
+        messages: { none: { senderType: 'CUSTOMER' } },
+      },
+    });
+
+    if (abordagensHoje >= TETO_DE_ABORDAGENS_POR_DIA) {
+      throw new BadRequestException(
+        `Limite de ${TETO_DE_ABORDAGENS_POR_DIA} primeiras abordagens por dia atingido. ` +
+          'O limite existe pra proteger a conexão da empresa: falar primeiro com muita ' +
+          'gente num dia só é o que faz o WhatsApp bloquear o número. Responder quem ' +
+          'escreveu continua sem limite.',
+      );
+    }
+  }
+
+  /**
    * Puxar conversa com quem nunca escreveu.
    *
    * Existe ao lado de `startConversation` porque os dois canais têm
@@ -2042,6 +2121,8 @@ export class ConversationsService {
     if (!texto) {
       throw new BadRequestException('Escreva a mensagem antes de enviar.');
     }
+
+    await this.protegerContraBloqueio(phone);
 
     const customer = await this.customers.findOrCreateByPhone({
       phone,

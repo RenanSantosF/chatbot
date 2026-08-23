@@ -39,6 +39,8 @@ function montar(conversaAberta: Record<string, unknown> | null = null) {
           return { ...conversa, ...args.data };
         }),
         update: jest.fn().mockResolvedValue(conversa),
+        // O teto diário de primeiras abordagens (ver protegerContraBloqueio).
+        count: jest.fn().mockResolvedValue(0),
       },
       message: {
         create: jest
@@ -64,6 +66,9 @@ function montar(conversaAberta: Record<string, unknown> | null = null) {
   const whatsapp = {
     enviarTexto: jest.fn().mockResolvedValue('wamid.NOVA'),
     marcarComoLida: jest.fn(),
+    // `true` é o caminho normal: o número existe. Os testes que exercitam
+    // a trava sobrescrevem isto.
+    numeroExiste: jest.fn().mockResolvedValue(true),
     motivoDaUltimaFalha: null,
   };
 
@@ -92,7 +97,7 @@ function montar(conversaAberta: Record<string, unknown> | null = null) {
     { avisarEquipe: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
-  return { service, whatsapp, customers, criadas };
+  return { service, whatsapp, customers, criadas, prisma };
 }
 
 describe('iniciar conversa escrevendo', () => {
@@ -169,5 +174,79 @@ describe('iniciar conversa escrevendo', () => {
       service.iniciarConversa({ phone: '5527999998888', content: '   ' }, 'user-1'),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(customers.findOrCreateByPhone).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * As travas que separam "puxar conversa" de "disparar em massa".
+ *
+ * O canal por QR code é cliente NÃO OFICIAL do WhatsApp, e a conta pode
+ * ser bloqueada por padrão de comportamento. Falar primeiro com quem nunca
+ * escreveu é justamente o comportamento que mais se parece com spam — daí
+ * as duas conferências antes de deixar sair.
+ */
+describe('proteção contra bloqueio do número', () => {
+  it('número que não existe no WhatsApp não recebe nada', async () => {
+    // Disparar pra número inexistente é o que quem varre faixas de número
+    // faz. Um dígito digitado errado produz exatamente esse sinal.
+    const { service, whatsapp, customers } = montar();
+    whatsapp.numeroExiste.mockResolvedValue(false);
+
+    await expect(
+      service.iniciarConversa({ phone: '5527999998888', content: 'oi' }, 'user-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    expect(customers.findOrCreateByPhone).not.toHaveBeenCalled();
+  });
+
+  it('conferência indisponível NÃO barra o envio', async () => {
+    // `null` é "não deu pra conferir", e é diferente de "não existe":
+    // transformar uma indisponibilidade nossa em "esse cliente não existe"
+    // travaria o atendimento por um problema que não é dele.
+    const { service, whatsapp } = montar();
+    whatsapp.numeroExiste.mockResolvedValue(null);
+
+    await service.iniciarConversa(
+      { phone: '5527999998888', content: 'oi' },
+      'user-1',
+    );
+
+    expect(whatsapp.enviarTexto).toHaveBeenCalled();
+  });
+
+  it('o teto diário de primeiras abordagens barra a próxima', async () => {
+    const { service, prisma, whatsapp } = montar();
+    (prisma.db.conversation.count as jest.Mock).mockResolvedValue(30);
+
+    await expect(
+      service.iniciarConversa({ phone: '5527999998888', content: 'oi' }, 'user-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+  });
+
+  it('o teto conta só quem nunca respondeu, e só de hoje', async () => {
+    // Responder quem escreveu não tem teto: não é isso que derruba conta.
+    // Se o recorte pegasse atendimento em geral, uma empresa movimentada
+    // ficaria impedida de puxar conversa por causa do próprio volume.
+    const { service, prisma } = montar();
+
+    await service.iniciarConversa(
+      { phone: '5527999998888', content: 'oi' },
+      'user-1',
+    );
+
+    const { where } = (prisma.db.conversation.count as jest.Mock).mock
+      .calls[0][0] as {
+      where: {
+        status: string;
+        createdAt: { gte: Date };
+        messages: { none: { senderType: string } };
+      };
+    };
+    expect(where.status).toBe('WAITING_CUSTOMER');
+    expect(where.messages.none.senderType).toBe('CUSTOMER');
+    expect(where.createdAt.gte.getHours()).toBe(0);
   });
 });

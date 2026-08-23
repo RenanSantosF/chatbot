@@ -215,6 +215,21 @@ export interface EnvioAceito {
   key?: { remoteJid?: string; fromMe?: boolean; id?: string };
 }
 
+/**
+ * Quanto o servidor segura a mensagem antes de soltar, em milissegundos.
+ *
+ * NÃO É ENFEITE: a Evolution é um cliente NÃO OFICIAL do WhatsApp, e o
+ * padrão que mais denuncia automação é a cadência. Um atendente humano
+ * leva segundos entre uma mensagem e a seguinte; a IA respondendo dez
+ * conversas ao mesmo tempo dispararia as dez no mesmo instante.
+ *
+ * Um segundo e meio é curto o bastante pra ninguém reclamar de lentidão no
+ * atendimento e longo o bastante pra quebrar a rajada. Durante ele a
+ * Evolution mantém o "digitando" aceso no aparelho do cliente, então o
+ * tempo aparece como alguém escrevendo — não como travamento.
+ */
+const ESPERA_ANTES_DE_ENVIAR_MS = 1500;
+
 export function enviarTexto(
   credenciais: Credenciais,
   envio: { numero: string; texto: string; citando?: string | null },
@@ -224,10 +239,44 @@ export function enviarTexto(
     body: {
       number: envio.numero,
       text: envio.texto,
+      delay: ESPERA_ANTES_DE_ENVIAR_MS,
+      // "composing" é o que acende o "digitando..." no aparelho de quem vai
+      // receber, durante o `delay` acima. Sem ele a mensagem aparece do
+      // nada depois de uma pausa — que é pior que os dois extremos.
+      presence: 'composing',
       ...(envio.citando
         ? { quoted: { key: { id: envio.citando } } }
         : {}),
     },
+  });
+}
+
+/** O que a Evolution responde ao conferir uma lista de números. */
+export interface NumeroConferido {
+  exists?: boolean;
+  jid?: string;
+  number?: string;
+}
+
+/**
+ * Estes números existem no WhatsApp?
+ *
+ * Serve pra NÃO disparar pra número que não existe, e o motivo é de
+ * sobrevivência da conta: mandar mensagem pra números inexistentes é o que
+ * quem varre faixas de número faz, e é um dos sinais mais fortes de spam
+ * que existe. Um dígito digitado errado no painel viraria exatamente esse
+ * sinal.
+ *
+ * Confirmado em `WhatsAppNumberDto` e no uso do próprio servidor
+ * (`isWA.exists`), na v2.
+ */
+export function conferirNumeros(
+  credenciais: Credenciais,
+  numeros: string[],
+): Promise<RespostaDaEvolution<NumeroConferido[]>> {
+  return chamar(credenciais, `/chat/whatsappNumbers/${credenciais.instance}`, {
+    method: 'POST',
+    body: { numbers: numeros },
   });
 }
 
@@ -267,6 +316,10 @@ export function enviarMidia(
         mimetype: envio.mimetype,
         media: envio.base64,
         fileName: envio.filename,
+        // Mesma cadência do texto (ver ESPERA_ANTES_DE_ENVIAR_MS): anexo
+        // disparado no mesmo instante da mensagem anterior é o padrão que
+        // denuncia automação.
+        delay: ESPERA_ANTES_DE_ENVIAR_MS,
         ...(envio.legenda ? { caption: envio.legenda } : {}),
         ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
       },
@@ -323,6 +376,10 @@ export function enviarAudioDeVoz(
       body: {
         number: envio.numero,
         audio: envio.base64,
+        delay: ESPERA_ANTES_DE_ENVIAR_MS,
+        // "recording" e não "composing": no aparelho do cliente aparece
+        // "gravando áudio...", que é o que de fato está por vir.
+        presence: 'recording',
         ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
       },
     },
