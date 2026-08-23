@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { AvisosCard } from "@/components/avisos-card";
 import { PageHeader } from "@/components/page-header";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
@@ -287,6 +288,10 @@ export default function ProfilePage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Antes dos setores e das permissões porque é o único cartão desta
+          tela que se MEXE toda semana — os outros dois são consulta. */}
+      <AvisosCard />
 
       <Card>
         <CardHeader>

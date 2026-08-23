@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { SITE_NAME } from "@/lib/site";
 import { resumoDaMensagem } from "@/lib/mensagem";
-import { estaInscrito, inscreverParaAvisos } from "@/lib/push";
+import { cancelarAvisos, estaInscrito, inscreverParaAvisos } from "@/lib/push";
 
 /**
  * O estado do WhatsApp da empresa, empurrado pelo servidor.
@@ -92,6 +92,18 @@ interface RealtimeContextValue {
   setActiveConversationId: (id: string | null) => void;
   notifPermission: NotificationPermission | null;
   enableNotifications: () => Promise<void>;
+  /**
+   * Este aparelho está inscrito pra receber aviso com o painel FECHADO.
+   *
+   * Diferente de `notifPermission === "granted"`, que só diz que o
+   * navegador deixa avisar enquanto a aba existe. A inscrição é o que
+   * atravessa o fechar da janela, e ela pode faltar mesmo com a permissão
+   * dada — servidor sem VAPID, dados do site limpos, chave trocada. Sem
+   * separar as duas, a tela dizia "ativado" pra quem não ia receber nada.
+   */
+  avisosNesteAparelho: boolean;
+  /** Desliga o aviso com o painel fechado, sem mexer na permissão. */
+  disableNotifications: () => Promise<void>;
 }
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
@@ -173,6 +185,19 @@ export function RealtimeProvider({
    * de o push começar a funcionar.
    */
   const temPushRef = useRef(false);
+  /*
+   * O MESMO valor, em estado, pra tela poder desenhar.
+   *
+   * O ref existe pelo motivo acima e não serve pra render — quem lê um ref
+   * não é avisado quando ele muda. Manter os dois é feio, e a alternativa
+   * era pior: sem estado, a tela de avisos não tinha como dizer se este
+   * aparelho está inscrito, que é a única informação que ela precisa dar.
+   */
+  const [avisosNesteAparelho, setAvisosNesteAparelho] = useState(false);
+  const anotarPush = useCallback((ativo: boolean) => {
+    temPushRef.current = ativo;
+    setAvisosNesteAparelho(ativo);
+  }, []);
   const activeConversationRef = useRef<string | null>(null);
   const namesRef = useRef<Record<string, string>>({});
   const router = useRouter();
@@ -200,15 +225,11 @@ export function RealtimeProvider({
      * alguém achar que está sendo avisado e não estar.
      */
     if (Notification.permission === "granted") {
-      void inscreverParaAvisos().then((ok) => {
-        temPushRef.current = ok;
-      });
+      void inscreverParaAvisos().then(anotarPush);
     } else {
-      void estaInscrito().then((ok) => {
-        temPushRef.current = ok;
-      });
+      void estaInscrito().then(anotarPush);
     }
-  }, []);
+  }, [anotarPush]);
 
   useEffect(() => {
     const getToken = async () => {
@@ -388,9 +409,22 @@ export function RealtimeProvider({
     // configuração à parte: quem acabou de autorizar espera ser avisado a
     // partir de agora, inclusive com o painel fechado.
     if (permissao === "granted") {
-      temPushRef.current = await inscreverParaAvisos();
+      anotarPush(await inscreverParaAvisos());
     }
-  }, []);
+  }, [anotarPush]);
+
+  /**
+   * Desliga o aviso com o painel fechado.
+   *
+   * Cancela a inscrição e apaga o registro no servidor, mas NÃO mexe na
+   * permissão do navegador — nem daria: só a pessoa revoga isso, nas
+   * configurações do site. É a diferença entre "não quero mais ser
+   * avisado" e "não confio neste site", e só a primeira é nossa.
+   */
+  const disableNotifications = useCallback(async () => {
+    await cancelarAvisos();
+    anotarPush(false);
+  }, [anotarPush]);
 
   const value = useMemo<RealtimeContextValue>(
     () => ({
@@ -405,6 +439,8 @@ export function RealtimeProvider({
       setActiveConversationId,
       notifPermission,
       enableNotifications,
+      avisosNesteAparelho,
+      disableNotifications,
     }),
     [
       socket,
@@ -418,6 +454,8 @@ export function RealtimeProvider({
       setActiveConversationId,
       notifPermission,
       enableNotifications,
+      avisosNesteAparelho,
+      disableNotifications,
     ],
   );
 
