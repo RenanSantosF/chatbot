@@ -461,9 +461,15 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
     <ul
       data-slot="sidebar-menu"
       data-sidebar="menu"
-      // items-center: com o menu recolhido, o botão quadrado precisa
-      // ficar no meio do trilho — encostado à esquerda ele parecia torto.
-      className={cn("flex w-full min-w-0 flex-col items-center gap-1", className)}
+      // items-center SÓ com o menu recolhido: ali o botão é quadrado e
+      // precisa ficar no meio do trilho, senão parece torto. Solto, ele
+      // alcançava também a gaveta do celular — que é o menu ABERTO, com
+      // rótulo escrito — e deixava os itens encolhidos e boiando no meio
+      // de uma faixa de 274px, com um vão de 90px à esquerda de cada um.
+      className={cn(
+        "flex w-full min-w-0 flex-col items-stretch gap-1 group-data-[collapsible=icon]:items-center",
+        className,
+      )}
       {...props}
     />
   )

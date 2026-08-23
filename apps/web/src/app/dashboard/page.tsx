@@ -117,7 +117,12 @@ export default function DashboardOverviewPage() {
         <PrimeirosPassos passos={ativacao.passos} concluidos={ativacao.concluidos} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* Uma coluna no celular, e não duas.
+          Em 390px cada cartão sobrava com ~160px, e a linha de baixo —
+          "iniciadas no período", "0 da IA · 0 da equipe" — era cortada em
+          reticências. Essa linha é o que dá sentido ao número: sem ela o
+          cartão vira um algarismo solto. Melhor rolar um pouco mais. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Conversas"
           value={String(totals?.conversations ?? 0)}

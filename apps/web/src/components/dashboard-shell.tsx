@@ -28,6 +28,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { CopilotWidget } from "@/components/copilot-widget";
 import { Marca } from "@/components/marca";
@@ -73,6 +74,23 @@ function initials(name: string) {
     .join("");
 }
 
+/**
+ * O convite pra ligar os avisos — com o nome escrito.
+ *
+ * Era um sino fantasma de 16px encostado em outros três ícones iguais, e
+ * ninguém achava: o recurso mais útil do painel dependia de a pessoa
+ * passar o mouse num ícone sem rótulo pra descobrir o que ele fazia. Agora
+ * é um botão com palavra, na cor da marca, que se lê de relance.
+ *
+ * Ele some sozinho depois de resolvido — quem já ativou (ou já recusou)
+ * não precisa de um botão permanente ocupando a faixa. O controle que NÃO
+ * some mora no perfil, e é lá que dá pra desligar ou entender o bloqueio.
+ *
+ * A palavra aparece no celular também. Medida antes de decidir: gatilho da
+ * lateral, botão inteiro, seletor de tema e sair somam ~300px dos 390 de um
+ * telefone comum, então o rótulo cabe — e um ícone mudo no telefone seria
+ * repetir ali o defeito que este botão veio consertar.
+ */
 function NotificationsButton() {
   const { notifPermission, enableNotifications } = useRealtime();
 
@@ -82,13 +100,15 @@ function NotificationsButton() {
 
   return (
     <Button
-      size="icon-sm"
+      size="sm"
       variant="ghost"
       onClick={enableNotifications}
       aria-label="Ativar avisos de mensagem nova"
       title="Ativar avisos de mensagem nova"
+      className="h-8 shrink-0 gap-1.5 bg-primary/10 px-2.5 text-primary hover:bg-primary/20 hover:text-primary"
     >
       <BellRing className="size-4" />
+      <span className="text-xs font-medium">Ativar avisos</span>
     </Button>
   );
 }
@@ -299,7 +319,15 @@ function Shell({
             escuro os dois quase se encostavam e a barra parecia parte da
             lista de conversas. A borda em 8% de branco (ver globals.css)
             fecha a separação. */}
-        <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-end gap-1 border-b bg-background px-3">
+        <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center gap-1 border-b bg-background px-3">
+          {/* O único jeito de chegar na navegação pelo celular.
+
+              A barra lateral já virava uma gaveta em telas estreitas — o
+              componente faz isso sozinho —, mas nada no painel a abria.
+              Quem entrasse pelo telefone ficava preso na tela em que caiu,
+              sem Inbox, sem Clientes e sem Configurações. */}
+          <SidebarTrigger className="md:hidden" />
+          <div className="flex-1" />
           <ConnectionBadge />
           <NotificationsButton />
           <ThemeToggle />

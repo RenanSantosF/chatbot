@@ -29,7 +29,18 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       />
 
       <div className="grid gap-x-6 gap-y-3 lg:grid-cols-[220px_1fr]">
-        <nav aria-label="Seções de configuração" className="lg:sticky lg:top-2 lg:self-start">
+        {/* `min-w-0` não é enfeite: sem ele a coluna do grid assume a
+            largura do CONTEÚDO (é o `min-width: auto` do CSS), a lista de
+            seções nunca estoura a própria caixa e portanto nunca rola — quem
+            estoura é a página. No celular isso punha metade das seções, e
+            metade de todo cartão ao lado, fora da tela, cortadas por um
+            `overflow-hidden` lá em cima e inalcançáveis. Com ele, a fileira
+            volta a rolar de lado, que é o que o `overflow-x-auto` abaixo
+            sempre quis fazer. */}
+        <nav
+          aria-label="Seções de configuração"
+          className="min-w-0 lg:sticky lg:top-2 lg:self-start"
+        >
           <ul className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {SETTINGS_SECTIONS.map((section) => {
               const active = pathname === section.href;

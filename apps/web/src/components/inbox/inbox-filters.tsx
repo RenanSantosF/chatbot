@@ -365,16 +365,37 @@ export function InboxFilterBar({
           tamanho que precisa e a sobra é distribuída depois.
 
           Sem padding lateral, rótulo em 12px e selo estreito: medido na
-          fonte real, isso põe a fileira em 404px dos 440 hoje, e em 435
-          no pior caso concebível — três dígitos nas cinco abas ao mesmo
-          tempo. Nada trunca em nenhum dos dois.
+          fonte real, isso põe a fileira em 404px dos 440 da coluna no
+          computador, e em 435 no pior caso concebível — três dígitos nas
+          cinco abas ao mesmo tempo. Nada trunca em nenhum dos dois.
+
+          E ela ROLA de lado quando nem isso basta, que é o caso de um
+          telefone de 390px. `shrink-0` junto de `grow` é o que faz as duas
+          coisas conviverem: sobrando espaço as abas o dividem, faltando
+          espaço elas mantêm o tamanho e a fileira desliza. Sem o
+          `shrink-0` elas encolheriam até truncar de novo, e sem o `grow`
+          ficariam amontoadas à esquerda no computador.
 
           E nenhuma delas tem largura própria: era uma aba fixa no fim da
           fileira que estava sendo empurrada pra fora da tela. */}
+      {/* Sem `-mb-px` nas abas, e a linha cinza fica inteira.
+
+          Ele existia pra o sublinhado verde de 2px cobrir a linha de 1px
+          em vez de empilhar em cima dela. O preço era invisível até se
+          olhar de perto: as abas apagadas também têm borda de 2px, só que
+          transparente, e transparente deixa passar o FUNDO — então cada
+          uma apagava o pedaço de linha embaixo de si, e sobravam
+          tracinhos cinza nos vãos. Empilhar 2px sobre 1px custa um pixel;
+          uma linha pontilhada por acidente custa a impressão de acabado.
+
+          A barra de rolagem some porque ali ela seria uma segunda faixa
+          cinza embaixo das abas, do tamanho da linha que já existe. Rolar
+          de lado com o dedo continua funcionando, e no computador as cinco
+          cabem sem precisar rolar nada. */}
       <div
         role="radiogroup"
         aria-label="Situação do atendimento"
-        className="flex items-stretch gap-0.5 border-b px-2"
+        className="flex items-stretch gap-0.5 overflow-x-auto border-b px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {ABAS.map((aba) => {
           const ativo = abaAtiva === aba.id;
@@ -391,7 +412,7 @@ export function InboxFilterBar({
               title={curto === String(quantos) ? aba.ajuda : `${aba.ajuda} (${quantos})`}
               onClick={() => escolherAba(aba)}
               className={cn(
-                "-mb-px flex min-w-0 grow items-center justify-center gap-1 border-b-2 pt-1 pb-2.5 text-xs font-medium transition-colors",
+                "flex shrink-0 grow items-center justify-center gap-1 border-b-2 pt-1 pb-2.5 text-xs font-medium transition-colors",
                 ativo
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground",

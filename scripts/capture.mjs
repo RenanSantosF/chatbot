@@ -92,9 +92,28 @@ const browser = await chromium.launch({
 
 let failures = 0;
 
+/*
+ * A largura sai por variável de ambiente porque revisar responsividade é
+ * comparar a MESMA tela em duas larguras. Sem isso a única forma de ver o
+ * painel num celular era editar este arquivo a cada rodada — e o que se
+ * edita a cada rodada acaba não sendo conferido.
+ *
+ * Ex.:  VIEWPORT=390x844 ./scripts/dev-preview.sh /dashboard/inbox
+ */
+const [LARGURA, ALTURA] = (process.env.VIEWPORT || '1440x900')
+  .split('x')
+  .map((n) => Number(n) || 0);
+
 for (const theme of themes) {
   const ctx = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    viewport: { width: LARGURA || 1440, height: ALTURA || 900 },
+    // Num viewport de celular sem isto o Chromium ainda se comporta como
+    // desktop: sem toque, sem barra de rolagem fina, e `hover:` continua
+    // valendo — ou seja, o print mentiria justamente sobre o que se quer
+    // conferir.
+    ...(LARGURA && LARGURA < 768
+      ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
+      : {}),
     colorScheme: theme,
   });
   // Cookie sem esquema e sem porta; o domínio precisa bater com a URL,

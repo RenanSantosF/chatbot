@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import { conversationCache } from "@/lib/conversation-cache";
 import { usePersistedState } from "@/lib/use-persisted-state";
+import { cn } from "@/lib/utils";
 import type {
   ConversationDetail,
   ConversationMessage,
@@ -891,7 +892,24 @@ export default function InboxPage() {
     // primeira frase — que é justamente o que se lê pra decidir se abre.
     <TranscricaoDeAudioProvider modo={transcricao}>
     <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[440px_1fr] xl:grid-cols-[440px_1fr_330px] [&>*]:min-h-0">
-      <div className="hidden min-h-0 flex-col border-r md:flex">
+      {/* No celular só UMA das duas colunas existe por vez.
+
+          A coluna da lista era `hidden md:flex`, e o painel de conversa
+          ficava sozinho na tela dizendo "escolha uma conversa na lista ao
+          lado" — uma lista que ali não existia. O Inbox inteiro era um beco
+          sem saída no telefone.
+
+          Agora a conversa escolhida é o que decide: sem nenhuma, a lista
+          ocupa a tela; com uma, ela dá lugar ao atendimento, e a seta no
+          cabeçalho volta. É como todo mensageiro se comporta em tela
+          estreita, e no desktop nada muda — as duas convivem a partir de
+          `md`. */}
+      <div
+        className={cn(
+          "min-h-0 flex-col border-r md:flex",
+          selectedId ? "hidden" : "flex",
+        )}
+      >
         {/* Sem o simulador de cliente: ele existia pra testar o fluxo antes
             de o WhatsApp estar conectado. Com o canal no ar ele só criava
             conversa falsa no meio das de verdade. O endpoint continua na
@@ -943,6 +961,16 @@ export default function InboxPage() {
           saindo={saindoDaLista}
         />
       </div>
+      {/* O outro lado da mesma alternância: sem conversa escolhida, o
+          painel some no celular pra a lista poder ocupar a tela. O estado
+          vazio dele ("nenhuma conversa aberta") continua valendo no
+          desktop, onde a lista está do lado e a frase faz sentido. */}
+      <div
+        className={cn(
+          "min-h-0 min-w-0 flex-col md:flex",
+          selectedId ? "flex" : "hidden",
+        )}
+      >
       {/* Remontar ao trocar de conversa zera rascunho e busca — que é o
           esperado: rascunho de uma conversa não pode aparecer na outra. */}
       <ChatPanel
@@ -967,6 +995,7 @@ export default function InboxPage() {
         onReopen={() => handleAction("reopen", "Não deu pra reabrir essa conversa.")}
         onChangePriority={handlePriority}
       />
+      </div>
       <div className="hidden overflow-y-auto border-l xl:block">
         <CustomerPanel conversation={detail} />
       </div>

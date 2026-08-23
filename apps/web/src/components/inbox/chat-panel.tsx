@@ -2,6 +2,7 @@
 
 import {
   ArrowDown,
+  ArrowLeft,
   ChevronDown,
   ChevronUp,
   MessagesSquare,
@@ -799,6 +800,24 @@ export function ChatPanel({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 bg-card px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
+          {/* A volta pra lista, no celular.
+
+              Ali a conversa ocupa a tela inteira e a lista não existe ao
+              lado — sem esta seta, quem abrisse um atendimento ficava
+              preso nele. No desktop as duas colunas convivem e a seta
+              seria um botão que não leva a lugar nenhum.
+
+              É o mesmo `onClose` do Esc: fechar a conversa já era a ação
+              certa, só não tinha como pedir com o dedo. */}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Voltar para a lista de conversas"
+            onClick={() => onClose?.()}
+            className="-ml-1 shrink-0 md:hidden"
+          >
+            <ArrowLeft className="size-5" />
+          </Button>
           <Avatar className="size-9 shrink-0">
             <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
               {initials(conversation.customer.name)}
@@ -818,7 +837,14 @@ export function ChatPanel({
             </div>
           ) : null}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        {/* Sem `shrink-0`: ele existia pra as ações não serem espremidas
+            pelo nome do cliente ao lado, e no computador continua sendo o
+            que a falta de `flex-1` já garante. No celular ele fazia a
+            fileira manter a largura de umas 430px e sair pela direita —
+            "Resolver" ficava metade fora da tela, e ali não havia rolagem
+            nenhuma pra alcançar o resto. Com ele fora, o `flex-wrap`
+            finalmente pode fazer o que promete e quebrar a linha. */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button
             size="icon-sm"
             variant="ghost"
