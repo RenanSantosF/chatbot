@@ -7,6 +7,8 @@ jest.mock('web-push', () => ({
 }));
 
 const enviar = webpush.sendNotification as jest.Mock;
+const configurar = webpush.setVapidDetails as jest.Mock;
+beforeEach(() => configurar.mockReset());
 
 /**
  * O aviso que chega com o painel fechado.
@@ -149,6 +151,61 @@ describe('com VAPID configurado', () => {
 
     expect(prisma.client.pushSubscription.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { endpoint: 'https://exemplo/abc' } }),
+    );
+  });
+});
+
+/**
+ * Uma variável mal digitada não pode derrubar a API.
+ *
+ * Isto aconteceu de verdade, na primeira configuração em produção: o
+ * `VAPID_SUBJECT` foi preenchido com o e-mail puro, sem `mailto:`, o
+ * `setVapidDetails` lançou dentro do construtor, e o Nest abortou a
+ * inicialização INTEIRA — nenhuma mensagem entrava mais no sistema por
+ * causa de um recurso de notificação.
+ */
+describe('VAPID malformada', () => {
+  const original = { ...process.env };
+  beforeEach(() => {
+    Object.assign(process.env, COM_VAPID);
+    enviar.mockReset();
+  });
+  afterAll(() => Object.assign(process.env, original));
+
+  it('não derruba a subida: desliga o push e segue', () => {
+    process.env.VAPID_SUBJECT = 'isso-nao-e-url-nem-email';
+    (webpush.setVapidDetails as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('Vapid subject is not a valid URL.');
+    });
+
+    // O construtor tem que sobreviver. Antes, ele lançava daqui.
+    const { service } = montar();
+
+    expect(service.chavePublica()).toBeNull();
+  });
+
+  it('e-mail sem mailto: é completado em vez de recusado', () => {
+    // Tem UMA leitura possível, e recusar custava a API no ar.
+    process.env.VAPID_SUBJECT = 'renan@exemplo.com';
+
+    montar();
+
+    expect(webpush.setVapidDetails).toHaveBeenCalledWith(
+      'mailto:renan@exemplo.com',
+      expect.any(String),
+      expect.any(String),
+    );
+  });
+
+  it('mailto: já escrito passa intacto', () => {
+    process.env.VAPID_SUBJECT = 'mailto:renan@exemplo.com';
+
+    montar();
+
+    expect(webpush.setVapidDetails).toHaveBeenCalledWith(
+      'mailto:renan@exemplo.com',
+      expect.any(String),
+      expect.any(String),
     );
   });
 });

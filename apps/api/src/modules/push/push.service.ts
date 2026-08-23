@@ -25,33 +25,55 @@ export class PushService {
   private readonly logger = new Logger(PushService.name);
 
   /**
-   * Sem as chaves VAPID o recurso fica desligado, e isso é proposital.
+   * Sem VAPID válida o recurso fica desligado, e isso é proposital.
    *
-   * São elas que provam ao serviço de push que o envio veio de quem a
-   * pessoa autorizou. Sem elas não há como enviar — e o resto do sistema
+   * As chaves são o que prova ao serviço de push que o envio veio de quem
+   * a pessoa autorizou. Sem elas não há como enviar — e o resto do sistema
    * tem que continuar funcionando igual, como já acontece com o
    * armazenamento de anexos e com o ffmpeg.
    */
-  private readonly ligado: boolean;
+  private ligado = false;
 
   constructor(private readonly prisma: PrismaService) {
-    const publica = process.env.VAPID_PUBLIC_KEY;
-    const privada = process.env.VAPID_PRIVATE_KEY;
-    this.ligado = Boolean(publica && privada);
+    this.ligado = this.configurar();
+  }
 
-    if (this.ligado) {
-      webpush.setVapidDetails(
-        // O `subject` é um contato do responsável pelo serviço, exigido
-        // pela norma: é por onde o serviço de push avisa em caso de abuso.
-        process.env.VAPID_SUBJECT ?? 'mailto:contato@inteliwa.com.br',
-        publica!,
-        privada!,
-      );
-    } else {
+  /**
+   * Liga o push, e NUNCA derruba a subida da API se não conseguir.
+   *
+   * Este `try` existe por um defeito real, e ele custou a API no ar: o
+   * `setVapidDetails` LANÇA quando o valor não presta — "Vapid subject is
+   * not a valid URL" pra um e-mail sem `mailto:`, por exemplo. Lançar
+   * dentro do construtor de um provider faz o Nest abortar a inicialização
+   * inteira, então uma variável de ambiente mal digitada não deixava mais
+   * nenhuma mensagem entrar no sistema.
+   *
+   * A promessa era "sem VAPID o resto funciona igual". Ela só valia pro
+   * caso de AUSÊNCIA; o de valor inválido matava tudo. Agora vale pros
+   * dois: qualquer problema aqui desliga só o aviso, com o motivo escrito
+   * no log.
+   */
+  private configurar(): boolean {
+    const publica = process.env.VAPID_PUBLIC_KEY?.trim();
+    const privada = process.env.VAPID_PRIVATE_KEY?.trim();
+
+    if (!publica || !privada) {
       this.logger.warn(
         'VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY ausentes: o aviso com o app fechado fica desligado. ' +
           'Gere o par com `npx web-push generate-vapid-keys` e configure nas variáveis de ambiente.',
       );
+      return false;
+    }
+
+    try {
+      webpush.setVapidDetails(assunto(), publica, privada);
+      return true;
+    } catch (erro) {
+      this.logger.error(
+        `VAPID inválida: ${erro instanceof Error ? erro.message : String(erro)}. ` +
+          'O aviso com o app fechado fica desligado; o resto do sistema segue normal.',
+      );
+      return false;
     }
   }
 
@@ -172,3 +194,23 @@ export class PushService {
  * o aviso pra sempre.
  */
 const TEMPO_DE_VIDA_S = 4 * 60 * 60;
+
+/**
+ * O contato do responsável pelo serviço, no formato que a norma exige.
+ *
+ * A norma pede uma URL (`mailto:` ou `https:`), e a variável quase sempre
+ * é preenchida com o e-mail puro — foi o que derrubou a API na primeira
+ * configuração real. Um e-mail sem esquema tem UMA leitura possível, então
+ * completar é melhor que recusar: o `mailto:` entra sozinho e fica
+ * registrado no log, pra quem configurou entender o que aconteceu.
+ *
+ * O que não for e-mail nem URL passa direto pro `web-push`, que recusa com
+ * a mensagem dele — adivinhar mais que isso esconderia erro de digitação.
+ */
+function assunto(): string {
+  const bruto = process.env.VAPID_SUBJECT?.trim();
+  if (!bruto) return 'mailto:contato@inteliwa.com.br';
+  if (/^(mailto:|https?:)/i.test(bruto)) return bruto;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bruto)) return `mailto:${bruto}`;
+  return bruto;
+}
