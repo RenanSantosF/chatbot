@@ -119,6 +119,18 @@ export interface FiltroDoInbox {
    * formulário que o Inbox passou o tempo todo evitando.
    */
   tagId?: string;
+  /**
+   * Mostrar GRUPOS em vez de conversas de cliente.
+   *
+   * É um eixo à parte, e não mais uma faceta: as duas listas nunca se
+   * misturam. Um grupo movimentado produz dezenas de mensagens por dia e
+   * ficaria no topo o tempo todo, empurrando pra baixo o cliente que está
+   * esperando — que é exatamente o que a caixa existe pra evitar.
+   *
+   * Por ser eixo, ele não entra na conta das facetas (ver `onde`): os
+   * números das abas de situação valem DENTRO do que está sendo mostrado.
+   */
+  grupos?: boolean;
   /** Quem está olhando — define o que ela pode enxergar. */
   viewer?: { userId: string; role: UserRole };
 }
@@ -418,6 +430,10 @@ export class ConversationsService {
 
     return {
       ...recorte,
+      // Grupo e cliente nunca aparecem na mesma lista. Fora de qualquer
+      // faceta de propósito: é o recorte que define QUAL caixa está
+      // aberta, e os contadores das abas contam dentro dela.
+      customer: { isGroup: filtro.grupos === true },
       // Status exato ganha do grupo: se alguém pediu "só as fechadas",
       // não faz sentido devolver também as resolvidas.
       ...(fora.has('situacao')
@@ -922,11 +938,19 @@ export class ConversationsService {
        * mensagem do cliente continua por ler pela equipe.
        */
       automatica?: boolean;
+      /**
+       * A conversa é um GRUPO.
+       *
+       * Tira a mensagem da fila de atendimento: grupo não cobra resposta,
+       * e contar cada mensagem dele como "cliente esperando" transformaria
+       * o contador de Pendentes e o alarme de espera em ruído.
+       */
+      grupo?: boolean;
     },
   ) {
     // `automatica` sai do espalhamento junto com `jaEntregue`: são
     // decisões de fluxo, não colunas da tabela de mensagens.
-    const { jaEntregue = false, automatica = false, ...dadosDaMensagem } = data;
+    const { jaEntregue = false, automatica = false, grupo = false, ...dadosDaMensagem } = data;
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
       select: { status: true, aiMode: true, waitingSince: true },
@@ -957,8 +981,20 @@ export class ConversationsService {
       data.senderType === 'AI' &&
       (before?.status === 'WAITING_AGENT' || before?.aiMode === 'HUMAN_ACTIVE');
 
+    /*
+     * GRUPO não entra na fila de atendimento.
+     *
+     * Um grupo ativo produz dezenas de mensagens por dia, e cada uma delas
+     * marcaria a conversa como "aberta, esperando a empresa". O efeito não
+     * é cosmético: o contador de Pendentes vira ficção, e o alarme de
+     * espera passa a gritar por uma conversa que ninguém precisa responder
+     * — enterrando o cliente de verdade que está esperando embaixo.
+     *
+     * O grupo continua subindo na lista pela hora da última mensagem, que
+     * é como se acompanha um grupo. O que ele não faz é cobrar resposta.
+     */
     const status: ConversationStatus | undefined =
-      isSystemNote || alreadyHandedOff || automatica
+      isSystemNote || alreadyHandedOff || automatica || grupo
         ? undefined
         : fromCustomer
           ? 'OPEN'
@@ -987,13 +1023,15 @@ export class ConversationsService {
          * cliente, e deixar que zerasse esconderia a espera bem no
          * momento em que ela mais importa.
          */
-        ...(fromCustomer
-          ? before?.waitingSince
-            ? {}
-            : { waitingSince: message.createdAt }
-          : isSystemNote
-            ? {}
-            : { waitingSince: null }),
+        ...(grupo
+          ? {}
+          : fromCustomer
+            ? before?.waitingSince
+              ? {}
+              : { waitingSince: message.createdAt }
+            : isSystemNote
+              ? {}
+              : { waitingSince: null }),
       },
       include: conversationInclude,
     });
@@ -2778,6 +2816,23 @@ export class ConversationsService {
     replyToExternalId?: string;
     /** A hora em que o cliente escreveu, quando ela não é agora. */
     createdAt?: Date;
+    /**
+     * É um GRUPO, e não uma pessoa.
+     *
+     * Grupo reaproveita toda a estrutura de conversa — histórico,
+     * etiquetas, busca, anexo — porque tudo isso faz sentido nele. O que
+     * muda é decidido por esta bandeira: a IA nunca responde, a saudação
+     * não sai, e o relógio de espera não corre.
+     */
+    grupo?: boolean;
+    /**
+     * Quem, DENTRO do grupo, escreveu esta mensagem.
+     *
+     * Sem isso a conversa de grupo é ilegível: quinze mensagens seguidas
+     * de gente diferente, todas do mesmo lado do balão, sem nada dizendo
+     * quem falou o quê.
+     */
+    participante?: string;
   }) {
     /**
      * A mesma entrega, de novo.
@@ -2811,6 +2866,7 @@ export class ConversationsService {
     const customer = await this.customers.findOrCreateByPhone({
       phone: input.customerPhone,
       name: input.customerName,
+      grupo: input.grupo,
     });
 
     let conversation = await this.prisma.db.conversation.findFirst({
@@ -2845,7 +2901,15 @@ export class ConversationsService {
        * funcionando com o interruptor desligado. Não era: era a IA
        * fracassando com educação.
        */
-      const comIa = await this.aiEngine.podeAtender();
+      /*
+       * Em GRUPO a IA nunca assume, e isto não é configurável.
+       *
+       * Um robô respondendo cada mensagem de um grupo de quarenta pessoas
+       * é constrangedor pra empresa e é padrão de spam pro WhatsApp — o
+       * tipo de comportamento que bloqueia número. Grupo nasce humano e
+       * continua humano; quem quiser responder, responde.
+       */
+      const comIa = input.grupo ? false : await this.aiEngine.podeAtender();
       conversation = await this.prisma.db.conversation.create({
         data: {
           tenantId: this.prisma.tenantId,
@@ -2871,10 +2935,20 @@ export class ConversationsService {
         senderType: 'CUSTOMER',
         content: input.content,
         messageType: input.messageType,
-        metadata: input.metadata,
+        /*
+         * Em grupo, quem falou vai junto do resto do metadado.
+         *
+         * No metadado e não numa coluna própria porque só o balão de grupo
+         * lê isso — criar coluna na tabela que mais cresce do sistema pra
+         * um caso que é minoria sairia caro em disco e em índice.
+         */
+        metadata: input.participante
+          ? { ...((input.metadata as object) ?? {}), participante: input.participante }
+          : input.metadata,
         externalId: input.externalId,
         replyToId: replyTo?.id,
         createdAt: input.createdAt,
+        grupo: input.grupo,
       });
     } catch (erro) {
       // A conferência lá em cima perdeu a corrida pra outra entrega da
@@ -2929,7 +3003,7 @@ export class ConversationsService {
      * Depois dela, nada mais acontece: a conversa fica na fila esperando
      * gente, que é exatamente o destino de quem não usa IA.
      */
-    if (conversaNova && conversation.aiMode !== 'AI_ACTIVE') {
+    if (conversaNova && !input.grupo && conversation.aiMode !== 'AI_ACTIVE') {
       const saudada = await this.saudar(conversation.id);
       if (saudada) latestConversation = saudada;
     }

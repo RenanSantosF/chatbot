@@ -21,8 +21,9 @@ import {
   type ContatoDoAparelho,
 } from '../../../customers/customers.service';
 import { RealtimeGateway } from '../../../realtime/realtime.gateway';
+import { EvolutionCanal } from './evolution.canal';
 import { WhatsappMediaService } from '../../whatsapp-media.service';
-import { empacotarId, telefoneDoJid } from './evolution-id';
+import { empacotarId, identidadeDoDestino, telefoneDoJid } from './evolution-id';
 import {
   chaveDoEvento,
   comoLista,
@@ -62,6 +63,7 @@ export class EvolutionWebhookController {
     private readonly realtime: RealtimeGateway,
     private readonly media: WhatsappMediaService,
     private readonly customers: CustomersService,
+    private readonly evolution: EvolutionCanal,
   ) {}
 
   /**
@@ -90,6 +92,61 @@ export class EvolutionWebhookController {
       `Agenda do aparelho: ${salvos} de ${recebidos} contatos salvos.`,
     );
   }
+
+  /**
+   * O nome do grupo, perguntado o mínimo de vezes possível.
+   *
+   * O evento de mensagem traz o ENDEREÇO do grupo (`120363...@g.us`),
+   * nunca o nome — ele mora numa chamada à parte. Perguntar em toda
+   * mensagem custaria uma ida ao servidor por mensagem num grupo
+   * movimentado, que é justamente onde mais chega mensagem.
+   *
+   * Por isso três camadas, da mais barata pra mais cara: o mapa desta
+   * requisição (um lote de webhook costuma trazer várias mensagens do
+   * mesmo grupo), o nome que já está gravado, e só então a pergunta ao
+   * servidor.
+   *
+   * Sem nome, devolve o próprio endereço. Feio, mas é provisório: como o
+   * endereço não passa na conferência de "tem nome de verdade", a próxima
+   * mensagem tenta de novo — e segurar o recebimento por causa de um nome
+   * seria trocar mensagem perdida por estética.
+   */
+  private async nomeDoGrupo(tenantId: string, groupJid: string): Promise<string> {
+    const memorizado = this.nomesDeGrupo.get(groupJid);
+    if (memorizado) return memorizado;
+
+    const existente = await this.prisma.client.customer.findFirst({
+      where: { tenantId, phone: groupJid },
+      select: { id: true, name: true },
+    });
+    if (existente && existente.name !== groupJid) {
+      this.nomesDeGrupo.set(groupJid, existente.name);
+      return existente.name;
+    }
+
+    const nome = await this.evolution.nomeDoGrupo(groupJid);
+    if (!nome) return groupJid;
+
+    this.nomesDeGrupo.set(groupJid, nome);
+    // O grupo já existia com o endereço no lugar do nome: agora que
+    // sabemos, corrige. Sem isto, quem foi criado numa hora em que o
+    // servidor não respondeu ficaria com o endereço pra sempre.
+    if (existente) {
+      await this.prisma.client.customer
+        .update({ where: { id: existente.id }, data: { name: nome } })
+        .catch(() => undefined);
+    }
+    return nome;
+  }
+
+  /**
+   * Os nomes de grupo já resolvidos NESTA requisição.
+   *
+   * O controlador tem escopo de requisição (ele injeta serviços que têm),
+   * então este mapa nasce e morre com o lote de webhook — que é
+   * exatamente a janela em que a repetição acontece.
+   */
+  private readonly nomesDeGrupo = new Map<string, string>();
 
   @Public()
   @Post(':secret')
@@ -234,13 +291,21 @@ export class EvolutionWebhookController {
       const chave = chaveDoEvento(dados);
       if (!chave) continue;
 
-      const telefone = telefoneDoJid(chave.remoteJid);
-      if (!telefone) {
-        // Grupo, lista de transmissão, status. Nenhum deles é atendimento
-        // individual, e tratar como se fosse criaria um "cliente" com o id
-        // do grupo misturando o que várias pessoas escreveram.
-        continue;
-      }
+      /*
+       * Pessoa ou grupo — os dois entram. O resto, não.
+       *
+       * Lista de transmissão e status não são conversa: ninguém responde a
+       * eles pelo painel, e tratá-los como atendimento encheria a caixa de
+       * linhas que nunca vão ser lidas.
+       *
+       * No grupo, o `identificador` é o JID inteiro, e é ele que fica
+       * gravado no cliente — grupo não tem telefone (ver
+       * `identidadeDoDestino`).
+       */
+      const destino = identidadeDoDestino(chave.remoteJid);
+      if (!destino) continue;
+
+      const telefone = destino.identificador;
 
       // Reação modifica a mensagem reagida em vez de virar linha nova no
       // histórico — mesmo tratamento do caminho oficial. Sem isto, o
@@ -322,9 +387,25 @@ export class EvolutionWebhookController {
         continue;
       }
 
+      /*
+       * O nome do grupo não vem na mensagem — só o endereço dele.
+       *
+       * Por isso ele é perguntado à parte, e só quando o grupo ainda não
+       * tem nome gravado. Perguntar em toda mensagem seria uma chamada
+       * extra por mensagem num grupo movimentado; sem perguntar nunca, a
+       * conversa se chamaria `120363...@g.us` pra sempre.
+       */
+      const nome = destino.grupo
+        ? await this.nomeDoGrupo(config.tenantId, chave.remoteJid)
+        : (dados.pushName ?? telefone);
+
       await this.conversations.receiveInbound({
         customerPhone: telefone,
-        customerName: dados.pushName ?? telefone,
+        customerName: nome,
+        grupo: destino.grupo,
+        // Em grupo, quem escreveu é o participante — o `pushName` do
+        // evento é dele, e não do grupo.
+        participante: destino.grupo ? dados.pushName : undefined,
         content: traduzida.content,
         messageType: traduzida.messageType,
         metadata: traduzida.metadata as Prisma.InputJsonValue | undefined,

@@ -384,6 +384,21 @@ export function MessageBubble({
         </span>
       ) : null}
 
+      {/* Quem falou, dentro de um GRUPO.
+
+          Sem isto a conversa de grupo é ilegível: quinze mensagens de gente
+          diferente, todas do mesmo lado do balão, sem nada dizendo quem
+          disse o quê. Cor da marca e não a do texto, como o WhatsApp faz —
+          é uma etiqueta de autoria, não conteúdo da mensagem.
+
+          Só nas recebidas: o que a empresa manda sai pelo painel e já tem o
+          `senderName` acima dizendo qual atendente escreveu. */}
+      {fromCustomer && message.metadata?.participante ? (
+        <span className="text-[13px] font-semibold text-primary">
+          {message.metadata.participante}
+        </span>
+      ) : null}
+
       {message.replyTo ? (
         <div
           className={cn(

@@ -414,12 +414,28 @@ model Customer {
   id         String   @id @default(uuid())
   tenantId   String
   name       String
+  /// O telefone só de dígitos, para pessoa.
+  ///
+  /// Para GRUPO, guarda o JID inteiro (`120363...@g.us`). Grupo não tem
+  /// telefone, e inventar um só pra caber no formato faria o envio montar
+  /// um destino que não existe. Como este campo já é a identidade da
+  /// conversa dentro da empresa, guardar o endereço de verdade é o que
+  /// mantém o resto do sistema funcionando sem exceção espalhada.
   phone      String
   email      String?
   externalId String?
   metadata   Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  /// Isto é um grupo do WhatsApp, e não uma pessoa.
+  ///
+  /// Grupo entra pela mesma porta que cliente — mesma conversa, mesmo
+  /// histórico, mesmas etiquetas — porque tudo o que o painel faz com uma
+  /// conversa faz sentido num grupo também. O que MUDA é decidido por
+  /// esta coluna: a IA nunca responde, o relógio de espera não corre, a
+  /// fila de pendentes não conta, e a lista de Clientes não mostra.
+  isGroup       Boolean        @default(false)
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]

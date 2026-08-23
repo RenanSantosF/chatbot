@@ -251,6 +251,36 @@ export function enviarTexto(
   });
 }
 
+/** O que a Evolution devolve sobre um grupo. */
+export interface GrupoDaEvolution {
+  id?: string;
+  /** O nome do grupo, como aparece no aparelho. */
+  subject?: string;
+  size?: number;
+}
+
+/**
+ * O nome e o tamanho de um grupo.
+ *
+ * Serve pra o painel mostrar "Fornecedores" em vez de
+ * `120363025343298765@g.us`, que é o que chega na mensagem — o evento de
+ * mensagem NÃO traz o nome do grupo, só o endereço dele.
+ *
+ * Confirmado em `GroupJid` e na rota `GET /group/findGroupInfos` da v2. O
+ * parâmetro vai na query, e não no corpo: a rota é GET.
+ */
+export function buscarGrupo(
+  credenciais: Credenciais,
+  groupJid: string,
+): Promise<RespostaDaEvolution<GrupoDaEvolution>> {
+  const query = new URLSearchParams({ groupJid }).toString();
+  return chamar(
+    credenciais,
+    `/group/findGroupInfos/${credenciais.instance}?${query}`,
+    { method: 'GET' },
+  );
+}
+
 /** O que a Evolution responde ao conferir uma lista de números. */
 export interface NumeroConferido {
   exists?: boolean;

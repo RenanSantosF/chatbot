@@ -29,6 +29,11 @@ function montar() {
 
   const prisma = {
     client: {
+      // O grupo consulta o cliente pra saber se já tem nome gravado.
+      customer: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+      },
       evolutionSettings: {
         findFirst: jest.fn().mockResolvedValue(config),
         update: jest
@@ -45,16 +50,19 @@ function montar() {
     importarAgenda: jest.fn().mockResolvedValue({ recebidos: 1, salvos: 1 }),
   };
 
+  const evolution = { nomeDoGrupo: jest.fn().mockResolvedValue(null) };
+
   const controller = new EvolutionWebhookController(
     prisma as unknown as PrismaService,
     conversations as unknown as ConversationsService,
     realtime as never,
     media as never,
     customers as never,
+    evolution as never,
   );
 
   const req = {} as AuthenticatedRequest;
-  return { controller, conversations, prisma, req, realtime, media, customers };
+  return { controller, conversations, prisma, req, realtime, media, customers, evolution };
 }
 
 function mensagem(extra: Record<string, unknown> = {}) {
@@ -224,18 +232,65 @@ describe('mensagem que chega', () => {
     expect(conversations.receiveInbound).not.toHaveBeenCalled();
   });
 
-  it('não cria cliente a partir de grupo nem de status', async () => {
+  it('status e transmissão continuam de fora', async () => {
+    // Ninguém responde a um status pelo painel. Tratá-lo como atendimento
+    // encheria a caixa de linhas que nunca vão ser lidas.
     const { controller, conversations, req } = montar();
 
-    for (const remoteJid of ['120363000@g.us', 'status@broadcast']) {
-      await controller.receber(
-        SEGREDO,
-        req,
-        mensagem({ key: { remoteJid, fromMe: false, id: 'X' } }),
-      );
-    }
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({ key: { remoteJid: 'status@broadcast', fromMe: false, id: 'X' } }),
+    );
 
     expect(conversations.receiveInbound).not.toHaveBeenCalled();
+  });
+
+  it('grupo entra como conversa, marcado como grupo e com quem falou', async () => {
+    /*
+     * Grupo era descartado junto com status. Agora ele entra, e o que
+     * separa os dois casos é `identidadeDoDestino`.
+     *
+     * Duas coisas precisam ir juntas: a bandeira de grupo, que é o que
+     * mantém a IA fora e o relógio de espera parado, e o participante, sem
+     * o qual a conversa vira quinze mensagens seguidas sem dizer quem
+     * falou o quê.
+     */
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({ key: { remoteJid: '120363000@g.us', fromMe: false, id: 'X' } }),
+    );
+
+    expect(conversations.receiveInbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // O JID inteiro, e não dígitos: grupo não tem telefone, e a
+        // limpeza montaria um destino individual que não existe.
+        customerPhone: '120363000@g.us',
+        grupo: true,
+        participante: 'Ana',
+      }),
+    );
+  });
+
+  it('o nome do grupo vem da consulta, não do pushName da mensagem', async () => {
+    // O `pushName` de uma mensagem de grupo é de QUEM ESCREVEU. Usá-lo
+    // como nome da conversa faria o grupo se chamar "Ana" — e trocar de
+    // nome a cada pessoa que falasse.
+    const { controller, conversations, req, evolution } = montar();
+    evolution.nomeDoGrupo.mockResolvedValue('Fornecedores');
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({ key: { remoteJid: '120363000@g.us', fromMe: false, id: 'X' } }),
+    );
+
+    expect(conversations.receiveInbound).toHaveBeenCalledWith(
+      expect.objectContaining({ customerName: 'Fornecedores' }),
+    );
   });
 
   it('aceita o lote com várias mensagens', async () => {

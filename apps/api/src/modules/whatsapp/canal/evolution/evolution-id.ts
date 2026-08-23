@@ -24,8 +24,11 @@
 
 const SEPARADOR = '|';
 
-/** O sufixo de JID de conversa individual. Grupo usa outro, e não atendemos grupo. */
+/** O sufixo de JID de conversa individual. */
 const SUFIXO_PESSOA = '@s.whatsapp.net';
+
+/** O de grupo. Tudo que termina assim é conversa de muita gente. */
+const SUFIXO_GRUPO = '@g.us';
 
 export interface ChaveDaMensagem {
   remoteJid: string;
@@ -96,26 +99,59 @@ export function desempacotarId(externo: string): ChaveDaMensagem | null {
   return { remoteJid, fromMe: fromMe === '1', id };
 }
 
+/** Este endereço é de grupo? */
+export function ehGrupo(destino: string): boolean {
+  return destino.trim().endsWith(SUFIXO_GRUPO);
+}
+
 /**
- * O JID de uma conversa individual a partir do telefone.
+ * O JID de destino a partir do que está gravado no cliente.
  *
- * Guarda só os dígitos: o telefone chega do painel em formatos variados
- * (com +, com parênteses, com traço) e o WhatsApp só entende dígito.
+ * Para pessoa, guarda-se o telefone e monta-se o JID aqui: ele chega do
+ * painel em formatos variados (com +, parênteses, traço) e o WhatsApp só
+ * entende dígito.
+ *
+ * Para GRUPO, o que está gravado já É o JID (`120363...@g.us`), e ele
+ * passa intacto. Sem esta saída, a limpeza de dígitos abaixo comeria o
+ * `@g.us` e montaria `120363...@s.whatsapp.net` — um destino individual
+ * que não existe, e o envio ia embora pra lugar nenhum.
  */
 export function jidDoTelefone(telefone: string): string {
+  if (ehGrupo(telefone)) return telefone.trim();
   return `${telefone.replace(/\D/g, '')}${SUFIXO_PESSOA}`;
 }
 
 /**
  * O telefone de volta, a partir do JID.
  *
- * Grupos e transmissões devolvem `null` — o sistema é de atendimento
- * individual, e tratar mensagem de grupo como conversa de cliente criaria
- * um "cliente" com o id do grupo, misturando o que várias pessoas
- * escreveram numa conversa só.
+ * Grupo devolve `null` de propósito, e continua assim mesmo agora que
+ * grupo é atendido: ele não TEM telefone. Quem precisa lidar com grupo usa
+ * `ehGrupo` e guarda o JID inteiro — ver `identidadeDoDestino`.
  */
 export function telefoneDoJid(remoteJid: string): string | null {
   if (!remoteJid.endsWith(SUFIXO_PESSOA)) return null;
   const numero = remoteJid.slice(0, -SUFIXO_PESSOA.length).split(':')[0];
   return /^\d{8,15}$/.test(numero) ? numero : null;
+}
+
+/**
+ * Como este destino é guardado no campo `phone` do cliente.
+ *
+ * Um lugar só pra decidir isso, porque a resposta é diferente pros dois
+ * tipos e a diferença precisa ser consistente entre quem GRAVA (o webhook,
+ * ao receber) e quem LÊ (o envio, ao montar o destino). Escrita nos dois
+ * lugares, uma delas ia divergir na primeira mudança.
+ *
+ * `null` quando não é nem pessoa nem grupo — transmissão, status, e o que
+ * mais o WhatsApp inventar. Esses continuam de fora.
+ */
+export function identidadeDoDestino(
+  remoteJid: string,
+): { identificador: string; grupo: boolean } | null {
+  if (ehGrupo(remoteJid)) {
+    return { identificador: remoteJid.trim(), grupo: true };
+  }
+
+  const telefone = telefoneDoJid(remoteJid);
+  return telefone ? { identificador: telefone, grupo: false } : null;
 }

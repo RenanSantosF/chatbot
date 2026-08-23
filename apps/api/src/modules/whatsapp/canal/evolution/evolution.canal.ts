@@ -12,6 +12,7 @@ import type {
 import * as evolution from './evolution.client';
 import {
   desempacotarId,
+  ehGrupo,
   empacotarId,
   jidDoTelefone,
 } from './evolution-id';
@@ -92,10 +93,15 @@ export class EvolutionCanal implements CanalDeMensagem {
    * errado no painel produz exatamente esse padrão.
    */
   async numeroExiste(para: string): Promise<boolean | null> {
+    // Grupo não é número: a conferência é feita contra a base de contas
+    // pessoais do WhatsApp e responderia "não existe" pra todo grupo,
+    // barrando um envio perfeitamente válido.
+    if (ehGrupo(para)) return true;
+
     const credenciais = await this.credenciais();
     if (!credenciais) return null;
 
-    const numero = para.replace(/\D/g, '');
+    const numero = this.destino(para);
     const resposta = await evolution.conferirNumeros(credenciais, [numero]);
     if (!resposta.ok || !Array.isArray(resposta.dados)) {
       this.logger.warn(
@@ -111,6 +117,19 @@ export class EvolutionCanal implements CanalDeMensagem {
     return typeof conferido?.exists === 'boolean' ? conferido.exists : null;
   }
 
+  /**
+   * O destino do jeito que a Evolution espera.
+   *
+   * Para pessoa, só os dígitos. Para GRUPO, o JID inteiro — e é por isso
+   * que isto existe em vez de um `replace` solto em cada envio: a limpeza
+   * de dígitos comeria o `@g.us` e mandaria a mensagem pra um destino
+   * individual inexistente. Eram três lugares fazendo a mesma limpeza, e
+   * bastava um deles ficar pra trás.
+   */
+  private destino(para: string): string {
+    return ehGrupo(para) ? para.trim() : para.replace(/\D/g, '');
+  }
+
   async enviarTexto(
     para: string,
     texto: string,
@@ -122,7 +141,7 @@ export class EvolutionCanal implements CanalDeMensagem {
     if (!credenciais) return null;
 
     const resposta = await evolution.enviarTexto(credenciais, {
-      numero: para.replace(/\D/g, ''),
+      numero: this.destino(para),
       texto,
       // A citação vai só com o id: quem cita já está na mesma conversa, e
       // o resto da chave é redundante ali.
@@ -177,7 +196,7 @@ export class EvolutionCanal implements CanalDeMensagem {
     const credenciais = await this.credenciais();
     if (!credenciais) return { externalId: null, handle: null };
 
-    const numero = para.replace(/\D/g, '');
+    const numero = this.destino(para);
     const base64 = arquivo.buffer.toString('base64');
     const citando = opcoes.citando
       ? (desempacotarId(opcoes.citando)?.id ?? opcoes.citando)
@@ -359,5 +378,29 @@ export class EvolutionCanal implements CanalDeMensagem {
         'Modelos aprovados só existem no WhatsApp oficial. Nesta conexão, escreva a mensagem direto.',
       ),
     );
+  }
+
+  /**
+   * O nome do grupo, pra a conversa não se chamar `120363...@g.us`.
+   *
+   * O evento de mensagem traz o ENDEREÇO do grupo, nunca o nome — ele mora
+   * na informação do grupo, que é outra chamada. `null` quando não deu:
+   * o painel usa o endereço como nome provisório e tenta de novo na
+   * próxima mensagem, o que é melhor que segurar o recebimento.
+   */
+  async nomeDoGrupo(groupJid: string): Promise<string | null> {
+    const credenciais = await this.credenciais();
+    if (!credenciais) return null;
+
+    const resposta = await evolution.buscarGrupo(credenciais, groupJid);
+    const nome = resposta.dados?.subject?.trim();
+    if (!resposta.ok || !nome) {
+      this.logger.warn(
+        `Não deu pra descobrir o nome do grupo ${groupJid}: ${resposta.erro ?? 'sem nome na resposta'}.`,
+      );
+      return null;
+    }
+
+    return nome;
   }
 }

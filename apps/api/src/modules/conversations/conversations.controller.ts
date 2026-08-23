@@ -75,6 +75,7 @@ export class ConversationsController {
   list(
     @Query('status') status: ConversationStatus | undefined,
     @Query('statusGroup') statusGroup: StatusGroup | undefined,
+    @Query('grupos') grupos: string | undefined,
     @Query('mine') mine: string | undefined,
     @Query('queueId') queueId: string | undefined,
     @Query('customerId') customerId: string | undefined,
@@ -93,6 +94,7 @@ export class ConversationsController {
     return this.conversationsService.list({
       status,
       statusGroup,
+      grupos: grupos === 'true',
       assignedUserId: mine === 'true' ? user.userId : undefined,
       unassignedOnly: unassigned === 'true',
       comIa: comIa === 'true',
@@ -123,6 +125,7 @@ export class ConversationsController {
   counts(
     @Query('status') status: ConversationStatus | undefined,
     @Query('statusGroup') statusGroup: StatusGroup | undefined,
+    @Query('grupos') grupos: string | undefined,
     @Query('mine') mine: string | undefined,
     @Query('queueId') queueId: string | undefined,
     @Query('priority') priority: ConversationPriority | undefined,
@@ -137,6 +140,7 @@ export class ConversationsController {
     return this.conversationsService.counts({
       status,
       statusGroup,
+      grupos: grupos === 'true',
       assignedUserId: mine === 'true' ? user.userId : undefined,
       queueId,
       priority,

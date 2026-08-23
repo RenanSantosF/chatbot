@@ -6,6 +6,7 @@ import {
   Inbox,
   Search,
   SlidersHorizontal,
+  Users,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -34,6 +35,15 @@ export type OrdemDoInbox = "RECENTE" | "ESPERA";
 export interface InboxFilters {
   /** Grupo de trabalho. "ALL" = não filtra. */
   grupo: StatusGroup | "ALL";
+  /**
+   * Mostrar os GRUPOS do WhatsApp em vez das conversas de cliente.
+   *
+   * Eixo à parte, e não mais uma faceta: as duas listas nunca se
+   * misturam. Um grupo movimentado produz dezenas de mensagens por dia e
+   * ficaria no topo o tempo todo, empurrando pra baixo o cliente que está
+   * esperando — que é o oposto do que a caixa existe pra fazer.
+   */
+  grupos: boolean;
   status: ConversationStatus | "ALL";
   priority: ConversationPriority | "ALL";
   mine: boolean;
@@ -65,6 +75,7 @@ export interface InboxFilters {
  */
 export const DEFAULT_FILTERS: InboxFilters = {
   grupo: "PENDING",
+  grupos: false,
   status: "ALL",
   priority: "ALL",
   mine: false,
@@ -214,6 +225,9 @@ export function InboxFilterBar({
     onChange({
       ...DEFAULT_FILTERS,
       grupo: value.grupo,
+      // O eixo sobrevive ao "limpar": quem está olhando os grupos não
+      // pediu pra voltar pra caixa de clientes.
+      grupos: value.grupos,
       // A ordem sobrevive ao "limpar" pelo mesmo motivo que não o liga: ela
       // não é um filtro, é como a pessoa prefere ler a lista.
       ordem: value.ordem,
@@ -291,7 +305,7 @@ export function InboxFilterBar({
         className="flex items-stretch gap-0.5 border-b px-2"
       >
         {GRUPOS.map((grupo) => {
-          const ativo = value.grupo === grupo.value;
+          const ativo = !value.grupos && value.grupo === grupo.value;
           const quantos = contagemDoGrupo[grupo.value];
           return (
             <button
@@ -322,6 +336,31 @@ export function InboxFilterBar({
             </button>
           );
         })}
+
+        {/* Os grupos do WhatsApp, à parte.
+
+            Aba e não filtro porque as duas listas nunca se misturam: um
+            grupo movimentado produz dezenas de mensagens por dia e ficaria
+            no topo o tempo todo, empurrando pra baixo o cliente que está
+            esperando. Separada por uma divisória porque ela não é mais uma
+            situação — é outra caixa. */}
+        <span aria-hidden className="my-2 w-px shrink-0 bg-border" />
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value.grupos}
+          title="Conversas de grupo do WhatsApp"
+          onClick={() => set("grupos", !value.grupos)}
+          className={cn(
+            "-mb-px flex shrink-0 items-center justify-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-[13px] font-medium transition-colors",
+            value.grupos
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Users className="size-4" />
+          Grupos
+        </button>
       </div>
 
       {/* O painel desce de cima, e some quando fecha.

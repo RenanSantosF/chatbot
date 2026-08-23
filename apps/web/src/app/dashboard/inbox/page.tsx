@@ -74,6 +74,9 @@ function buildQuery(
   caminho = "/conversations",
 ): string {
   const params = new URLSearchParams();
+  // O eixo de grupos vem primeiro: ele decide QUAL caixa está aberta, e o
+  // resto dos filtros recorta dentro dela.
+  if (filters.grupos) params.set("grupos", "true");
   if (filters.grupo !== "ALL") params.set("statusGroup", filters.grupo);
   if (filters.status !== "ALL") params.set("status", filters.status);
   if (filters.priority !== "ALL") params.set("priority", filters.priority);

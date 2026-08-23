@@ -37,6 +37,11 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
   // `CanalService` — é ele que respeita a escolha de provedor da empresa.
   exports: [
     CanalService,
+    // Exportado por causa do webhook da Evolution: é dele que sai o nome
+    // do grupo, que a mensagem não traz. Sem exportar, o Nest não sobe —
+    // o controlador do webhook vive noutro módulo (ver
+    // WhatsappWebhookModule), e o app.module.spec pega isso na hora.
+    EvolutionCanal,
     WhatsappSenderService,
     WhatsappMediaService,
     EstadoDoCanalService,

@@ -5,6 +5,14 @@ import type { ParsedContact } from './contact-import';
 interface FindOrCreateInput {
   phone: string;
   name: string;
+  /**
+   * É um grupo do WhatsApp, e não uma pessoa.
+   *
+   * Marcado na CRIAÇÃO e nunca depois: o que nasce grupo continua grupo, e
+   * reavaliar a cada mensagem só criaria a chance de um grupo virar cliente
+   * por causa de um evento com formato estranho.
+   */
+  grupo?: boolean;
 }
 
 /** O cliente como o banco devolve. */
@@ -130,16 +138,22 @@ export class CustomersService {
     const limite = Math.min(Math.max(filtros.limit ?? 100, 1), 200);
 
     return this.prisma.db.customer.findMany({
-      where: busca
-        ? {
-            OR: [
-              { name: { contains: busca, mode: 'insensitive' } },
-              // Sem `mode` no telefone: são só dígitos, e a comparação
-              // insensível a maiúsculas custaria sem mudar resultado.
-              { phone: { contains: busca } },
-            ],
-          }
-        : {},
+      where: {
+        // Grupo não é cliente. Ele aparece na aba própria do Inbox, e
+        // listá-lo aqui misturaria "Fornecedores" no meio das pessoas —
+        // inclusive na busca de quem vai puxar conversa com alguém.
+        isGroup: false,
+        ...(busca
+          ? {
+              OR: [
+                { name: { contains: busca, mode: 'insensitive' as const } },
+                // Sem `mode` no telefone: são só dígitos, e a comparação
+                // insensível a maiúsculas custaria sem mudar resultado.
+                { phone: { contains: busca } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: limite,
     });
@@ -336,7 +350,7 @@ export class CustomersService {
     return { recebidos: contatos.length, salvos };
   }
 
-  async findOrCreateByPhone({ phone, name }: FindOrCreateInput) {
+  async findOrCreateByPhone({ phone, name, grupo }: FindOrCreateInput) {
     const existing = await this.prisma.db.customer.findFirst({ where: { phone } });
     if (existing) {
       return existing;
@@ -344,7 +358,7 @@ export class CustomersService {
 
     try {
       return await this.prisma.db.customer.create({
-        data: { tenantId: this.prisma.tenantId, phone, name },
+        data: { tenantId: this.prisma.tenantId, phone, name, isGroup: Boolean(grupo) },
       });
     } catch (error) {
       // Corrida entre duas mensagens quase simultâneas do mesmo número novo.

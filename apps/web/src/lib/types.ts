@@ -77,7 +77,10 @@ export type MessageSenderType = "CUSTOMER" | "AI" | "AGENT" | "SYSTEM";
 export interface Customer {
   id: string;
   name: string;
+  /** Só dígitos, para pessoa. Para GRUPO, o JID inteiro (`...@g.us`). */
   phone: string;
+  /** É um grupo do WhatsApp, e não uma pessoa. */
+  isGroup?: boolean;
   email: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
@@ -88,6 +91,13 @@ export type MessageStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED"
 export type MessageType = "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | "LOCATION" | "OTHER";
 
 export interface MessageMetadata {
+  /**
+   * Quem, dentro do GRUPO, escreveu esta mensagem.
+   *
+   * Só existe em conversa de grupo. Sem ele, a conversa é uma sequência de
+   * balões do mesmo lado sem dizer quem falou o quê.
+   */
+  participante?: string;
   mediaId?: string;
   mimeType?: string;
   fileName?: string;
