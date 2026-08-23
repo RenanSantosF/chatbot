@@ -70,7 +70,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           href="/"
           className="relative flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
-          <Marca className="size-8 rounded-md" />
+          <Marca className="size-8" />
           {SITE_NAME}
         </Link>
 
@@ -103,7 +103,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           href="/"
           className="flex items-center gap-2 text-lg font-semibold tracking-tight lg:hidden"
         >
-          <Marca className="size-8 rounded-md" />
+          <Marca className="size-8" />
           {SITE_NAME}
         </Link>
 

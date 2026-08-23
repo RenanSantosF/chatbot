@@ -200,7 +200,7 @@ export default async function Home() {
       <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <span className="flex items-center gap-2">
-            <Marca className="size-7 rounded-md" />
+            <Marca className="size-7" />
             <span className="text-base font-semibold tracking-tight">{SITE_NAME}</span>
           </span>
           <nav className="flex items-center gap-2">
