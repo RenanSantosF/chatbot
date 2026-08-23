@@ -1,13 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Inteliwa">
   <title>Inteliwa</title>
+  <!--
+    Sem a placa verde atrás.
+
+    O ícone era um quadrado arredondado sólido com o balão branco dentro —
+    duas formas empilhadas pra dizer uma coisa só. Numa aba de navegador,
+    onde ele aparece com 16 pixels, o quadrado ocupava a maior parte da
+    área e sobrava pouco pro desenho: de longe era um retângulo verde.
+
+    Agora a MARCA é o balão, e o fundo é o que estiver atrás. Isso resolve
+    dois problemas de uma vez: a silhueta vira reconhecível em qualquer
+    tamanho, e o ícone deixa de brigar com o fundo da aba (que muda de cor
+    entre o tema claro e o escuro do sistema).
+
+    O desenho ocupa a caixa inteira porque não há mais moldura pra
+    respeitar — era ela que obrigava o balão a caber num miolo menor.
+  -->
   <defs>
-    <linearGradient id="fundo" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="verde" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#10A46C"/>
       <stop offset="1" stop-color="#006F58"/>
     </linearGradient>
+    <!--
+      A faísca é VAZADA, não pintada por cima.
+
+      Pintá-la de branco fixaria um fundo claro dentro de um ícone que
+      agora é transparente: sobre uma aba escura ela viraria uma mancha.
+      Vazando, o que aparece no meio dela é o mesmo que aparece em volta
+      do balão — o ícone se adapta sozinho.
+    -->
+    <mask id="faisca">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <path d="M512 300 Q544 428 672 460 Q544 492 512 620 Q480 492 352 460 Q480 428 512 300 Z" fill="#000"/>
+    </mask>
   </defs>
-  <rect width="1024" height="1024" rx="232" fill="url(#fundo)"/>
-  <path d="M318 620 L318 812 L470 640 Z" fill="#fff"/>
-  <rect x="212" y="258" width="600" height="414" rx="112" fill="#fff"/>
-  <path d="M512 330 Q538 436 644 462 Q538 488 512 594 Q486 488 380 462 Q486 436 512 330 Z" fill="#006F58"/>
+  <g fill="url(#verde)" mask="url(#faisca)">
+    <rect x="96" y="160" width="832" height="576" rx="168"/>
+    <!-- O rabicho, alinhado à esquerda como num balão de fala. -->
+    <path d="M300 690 L300 920 L488 712 Z"/>
+  </g>
 </svg>
