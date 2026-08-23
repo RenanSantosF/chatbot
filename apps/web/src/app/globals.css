@@ -12,15 +12,29 @@
   font-size: 18px;
 }
 
-/* Toda borda do sistema, em um lugar só e sem depender de utilitário.
-   Já tentei resolver isso pelos tokens e não pegou em tudo — regra
-   explícita no elemento fecha a questão: linha de 1px de dispositivo
-   (mais fina que 1px lógico em telas retina) e opacidade baixíssima. É
-   pra separar quando você procura e sumir quando você lê. */
-*,
-::before,
-::after {
-  border-color: var(--border);
+/* Toda borda do sistema, em um lugar só e sem depender de utilitário:
+   linha de 1px de dispositivo (mais fina que 1px lógico em telas retina)
+   e opacidade baixíssima. É pra separar quando você procura e sumir
+   quando você lê.
+
+   DENTRO de `@layer base`, e isso não é detalhe.
+
+   Solta, esta regra ficava SEM CAMADA, e no CSS o que está fora de
+   camada vence o que está dentro — inclusive os utilitários do Tailwind,
+   que moram em `@layer utilities`. Um seletor `*` de especificidade zero
+   passava por cima de `border-primary`, `border-destructive` e
+   `border-transparent` em todo o painel: eram 61 usos, todos pintados de
+   cinza sem ninguém notar. O sublinhado da aba escolhida no Inbox era
+   cinza, e a borda vermelha de campo com erro também.
+
+   O padrão continua valendo pra quem não pede cor nenhuma; a diferença é
+   que agora, quando alguém pede, o pedido é atendido. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
 }
 
 /* Mãozinha em tudo que clica. O Tailwind v4 mudou o padrão dos botões pra
