@@ -881,8 +881,12 @@ export default function InboxPage() {
     // Sem cartão, sem margem, sem título: a tela inteira é o painel, do
     // jeito que o WhatsApp Web faz. O cabeçalho da conversa e a barra de
     // filtros já dizem onde a pessoa está.
+    //
+    // A coluna da lista tem 440px, e não os 400 de antes: a linha carrega
+    // nome, prévia, hora e selos, e em 400 a prévia era cortada no meio da
+    // primeira frase — que é justamente o que se lê pra decidir se abre.
     <TranscricaoDeAudioProvider modo={transcricao}>
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[400px_1fr] xl:grid-cols-[400px_1fr_330px] [&>*]:min-h-0">
+    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[440px_1fr] xl:grid-cols-[440px_1fr_330px] [&>*]:min-h-0">
       <div className="hidden min-h-0 flex-col border-r md:flex">
         {/* Sem o simulador de cliente: ele existia pra testar o fluxo antes
             de o WhatsApp estar conectado. Com o canal no ar ele só criava

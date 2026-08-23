@@ -1,9 +1,8 @@
 "use client";
 
-import { MessageSquareDashed, Timer } from "lucide-react";
+import { MessageSquareDashed, Timer, UserRound } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { avatarColor, initials } from "@/lib/avatar";
@@ -14,10 +13,20 @@ import { cn } from "@/lib/utils";
 import { TagChip } from "./tag-picker";
 import type { ConversationStatus, ConversationSummary } from "@/lib/types";
 
-const STATUS_LABEL: Record<ConversationStatus, string> = {
-  OPEN: "Aberta",
+/**
+ * A situação, quando ela diz algo que a linha ainda não disse.
+ *
+ * "Aberta" e "Aguardando atendente" ficaram de fora, e não por descuido:
+ * as duas querem dizer "precisa de alguém daqui", que é o estado NORMAL de
+ * quase toda conversa da caixa — e a aba escolhida já diz isso. Escritas
+ * em toda linha, viravam uma legenda repetida oito vezes na tela que não
+ * ajudava a escolher qual abrir.
+ *
+ * O que sobrou é o que surpreende: a bola está com o cliente, ou o
+ * atendimento já acabou.
+ */
+const STATUS_LABEL: Partial<Record<ConversationStatus, string>> = {
   WAITING_CUSTOMER: "Aguard. cliente",
-  WAITING_AGENT: "Aguard. atendente",
   RESOLVED: "Resolvida",
   CLOSED: "Fechada",
 };
@@ -138,6 +147,15 @@ export function ConversationList({
               last.messageType,
             )}`
           : "Sem mensagens ainda";
+        const espera = descreverEspera(conversation.waitingSince, relogio);
+        // A terceira linha só nasce quando tem o que dizer. Conversa
+        // aberta, sem dono e sem etiqueta é o caso comum, e nele a linha
+        // não existe — a altura da conversa não muda.
+        const rotuloDaSituacao = STATUS_LABEL[conversation.status];
+        const temRodape =
+          Boolean(rotuloDaSituacao) ||
+          Boolean(conversation.assignedUser) ||
+          (conversation.tags ?? []).length > 0;
 
         return (
           <button
@@ -173,61 +191,36 @@ export function ConversationList({
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                {/* 16/14/12 em vez de 15/13/11: é a lista que se lê o dia
-                    inteiro, e um ponto a mais em cada nível se paga em
-                    cansaço sem tirar nenhuma conversa da tela. */}
-                <span className={cn("truncate text-[16px]", unread > 0 ? "font-semibold" : "font-medium")}>
+              {/* Linha 1: quem é, e quando falou. Nada mais.
+
+                  Ela dividia espaço com o contador de não lidas e o selo
+                  de espera, e o nome era o primeiro a ser cortado — numa
+                  lista de clientes, cortar justamente o nome é o pior
+                  lugar pra economizar. */}
+              <div className="flex items-baseline justify-between gap-2">
+                <span
+                  className={cn(
+                    "truncate text-[15px]",
+                    unread > 0 ? "font-semibold" : "font-medium",
+                  )}
+                >
                   {conversation.customer.name}
                 </span>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "text-[12px]",
-                      unread > 0 ? "font-medium text-primary" : "text-muted-foreground",
-                    )}
-                  >
-                    {timeLabel(conversation.lastMessageAt)}
-                  </span>
-                  {unread > 0 ? (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground tabular-nums">
-                      {unread > 99 ? "99+" : unread}
-                    </span>
-                  ) : null}
-                  {(() => {
-                    const espera = descreverEspera(conversation.waitingSince, relogio);
-                    if (!espera) return null;
-                    return (
-                      <span
-                        title={
-                          espera.foraDoExpediente
-                            ? `Sem resposta há ${espera.rotulo} — fora do horário de atendimento`
-                            : `Sem resposta há ${espera.rotulo}`
-                        }
-                        className={cn(
-                          "flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-                          espera.nivel === "grave"
-                            ? "bg-destructive/15 text-destructive"
-                            : espera.nivel === "atencao"
-                              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                              : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        <Timer className="size-3" />
-                        {espera.rotulo}
-                      </span>
-                    );
-                  })()}
-                </div>
+                <span
+                  className={cn(
+                    "shrink-0 text-[12px] tabular-nums",
+                    unread > 0 ? "font-medium text-primary" : "text-muted-foreground",
+                  )}
+                >
+                  {timeLabel(conversation.lastMessageAt)}
+                </span>
               </div>
-              {/* Uma linha só embaixo do nome: a prévia manda, e as
-                  etiquetas aparecem espremidas à direita apenas quando
-                  dizem algo. "Aberta" e "sem responsável" são o normal —
-                  repetir isso em toda linha vira ruído, não informação. */}
+
+              {/* Linha 2: o que foi dito, e o que exige ação. */}
               <div className="mt-0.5 flex items-center gap-1.5">
                 <p
                   className={cn(
-                    "min-w-0 flex-1 truncate text-[14px]",
+                    "min-w-0 flex-1 truncate text-[13.5px]",
                     unread > 0 ? "font-medium text-foreground" : "text-muted-foreground",
                   )}
                 >
@@ -240,42 +233,74 @@ export function ConversationList({
                     aria-label={`Prioridade ${priority.label.toLowerCase()}`}
                   />
                 ) : null}
-                {conversation.status !== "OPEN" ? (
-                  <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
-                    {STATUS_LABEL[conversation.status]}
-                  </Badge>
-                ) : null}
-                {conversation.assignedUser ? (
-                  // Tracejado enquanto o aceite não vem: a lista dizia
-                  // "Lucas" do mesmo jeito nos dois casos, e quem batia o
-                  // olho concluía que a conversa já tinha dono — quando
-                  // ainda estava parada esperando um clique dele.
-                  <Badge
-                    variant="outline"
+                {espera ? (
+                  <span
                     title={
-                      conversation.assignmentAccepted
-                        ? `Responsável: ${conversation.assignedUser.name}`
-                        : `Indicado para ${conversation.assignedUser.name} — aguardando aceite`
+                      espera.foraDoExpediente
+                        ? `Sem resposta há ${espera.rotulo} — fora do horário de atendimento`
+                        : `Sem resposta há ${espera.rotulo}`
                     }
                     className={cn(
-                      "shrink-0 text-[10px] font-normal",
-                      !conversation.assignmentAccepted &&
-                        "border-dashed text-amber-600 dark:text-amber-400",
+                      "flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                      espera.nivel === "grave"
+                        ? "bg-destructive/15 text-destructive"
+                        : espera.nivel === "atencao"
+                          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                          : "bg-muted text-muted-foreground",
                     )}
                   >
-                    {conversation.assignedUser.name.split(" ")[0]}
-                    {conversation.assignmentAccepted ? "" : "?"}
-                  </Badge>
+                    <Timer className="size-3" />
+                    {espera.rotulo}
+                  </span>
                 ) : null}
-                {/* Só a primeira etiqueta, e só quando existe. É a linha
-                    mais disputada da tela: a prévia da mensagem é o que
-                    manda ali, e uma fileira de pastilhas comeria o texto
-                    que faz a lista parecer um mensageiro. As demais
-                    aparecem ao abrir a conversa. */}
-                {(conversation.tags ?? []).slice(0, 1).map((tag) => (
-                  <TagChip key={tag.id} tag={tag} className="shrink-0" />
-                ))}
+                {unread > 0 ? (
+                  <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground tabular-nums">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                ) : null}
               </div>
+
+              {/* Linha 3: só existe quando tem o que dizer.
+
+                  Situação, responsável e etiqueta viviam espremidos na
+                  linha da prévia, cada um numa pastilha com borda, comendo
+                  o texto da mensagem — que é o que faz a lista parecer um
+                  mensageiro. Aqui embaixo eles cabem inteiros e sem
+                  moldura, e a conversa comum (aberta, sem dono, sem
+                  etiqueta) volta a ter duas linhas só. */}
+              {temRodape ? (
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  {rotuloDaSituacao ? (
+                    <span className="shrink-0">{rotuloDaSituacao}</span>
+                  ) : null}
+                  {conversation.assignedUser ? (
+                    // O "?" fica: a lista dizia "Lucas" do mesmo jeito com
+                    // e sem aceite, e quem batia o olho concluía que a
+                    // conversa já tinha dono — quando ainda estava parada
+                    // esperando um clique dele.
+                    <span
+                      title={
+                        conversation.assignmentAccepted
+                          ? `Responsável: ${conversation.assignedUser.name}`
+                          : `Indicado para ${conversation.assignedUser.name} — aguardando aceite`
+                      }
+                      className={cn(
+                        "flex shrink-0 items-center gap-1",
+                        !conversation.assignmentAccepted && "text-amber-600 dark:text-amber-400",
+                      )}
+                    >
+                      <UserRound className="size-3" />
+                      {conversation.assignedUser.name.split(" ")[0]}
+                      {conversation.assignmentAccepted ? "" : "?"}
+                    </span>
+                  ) : null}
+                  {/* Só a primeira etiqueta. As demais aparecem ao abrir a
+                      conversa. */}
+                  {(conversation.tags ?? []).slice(0, 1).map((tag) => (
+                    <TagChip key={tag.id} tag={tag} className="shrink-0" />
+                  ))}
+                </div>
+              ) : null}
             </div>
           </button>
         );

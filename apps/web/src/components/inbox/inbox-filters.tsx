@@ -2,7 +2,6 @@
 
 import {
   ArrowDownWideNarrow,
-  CheckCheck,
   Clock3,
   Inbox,
   Search,
@@ -109,31 +108,30 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   CLOSED: "Fechadas",
 };
 
+/**
+ * As abas, sem ícone.
+ *
+ * Cada uma tinha um, e eles saíram junto com a grade que os abrigava: numa
+ * aba com rótulo escrito, o ícone não acrescenta leitura nenhuma e disputa
+ * espaço com o número — que é a informação que se lê de relance.
+ */
 const GRUPOS: {
   value: StatusGroup | "ALL";
   label: string;
-  icon: typeof Inbox;
   ajuda: string;
 }[] = [
   {
     value: "PENDING",
     label: "Pendentes",
-    icon: Inbox,
     ajuda: "Precisa de uma pessoa — sem o que a IA está conduzindo",
   },
   {
     value: "WAITING",
     label: "Aguardando",
-    icon: Clock3,
     ajuda: "Dentro de Pendentes: a bola está com o cliente",
   },
-  {
-    value: "DONE",
-    label: "Resolvidas",
-    icon: CheckCheck,
-    ajuda: "Atendimento encerrado",
-  },
-  { value: "ALL", label: "Tudo", icon: SlidersHorizontal, ajuda: "Sem filtro de situação" },
+  { value: "DONE", label: "Resolvidas", ajuda: "Atendimento encerrado" },
+  { value: "ALL", label: "Tudo", ajuda: "Sem filtro de situação" },
 ];
 
 export function InboxFilterBar({
@@ -201,26 +199,97 @@ export function InboxFilterBar({
 
   const naFila = value.ordem === "ESPERA";
 
+  /** Quantos refinamentos estão ligados, pra o ícone poder dizer. */
+  const quantosRefinos =
+    (value.status !== "ALL" ? 1 : 0) +
+    (value.priority !== "ALL" ? 1 : 0) +
+    (value.mine ? 1 : 0) +
+    (value.unread ? 1 : 0) +
+    (value.unassigned ? 1 : 0) +
+    (value.comIa ? 1 : 0) +
+    (value.waiting ? 1 : 0) +
+    (value.tagId ? 1 : 0);
+
+  const limpar = () =>
+    onChange({
+      ...DEFAULT_FILTERS,
+      grupo: value.grupo,
+      // A ordem sobrevive ao "limpar" pelo mesmo motivo que não o liga: ela
+      // não é um filtro, é como a pessoa prefere ler a lista.
+      ordem: value.ordem,
+      search: value.search,
+    });
+
+  /*
+   * A barra tem DUAS linhas, e o resto mora atrás do ícone de filtro.
+   *
+   * Antes eram cinco blocos empilhados aqui — busca, grade de situação,
+   * seletor de ordem, fileira de etiquetas e fileira de interruptores —
+   * e no fim sobrava menos da metade da coluna pra lista de conversas,
+   * que é a razão de a tela existir. Pior: tudo tinha o mesmo peso
+   * visual, então nada guiava o olho.
+   *
+   * O que ficou à vista é o que se usa o dia inteiro: procurar alguém e
+   * pular entre "o que precisa de mim", "o que espera o cliente" e "o que
+   * já acabou". O resto — ordem, prioridade, situação exata, etiqueta,
+   * meus/não lidos — é escolha de vez em quando, e vez em quando não
+   * merece espaço permanente.
+   */
   return (
-    <div className="flex flex-col gap-2.5 p-3">
-      <div className="flex items-center gap-1.5">
-        <div className="relative flex-1">
-          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1 px-3 pt-3 pb-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={value.search}
             onChange={(event) => set("search", event.target.value)}
-            placeholder="Buscar nome ou telefone"
-            className="h-10 rounded-lg border-transparent bg-muted pl-8 text-[13px] shadow-none"
+            placeholder="Buscar cliente..."
+            className="h-10 rounded-full border-transparent bg-muted pl-9 text-[13px] shadow-none"
           />
         </div>
+
+        <button
+          type="button"
+          aria-expanded={maisAberto}
+          aria-label={
+            quantosRefinos > 0
+              ? `Filtros — ${quantosRefinos} ligado(s)`
+              : "Filtros"
+          }
+          title="Mais filtros"
+          onClick={() => setMaisAberto((aberto) => !aberto)}
+          className={cn(
+            "relative flex size-10 shrink-0 items-center justify-center rounded-full transition-colors",
+            maisAberto || quantosRefinos > 0
+              ? "bg-primary/15 text-primary"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          <SlidersHorizontal className="size-4.5" />
+          {/* Um ponto, não um número: quem tem filtro ligado já sabe qual
+              é — o que ele precisa saber de relance é que a lista não
+              está mostrando tudo. */}
+          {quantosRefinos > 0 ? (
+            <span
+              aria-hidden
+              className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card"
+            />
+          ) : null}
+        </button>
         {action}
       </div>
 
-      {/* Grade de 4, não fila rolável. A versão anterior usava rolagem
-          horizontal com a barra escondida: "Sem dono" ficava cortado na
-          borda e não havia nada indicando que dava pra rolar. Em grade
-          todas as opções cabem sempre, e a largura é previsível. */}
-      <div role="radiogroup" aria-label="Situação do atendimento" className="grid grid-cols-4 gap-1">
+      {/* As três (quatro) leituras da caixa, como abas.
+
+          Sublinhado em vez de pílula: aba é a metáfora certa pra "onde eu
+          estou", e o sublinhado ocupa menos peso que um bloco colorido —
+          o que chama atenção na linha passa a ser o número de cada uma,
+          que é a informação que se lê de relance. */}
+      <div
+        role="radiogroup"
+        aria-label="Situação do atendimento"
+        className="flex items-stretch gap-0.5 border-b px-2"
+      >
         {GRUPOS.map((grupo) => {
           const ativo = value.grupo === grupo.value;
           const quantos = contagemDoGrupo[grupo.value];
@@ -233,159 +302,170 @@ export function InboxFilterBar({
               title={grupo.ajuda}
               onClick={() => escolherGrupo(grupo.value)}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors",
+                "-mb-px flex flex-1 items-center justify-center gap-1.5 border-b-2 px-1 pt-1 pb-2.5 text-[13px] font-medium transition-colors",
                 ativo
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              <span className="flex items-center gap-1">
-                <grupo.icon className="size-3.5 shrink-0" />
-                <span className="text-[15px] leading-none font-semibold tabular-nums">
+              <span className="truncate">{grupo.label}</span>
+              {quantos > 0 ? (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-px text-[11px] font-semibold tabular-nums",
+                    ativo ? "bg-primary/15" : "bg-muted text-muted-foreground",
+                  )}
+                >
                   {quantos}
                 </span>
-              </span>
-              <span className="text-[11px] leading-tight font-medium">{grupo.label}</span>
+              ) : null}
             </button>
           );
         })}
       </div>
 
-      {/* Como a lista é ordenada.
-          
-          Um botão só, que alternava e mostrava o estado atual, era ambíguo:
-          lendo "Fila" não dá pra saber se é onde estou ou pra onde vou. Duas
-          opções lado a lado com a atual acesa respondem isso sem legenda —
-          é a mesma leitura de um interruptor de duas posições. */}
+      {/* O painel desce de cima, e some quando fecha.
+
+          `grid-rows-[0fr]` pra `[1fr]` anima a ALTURA sem ninguém precisar
+          medir o conteúdo — é o que permite o painel ter tamanho variável
+          (a fileira de etiquetas aparece só em quem etiqueta) e ainda
+          assim abrir liso. */}
       <div
-        role="radiogroup"
-        aria-label="Ordem da lista"
-        className="flex items-center gap-1 rounded-lg bg-muted p-0.5"
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+          maisAberto ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
       >
-        <OpcaoDeOrdem
-          ativa={!naFila}
-          onClick={() => set("ordem", "RECENTE")}
-          icone={Clock3}
-          rotulo="Mais recentes"
-          ajuda="Quem falou por último em cima, como num mensageiro."
-        />
-        <OpcaoDeOrdem
-          ativa={naFila}
-          onClick={() => set("ordem", "ESPERA")}
-          icone={ArrowDownWideNarrow}
-          rotulo="Fila de espera"
-          ajuda="Quem está sem resposta há mais tempo primeiro."
-        />
-      </div>
+        <div className="overflow-hidden">
+          <div className="flex flex-col gap-3 border-b px-3 py-3">
+            <Secao titulo="Ordem da lista">
+              <div
+                role="radiogroup"
+                aria-label="Ordem da lista"
+                className="flex items-center gap-1 rounded-lg bg-muted p-0.5"
+              >
+                <OpcaoDeOrdem
+                  ativa={!naFila}
+                  onClick={() => set("ordem", "RECENTE")}
+                  icone={Clock3}
+                  rotulo="Mais recentes"
+                  ajuda="Quem falou por último em cima, como num mensageiro."
+                />
+                <OpcaoDeOrdem
+                  ativa={naFila}
+                  onClick={() => set("ordem", "ESPERA")}
+                  icone={ArrowDownWideNarrow}
+                  rotulo="Fila de espera"
+                  ajuda="Quem está sem resposta há mais tempo primeiro."
+                />
+              </div>
+            </Secao>
 
-      <EtiquetasDoFiltro
-        escolhida={value.tagId}
-        onEscolher={(tagId) => set("tagId", tagId)}
-      />
+            <Secao titulo="Recortes">
+              {/* Somam-se ao grupo, como interruptores: dá pra ver "minhas
+                  pendentes", coisa que opções exclusivas não permitiam. */}
+              <div className="flex flex-wrap gap-1">
+                <Interruptor
+                  ligado={value.mine}
+                  onToggle={() => set("mine", !value.mine)}
+                  rotulo="Minhas"
+                  quantos={counts.mine}
+                />
+                <Interruptor
+                  ligado={value.unread}
+                  onToggle={() => set("unread", !value.unread)}
+                  rotulo="Não lidas"
+                  quantos={counts.unread}
+                />
+                <Interruptor
+                  ligado={value.unassigned}
+                  onToggle={() => set("unassigned", !value.unassigned)}
+                  rotulo="Sem dono"
+                  quantos={counts.unassigned}
+                />
+                <Interruptor
+                  ligado={value.waiting}
+                  onToggle={() => set("waiting", !value.waiting)}
+                  rotulo="Esperando"
+                  quantos={counts.esperando}
+                />
+                {/* Fora de "Pendentes" por padrão: conversa que a IA conduz
+                    não espera ninguém da equipe. Este interruptor é o
+                    caminho de quem quer auditar o que ela anda
+                    respondendo. */}
+                <Interruptor
+                  ligado={value.comIa}
+                  onToggle={() => set("comIa", !value.comIa)}
+                  rotulo="Com a IA"
+                  quantos={counts.comIa}
+                />
+              </div>
+            </Secao>
 
-      {/* Recortes que se somam ao grupo, como interruptores. Antes eram
-          opções exclusivas na mesma fila do grupo, então não dava pra ver
-          "minhas pendentes" — escolher uma desligava a outra. */}
-      <div className="flex flex-wrap gap-1">
-        <Interruptor
-          ligado={value.mine}
-          onToggle={() => set("mine", !value.mine)}
-          rotulo="Minhas"
-          quantos={counts.mine}
-        />
-        <Interruptor
-          ligado={value.unread}
-          onToggle={() => set("unread", !value.unread)}
-          rotulo="Não lidas"
-          quantos={counts.unread}
-        />
-        <Interruptor
-          ligado={value.unassigned}
-          onToggle={() => set("unassigned", !value.unassigned)}
-          rotulo="Sem dono"
-          quantos={counts.unassigned}
-        />
-        <Interruptor
-          ligado={value.waiting}
-          onToggle={() => set("waiting", !value.waiting)}
-          rotulo="Esperando"
-          quantos={counts.esperando}
-        />
-        {/* Fora de "Pendentes" por padrão: conversa que a IA conduz não
-            espera ninguém da equipe. Este interruptor é o caminho de quem
-            quer justamente auditar o que ela anda respondendo. */}
-        <Interruptor
-          ligado={value.comIa}
-          onToggle={() => set("comIa", !value.comIa)}
-          rotulo="Com a IA"
-          quantos={counts.comIa}
-        />
-        <button
-          type="button"
-          aria-pressed={maisAberto}
-          onClick={() => setMaisAberto((aberto) => !aberto)}
-          className={cn(
-            "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-            value.status !== "ALL" || value.priority !== "ALL"
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-        >
-          <SlidersHorizontal className="size-3.5" />
-          Mais
-        </button>
-        {refinando ? (
-          <button
-            type="button"
-            // A ordem sobrevive ao "limpar" pelo mesmo motivo que não o
-            // liga: ela não é um filtro, é como a pessoa prefere ler a
-            // lista.
-            onClick={() =>
-              onChange({
-                ...DEFAULT_FILTERS,
-                grupo: value.grupo,
-                ordem: value.ordem,
-                search: value.search,
-              })
-            }
-            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
-            limpar
-          </button>
-        ) : null}
-      </div>
+            <EtiquetasDoFiltro
+              escolhida={value.tagId}
+              onEscolher={(tagId) => set("tagId", tagId)}
+            />
 
-      {maisAberto ? (
-        <div className="flex flex-col gap-2 duration-200 animate-in fade-in slide-in-from-top-1">
-          <Grupo
-            titulo="Situação exata"
-            value={value.status}
-            onChange={(next) => escolherStatus(next as InboxFilters["status"])}
-            options={[
-              { value: "ALL", label: "Todas" },
-              ...STATUS_ORDER.map((status) => ({
-                value: status,
-                label: STATUS_LABEL[status],
-                count: counts.status[status] ?? 0,
-              })),
-            ]}
-          />
-          <Grupo
-            titulo="Prioridade"
-            value={value.priority}
-            onChange={(next) => set("priority", next as InboxFilters["priority"])}
-            options={[
-              { value: "ALL", label: "Qualquer" },
-              ...PRIORITY_ORDER.map((priority) => ({
-                value: priority,
-                label: PRIORITY_META[priority].label,
-                count: counts.priority[priority] ?? 0,
-                dot: PRIORITY_META[priority].dot,
-              })),
-            ]}
-          />
+            <Grupo
+              titulo="Situação exata"
+              value={value.status}
+              onChange={(next) => escolherStatus(next as InboxFilters["status"])}
+              options={[
+                { value: "ALL", label: "Todas" },
+                ...STATUS_ORDER.map((status) => ({
+                  value: status,
+                  label: STATUS_LABEL[status],
+                  count: counts.status[status] ?? 0,
+                })),
+              ]}
+            />
+            <Grupo
+              titulo="Prioridade"
+              value={value.priority}
+              onChange={(next) => set("priority", next as InboxFilters["priority"])}
+              options={[
+                { value: "ALL", label: "Qualquer" },
+                ...PRIORITY_ORDER.map((priority) => ({
+                  value: priority,
+                  label: PRIORITY_META[priority].label,
+                  count: counts.priority[priority] ?? 0,
+                  dot: PRIORITY_META[priority].dot,
+                })),
+              ]}
+            />
+
+            {refinando ? (
+              <button
+                type="button"
+                onClick={limpar}
+                className="flex items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="size-3.5" />
+                Limpar filtros
+              </button>
+            ) : null}
+          </div>
         </div>
-      ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Um bloco do painel: título miúdo em cima, conteúdo embaixo. */
+function Secao({
+  titulo,
+  children,
+}: {
+  titulo: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        {titulo}
+      </span>
+      {children}
     </div>
   );
 }

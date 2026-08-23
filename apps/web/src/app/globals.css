@@ -199,8 +199,19 @@ button:disabled,
   --secondary: oklch(0.3180 0.0014 197);
   --secondary-foreground: oklch(0.9436 0.0051 228.8);
   --muted: oklch(0.3180 0.0014 197);
-  --muted-foreground: oklch(0.70 0.024 235.2);
-  --accent: oklch(0.3180 0.0014 197);
+  /* 0.78, e não os 0.70 de antes.
+
+     Este token pinta a prévia da mensagem na lista de conversas, que é o
+     texto mais lido do produto inteiro — e em 0.70 sobre o painel
+     (L 0.256) ele ficava em ~4,7:1. Passa no mínimo pra texto normal e
+     falha no confortável, e a prévia é justamente texto pequeno lido de
+     relance, dezenas de vezes por hora. Em 0.78 sobe pra ~6,4:1 sem virar
+     branco: a hierarquia com o nome do cliente continua visível. */
+  --muted-foreground: oklch(0.78 0.020 235.2);
+  /* Um degrau acima do `muted` pra a conversa ABERTA se separar do fundo.
+     Os dois eram o mesmo valor, e a seleção — que é só troca de superfície
+     (ver conversation-list) — praticamente não aparecia. */
+  --accent: oklch(0.3480 0.0020 197);
   --accent-foreground: oklch(0.9436 0.0051 228.8);
   --destructive: oklch(0.68 0.19 22);
   /* 5%, não os 3% de antes: a divisória é medida contra o fundo, e o fundo
