@@ -88,6 +88,25 @@ export const metadata: Metadata = {
 
   category: "technology",
   formatDetection: { telephone: false },
+
+  /**
+   * O que o iPhone precisa pra tratar isto como aplicativo.
+   *
+   * O Android e o desktop leem o manifest sozinhos e oferecem "Instalar".
+   * O Safari não: lá o caminho é Compartilhar > "Adicionar à Tela de
+   * Início", e sem este bloco o atalho abriria dentro do navegador, com
+   * barra de endereço — ou seja, exatamente o que já dava pra fazer com um
+   * favorito.
+   *
+   * `statusBarStyle` translúcido deixa o conteúdo subir até o topo da
+   * tela, com a hora e a bateria por cima; é o que faz o painel parecer
+   * aplicativo em vez de página.
+   */
+  appleWebApp: {
+    capable: true,
+    title: SITE_NAME,
+    statusBarStyle: "black-translucent",
+  },
 };
 
 /**
