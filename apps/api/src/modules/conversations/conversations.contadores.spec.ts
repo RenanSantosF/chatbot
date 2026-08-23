@@ -279,8 +279,9 @@ describe('fila de atendimento', () => {
   });
 });
 
-/** Onde o contador de "Com a IA" cai na fila de consultas. */
-const COM_IA = 8;
+/** Onde os dois últimos contadores caem na fila de consultas. */
+const GRUPOS = 8;
+const COM_IA = 9;
 
 describe('conversa que a IA está conduzindo', () => {
   it('não aparece em Pendentes: não está esperando ninguém da equipe', async () => {
@@ -344,5 +345,96 @@ describe('conversa que a IA está conduzindo', () => {
       aiMode: 'AI_ACTIVE',
       status: { in: ['OPEN', 'WAITING_AGENT', 'WAITING_CUSTOMER'] },
     });
+  });
+});
+
+/**
+ * A quinta aba: os grupos do WhatsApp.
+ *
+ * As cinco abas são UM eixo — clicar em qualquer uma leva pra ela e sai de
+ * onde estava. Por isso cada número tem que responder "quantas eu veria se
+ * clicasse aqui", inclusive atravessando as duas caixas.
+ */
+describe('a aba de grupos e a de clientes são o mesmo eixo', () => {
+  it('cliente e grupo nunca aparecem na mesma lista', async () => {
+    const { service, consultas } = montar();
+
+    await service.list({ viewer: atendente });
+    expect(consultas[0].where).toMatchObject({
+      customer: { is: { isGroup: false } },
+    });
+
+    consultas.length = 0;
+    await service.list({ grupos: true, viewer: atendente });
+    expect(consultas[0].where).toMatchObject({
+      customer: { is: { isGroup: true } },
+    });
+  });
+
+  it('a busca acontece DENTRO da caixa aberta', async () => {
+    /*
+     * As duas condições falam do mesmo `customer`, e enquanto moravam em
+     * spreads separados a busca apagava a caixa em silêncio: bastava
+     * digitar qualquer coisa pra a aba de clientes começar a devolver
+     * grupo — e a de grupos, cliente.
+     */
+    const { service, consultas } = montar();
+
+    await service.list({ grupos: true, search: 'Ana', viewer: atendente });
+
+    const cliente = consultas[0].where.customer as {
+      is: { isGroup: boolean; OR: unknown[] };
+    };
+    expect(cliente.is.isGroup).toBe(true);
+    expect(cliente.is.OR).toHaveLength(2);
+  });
+
+  it('as quatro abas de situação contam CLIENTES mesmo estando nos grupos', async () => {
+    // Clicar em "Pendentes" a partir dos grupos volta pros clientes. Se o
+    // número contasse dentro dos grupos, as quatro abas zerariam assim que
+    // a de Grupos fosse aberta — e ninguém clica num "Pendentes 0".
+    const { service, consultas } = montar();
+
+    await service.counts({ grupos: true, viewer: atendente });
+
+    for (const indice of [TOTAL, PENDENTES]) {
+      expect(consultas[indice].where).toMatchObject({
+        customer: { is: { isGroup: false } },
+      });
+    }
+  });
+
+  it('a aba de grupos conta grupos, e sem situação nenhuma', async () => {
+    // Grupo não fica pendente nem aguardando (ver `receiveInbound`), então
+    // um recorte de situação aqui contaria sempre zero.
+    const { service, consultas } = montar();
+
+    await service.counts({ statusGroup: 'PENDING', viewer: atendente });
+
+    expect(consultas[GRUPOS].where).toMatchObject({
+      customer: { is: { isGroup: true } },
+    });
+    expect(consultas[GRUPOS].where).not.toHaveProperty('status');
+  });
+
+  it('a fila de espera não reordena os grupos', async () => {
+    /*
+     * `waitingSince` de grupo é sempre nulo. Na ordem por espera, a aba
+     * inteira empatava e caía no desempate por `id` — ou seja, embaralhada,
+     * com o grupo que acabou de receber mensagem em qualquer posição.
+     */
+    const { service } = montar();
+    const findMany = (
+      service as unknown as {
+        prisma: { db: { conversation: { findMany: jest.Mock } } };
+      }
+    ).prisma.db.conversation.findMany;
+
+    await service.list({ grupos: true, ordem: 'ESPERA', viewer: atendente });
+
+    expect(findMany.mock.calls[0][0].orderBy).toEqual([
+      { lastMessageAt: 'desc' },
+      { id: 'desc' },
+    ]);
   });
 });

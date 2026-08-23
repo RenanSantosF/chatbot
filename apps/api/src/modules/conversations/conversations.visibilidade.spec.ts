@@ -155,7 +155,7 @@ describe('contadores concordam com a lista', () => {
 
     // O número é proposital: um contador novo que esqueça o recorte faz
     // este teste falhar em vez de passar despercebido.
-    expect(wheres).toHaveLength(11);
+    expect(wheres).toHaveLength(12);
     for (const where of wheres) {
       expect(where).toMatchObject(recorteEsperado);
     }

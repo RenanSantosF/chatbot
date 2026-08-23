@@ -57,6 +57,7 @@ const EMPTY_COUNTS: FilterCounts = {
   pendentes: 0,
   aguardando: 0,
   resolvidas: 0,
+  grupos: 0,
   status: {},
   priority: {},
 };

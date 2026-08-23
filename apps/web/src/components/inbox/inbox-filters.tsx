@@ -6,7 +6,6 @@ import {
   Inbox,
   Search,
   SlidersHorizontal,
-  Users,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -38,10 +37,10 @@ export interface InboxFilters {
   /**
    * Mostrar os GRUPOS do WhatsApp em vez das conversas de cliente.
    *
-   * Eixo à parte, e não mais uma faceta: as duas listas nunca se
-   * misturam. Um grupo movimentado produz dezenas de mensagens por dia e
-   * ficaria no topo o tempo todo, empurrando pra baixo o cliente que está
-   * esperando — que é o oposto do que a caixa existe pra fazer.
+   * Anda junto com `grupo`, no mesmo eixo (ver `ABAS`): as duas listas
+   * nunca se misturam. Um grupo movimentado produz dezenas de mensagens por
+   * dia e ficaria no topo o tempo todo, empurrando pra baixo o cliente que
+   * está esperando — que é o oposto do que a caixa existe pra fazer.
    */
   grupos: boolean;
   status: ConversationStatus | "ALL";
@@ -99,6 +98,8 @@ export interface FilterCounts {
   pendentes: number;
   aguardando: number;
   resolvidas: number;
+  /** Quantos GRUPOS existem — a caixa da quinta aba, não uma faceta. */
+  grupos: number;
   status: Partial<Record<ConversationStatus, number>>;
   priority: Partial<Record<ConversationPriority, number>>;
 }
@@ -120,30 +121,79 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
 };
 
 /**
- * As abas, sem ícone.
+ * As cinco abas, sem ícone.
  *
  * Cada uma tinha um, e eles saíram junto com a grade que os abrigava: numa
  * aba com rótulo escrito, o ícone não acrescenta leitura nenhuma e disputa
  * espaço com o número — que é a informação que se lê de relance.
+ *
+ * "Grupos" é uma delas, e não um interruptor ao lado: as quatro primeiras
+ * abrem a caixa de CLIENTES numa situação, e ela abre a caixa dos GRUPOS.
+ * Enquanto era interruptor, entrar custava um clique e sair custava outro
+ * no mesmo botão — clicar em "Pendentes" com os grupos ligados não levava a
+ * lugar nenhum, porque o eixo dos grupos continuava mandando.
+ *
+ * E ela não carrega situação nenhuma de propósito: grupo não fica pendente
+ * nem aguardando ninguém (ver `receiveInbound` no backend), então "grupos
+ * resolvidos" seria um recorte que não quer dizer nada.
  */
-const GRUPOS: {
-  value: StatusGroup | "ALL";
+const ABAS: {
+  id: string;
   label: string;
   ajuda: string;
+  /** O recorte que a aba aplica — qual caixa, e em que situação. */
+  grupos: boolean;
+  grupo: StatusGroup | "ALL";
 }[] = [
   {
-    value: "PENDING",
+    id: "PENDING",
     label: "Pendentes",
     ajuda: "Precisa de uma pessoa — sem o que a IA está conduzindo",
+    grupos: false,
+    grupo: "PENDING",
   },
   {
-    value: "WAITING",
+    id: "WAITING",
     label: "Aguardando",
     ajuda: "Dentro de Pendentes: a bola está com o cliente",
+    grupos: false,
+    grupo: "WAITING",
   },
-  { value: "DONE", label: "Resolvidas", ajuda: "Atendimento encerrado" },
-  { value: "ALL", label: "Tudo", ajuda: "Sem filtro de situação" },
+  {
+    id: "DONE",
+    label: "Resolvidas",
+    ajuda: "Atendimento encerrado",
+    grupos: false,
+    grupo: "DONE",
+  },
+  {
+    id: "ALL",
+    label: "Tudo",
+    ajuda: "Sem filtro de situação",
+    grupos: false,
+    grupo: "ALL",
+  },
+  {
+    id: "GRUPOS",
+    label: "Grupos",
+    ajuda: "Os grupos do WhatsApp — não entram na fila de atendimento",
+    grupos: true,
+    grupo: "ALL",
+  },
 ];
+
+/**
+ * O número do selo, em no máximo três caracteres.
+ *
+ * Uma empresa com mil conversas resolvidas é questão de meses, e o quarto
+ * dígito era o que estourava a fileira de abas — a diferença entre caber e
+ * truncar. Num selo de aba a ordem de grandeza basta pra decidir onde
+ * clicar; quem quiser o número exato passa o mouse.
+ */
+function emNumeroCurto(quantos: number): string {
+  if (quantos < 1000) return String(quantos);
+  return `${Math.floor(quantos / 1000)}k`;
+}
 
 export function InboxFilterBar({
   value,
@@ -165,7 +215,9 @@ export function InboxFilterBar({
     onChange({ ...value, [key]: next });
 
   /**
-   * Grupo e "situação exata" são o MESMO eixo, em duas granularidades:
+   * Clicar numa aba diz TUDO sobre o eixo: qual caixa e qual situação.
+   *
+   * Aba e "situação exata" são o MESMO eixo, em duas granularidades:
    * "Pendentes" e "Aguard. cliente" respondem a mesma pergunta. Escolher um
    * limpa o outro.
    *
@@ -174,17 +226,21 @@ export function InboxFilterBar({
    * situação exata ganhar do grupo) e os botões diziam outra. Ninguém
    * escolhe isso de propósito; dá pra chegar lá clicando duas vezes.
    */
-  const escolherGrupo = (grupo: InboxFilters["grupo"]) =>
-    onChange({ ...value, grupo, status: "ALL" });
+  const escolherAba = (aba: (typeof ABAS)[number]) =>
+    onChange({ ...value, grupos: aba.grupos, grupo: aba.grupo, status: "ALL" });
 
   const escolherStatus = (status: InboxFilters["status"]) =>
     onChange({ ...value, status, grupo: "ALL" });
 
-  const contagemDoGrupo: Record<StatusGroup | "ALL", number> = {
+  /** Qual aba está acesa. Os grupos ganham do grupo de situação. */
+  const abaAtiva = value.grupos ? "GRUPOS" : value.grupo;
+
+  const contagemDaAba: Record<string, number> = {
     PENDING: counts.pendentes,
     WAITING: counts.aguardando,
     DONE: counts.resolvidas,
     ALL: counts.total,
+    GRUPOS: counts.grupos,
   };
 
   /**
@@ -293,74 +349,68 @@ export function InboxFilterBar({
         {action}
       </div>
 
-      {/* As três (quatro) leituras da caixa, como abas.
+      {/* As cinco leituras da caixa, como abas.
 
           Sublinhado em vez de pílula: aba é a metáfora certa pra "onde eu
           estou", e o sublinhado ocupa menos peso que um bloco colorido —
           o que chama atenção na linha passa a ser o número de cada uma,
-          que é a informação que se lê de relance. */}
+          que é a informação que se lê de relance.
+
+          Cinco abas em 440px é apertado, e as três medidas abaixo foram
+          medidas, não chutadas:
+
+          `grow` e não `flex-1`. `flex-1` zera a base e reparte a coluna em
+          cinco fatias iguais — "Tudo" sobrava espaço e "Resolvidas 180"
+          truncava do lado. Com a base no conteúdo, cada aba parte do
+          tamanho que precisa e a sobra é distribuída depois.
+
+          Sem padding lateral, rótulo em 12px e selo estreito: medido na
+          fonte real, isso põe a fileira em 404px dos 440 hoje, e em 435
+          no pior caso concebível — três dígitos nas cinco abas ao mesmo
+          tempo. Nada trunca em nenhum dos dois.
+
+          E nenhuma delas tem largura própria: era uma aba fixa no fim da
+          fileira que estava sendo empurrada pra fora da tela. */}
       <div
         role="radiogroup"
         aria-label="Situação do atendimento"
         className="flex items-stretch gap-0.5 border-b px-2"
       >
-        {GRUPOS.map((grupo) => {
-          const ativo = !value.grupos && value.grupo === grupo.value;
-          const quantos = contagemDoGrupo[grupo.value];
+        {ABAS.map((aba) => {
+          const ativo = abaAtiva === aba.id;
+          const quantos = contagemDaAba[aba.id] ?? 0;
+          const curto = emNumeroCurto(quantos);
           return (
             <button
-              key={grupo.value}
+              key={aba.id}
               type="button"
               role="radio"
               aria-checked={ativo}
-              title={grupo.ajuda}
-              onClick={() => escolherGrupo(grupo.value)}
+              // O número exato vai no título quando ele foi abreviado: o
+              // selo diz a ordem de grandeza, o título diz o valor.
+              title={curto === String(quantos) ? aba.ajuda : `${aba.ajuda} (${quantos})`}
+              onClick={() => escolherAba(aba)}
               className={cn(
-                "-mb-px flex flex-1 items-center justify-center gap-1.5 border-b-2 px-1 pt-1 pb-2.5 text-[13px] font-medium transition-colors",
+                "-mb-px flex min-w-0 grow items-center justify-center gap-1 border-b-2 pt-1 pb-2.5 text-xs font-medium transition-colors",
                 ativo
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              <span className="truncate">{grupo.label}</span>
+              <span className="truncate">{aba.label}</span>
               {quantos > 0 ? (
                 <span
                   className={cn(
-                    "rounded-full px-1.5 py-px text-[11px] font-semibold tabular-nums",
+                    "shrink-0 rounded-full px-1 py-px text-[10px] font-semibold tabular-nums",
                     ativo ? "bg-primary/15" : "bg-muted text-muted-foreground",
                   )}
                 >
-                  {quantos}
+                  {curto}
                 </span>
               ) : null}
             </button>
           );
         })}
-
-        {/* Os grupos do WhatsApp, à parte.
-
-            Aba e não filtro porque as duas listas nunca se misturam: um
-            grupo movimentado produz dezenas de mensagens por dia e ficaria
-            no topo o tempo todo, empurrando pra baixo o cliente que está
-            esperando. Separada por uma divisória porque ela não é mais uma
-            situação — é outra caixa. */}
-        <span aria-hidden className="my-2 w-px shrink-0 bg-border" />
-        <button
-          type="button"
-          role="radio"
-          aria-checked={value.grupos}
-          title="Conversas de grupo do WhatsApp"
-          onClick={() => set("grupos", !value.grupos)}
-          className={cn(
-            "-mb-px flex shrink-0 items-center justify-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-[13px] font-medium transition-colors",
-            value.grupos
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Users className="size-4" />
-          Grupos
-        </button>
       </div>
 
       {/* O painel desce de cima, e some quando fecha.

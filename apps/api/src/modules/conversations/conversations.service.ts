@@ -368,8 +368,13 @@ export class ConversationsService {
       // Na fila, quem espera há MAIS tempo primeiro; `nulls: 'last'` joga
       // pro fim quem não está esperando ninguém — sem isso o Postgres põe
       // os nulos na frente e a fila abre com quem já foi respondido.
+      //
+      // Grupo não entra nessa ordem porque grupo não espera resposta: o
+      // `waitingSince` dele é sempre nulo, e a fila de espera deixaria a
+      // aba inteira empatada, ordenada por `id` — ou seja, embaralhada, com
+      // o grupo que acabou de receber mensagem em qualquer lugar da lista.
       orderBy:
-        filter.ordem === 'ESPERA'
+        filter.ordem === 'ESPERA' && !filter.grupos
           ? [{ waitingSince: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }]
           : [{ lastMessageAt: 'desc' }, { id: 'desc' }],
       take: take + 1,
@@ -430,10 +435,28 @@ export class ConversationsService {
 
     return {
       ...recorte,
-      // Grupo e cliente nunca aparecem na mesma lista. Fora de qualquer
-      // faceta de propósito: é o recorte que define QUAL caixa está
-      // aberta, e os contadores das abas contam dentro dela.
-      customer: { isGroup: filtro.grupos === true },
+      /*
+       * Grupo e cliente nunca aparecem na mesma lista, e a busca acontece
+       * DENTRO da caixa aberta.
+       *
+       * As duas condições moram no mesmo objeto porque as duas falam do
+       * `customer`: escritas em spreads separados, a segunda apagava a
+       * primeira em silêncio — bastava digitar qualquer coisa na busca pra
+       * a aba de clientes começar a devolver grupo.
+       */
+      customer: {
+        is: {
+          isGroup: filtro.grupos === true,
+          ...(search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' as const } },
+                  { phone: { contains: search } },
+                ],
+              }
+            : {}),
+        },
+      },
       // Status exato ganha do grupo: se alguém pediu "só as fechadas",
       // não faz sentido devolver também as resolvidas.
       ...(fora.has('situacao')
@@ -467,18 +490,6 @@ export class ConversationsService {
         : {}),
       ...(filtro.waitingOnly && !fora.has('waiting')
         ? { waitingSince: { not: null } }
-        : {}),
-      ...(search
-        ? {
-            customer: {
-              is: {
-                OR: [
-                  { name: { contains: search, mode: 'insensitive' } },
-                  { phone: { contains: search } },
-                ],
-              },
-            },
-          }
         : {}),
     };
   }
@@ -540,15 +551,30 @@ export class ConversationsService {
    */
   async counts(filtro: FiltroDoInbox & { viewer: { userId: string; role: UserRole } }) {
     const recorte = await this.recorteDeVisibilidade(filtro.viewer);
-    const onde = (exceto: Faceta[], extra: Prisma.ConversationWhereInput = {}) => ({
-      where: { ...this.montarWhere(filtro, recorte, exceto), ...extra },
+    const onde = (
+      exceto: Faceta[],
+      extra: Prisma.ConversationWhereInput = {},
+      trocando: Partial<FiltroDoInbox> = {},
+    ) => ({
+      where: {
+        ...this.montarWhere({ ...filtro, ...trocando }, recorte, exceto),
+        ...extra,
+      },
     });
 
-    // Os quatro botões de situação são um eixo só: contar cada um exige
-    // tirar a situação atual do filtro, senão "Resolvidas" contaria dentro
-    // de "Pendentes" e daria zero sempre.
+    /*
+     * As cinco abas são um eixo só, e contar cada uma exige montar o filtro
+     * como ela ficaria se fosse clicada.
+     *
+     * Por isso duas trocas acontecem aqui. A situação sai do filtro — senão
+     * "Resolvidas" contaria dentro de "Pendentes" e daria zero sempre. E a
+     * caixa vira a de CLIENTES, mesmo quando quem está olhando está na aba
+     * de grupos: clicar em "Pendentes" leva de volta pros clientes, então o
+     * número tem que ser o de lá. Enquanto isso não era feito, as quatro
+     * abas zeravam assim que a de Grupos era aberta.
+     */
     const semSituacao = (extra: Prisma.ConversationWhereInput = {}) =>
-      onde(['situacao'], extra);
+      onde(['situacao'], extra, { grupos: false });
 
     const [
       total,
@@ -559,6 +585,7 @@ export class ConversationsService {
       pendentes,
       aguardando,
       resolvidas,
+      grupos,
       comIa,
       byStatus,
       byPriority,
@@ -594,6 +621,9 @@ export class ConversationsService {
       this.prisma.db.conversation.count(
         semSituacao({ status: { in: [...STATUS_GROUPS.DONE] } }),
       ),
+      // A quinta aba. Sem situação nenhuma de propósito: grupo não fica
+      // "pendente" nem "aguardando" — ele só tem conversa nova ou não.
+      this.prisma.db.conversation.count(onde(['situacao'], {}, { grupos: true })),
       this.prisma.db.conversation.count(
         onde(['comIa'], { aiMode: 'AI_ACTIVE' }),
       ),
@@ -619,6 +649,7 @@ export class ConversationsService {
       pendentes,
       aguardando,
       resolvidas,
+      grupos,
       status: Object.fromEntries(
         byStatus.map((row) => [row.status, row._count._all]),
       ),
