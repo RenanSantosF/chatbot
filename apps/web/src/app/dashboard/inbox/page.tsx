@@ -260,12 +260,36 @@ export default function InboxPage() {
    */
   const pedidoDaLista = useRef(0);
 
+  /**
+   * Busca a lista, e é ELA quem apaga o "carregando".
+   *
+   * Antes o `setLoadingList(false)` morava num `.finally` no efeito que
+   * chamava esta função, e essa separação produzia o vazio que piscava:
+   * quando duas buscas se cruzavam — abrir a tela já dispara duas, uma com
+   * os filtros padrão e outra com os guardados —, a primeira a responder
+   * caía no `return` de resposta velha logo acima SEM gravar nada, e ainda
+   * assim o `finally` dela desligava o carregando. A tela ficava com
+   * `loading` falso e a lista vazia: "Nenhuma conversa aqui", até a
+   * segunda resposta chegar um segundo depois.
+   *
+   * Agora quem desliga é a resposta que VENCEU, e ela desliga junto de
+   * gravar os dados — no mesmo lote de renderização, sem intervalo em que
+   * a tela possa dizer que não há nada.
+   */
   const loadConversations = useCallback(async (current: InboxFilters) => {
     const meu = ++pedidoDaLista.current;
-    const page = await apiFetch<Page<ConversationSummary>>(buildQuery(current));
-    if (meu !== pedidoDaLista.current) return;
-    setConversations(page.items);
-    setCursor(page.nextCursor);
+    try {
+      const page = await apiFetch<Page<ConversationSummary>>(buildQuery(current));
+      if (meu !== pedidoDaLista.current) return;
+      setConversations(page.items);
+      setCursor(page.nextCursor);
+      setLoadingList(false);
+    } catch (erro) {
+      // Falhar também tira o esqueleto: senão a tela gira pra sempre e
+      // ninguém entende que a busca acabou (mal).
+      if (meu === pedidoDaLista.current) setLoadingList(false);
+      throw erro;
+    }
   }, []);
 
   const loadMore = useCallback(async () => {
@@ -346,9 +370,9 @@ export default function InboxPage() {
       // que o número no botão e o que aparece embaixo dele falem da mesma
       // coisa.
       loadCounts(filters);
-      loadConversations(filters)
-        .catch(() => toast.error("Não deu pra carregar as conversas."))
-        .finally(() => setLoadingList(false));
+      loadConversations(filters).catch(() =>
+        toast.error("Não deu pra carregar as conversas."),
+      );
     }, filters.search ? 250 : 0);
     return () => clearTimeout(timer);
   }, [filters, filtersReady, loadConversations, loadCounts]);
