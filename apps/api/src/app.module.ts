@@ -12,6 +12,7 @@ import { CollectionModule } from './modules/collection/collection.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
+import { PushModule } from './modules/push/push.module';
 import { RetentionModule } from './modules/retention/retention.module';
 import { InboxSettingsModule } from './modules/inbox-settings/inbox-settings.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
@@ -61,6 +62,7 @@ import { StorageModule } from './modules/storage/storage.module';
     CollectionModule,
     InboxSettingsModule,
     CopilotModule,
+    PushModule,
     RetentionModule,
     RealtimeModule,
     AiModule,

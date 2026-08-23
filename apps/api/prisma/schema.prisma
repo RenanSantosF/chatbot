@@ -90,6 +90,7 @@ model Tenant {
   whatsappSettings   WhatsAppSettings?
   evolutionSettings  EvolutionSettings?
   auditLogs          AuditLog[]
+  pushSubscriptions  PushSubscription[]
 
   @@map("tenants")
 }
@@ -398,7 +399,8 @@ model User {
   queueMemberships      QueueMember[]
   routingRules          RoutingRule[]
   customerNotes         CustomerNote[]
-  auditLogs             AuditLog[]     @relation("AuditActor")
+  auditLogs             AuditLog[]         @relation("AuditActor")
+  pushSubscriptions     PushSubscription[]
 
   // Email é único globalmente (não só por tenant): simplifica o login, que não
   // exige saber a qual empresa o usuário pertence antes de autenticar.
@@ -1247,4 +1249,44 @@ model BillingAccount {
 
   @@index([stripeCustomerId])
   @@map("billing_accounts")
+}
+
+/// Um navegador inscrito pra receber aviso com o painel FECHADO.
+///
+/// É o que separa a notificação que já existia da que vale a pena: a
+/// anterior era criada pela própria página e morria junto com a aba, então
+/// atendente que fechasse o navegador não era avisado de nada. Esta fica
+/// guardada aqui e o servidor a usa pra empurrar o aviso pelo serviço do
+/// navegador (Web Push), com ou sem o app aberto.
+///
+/// Uma linha POR APARELHO, não por pessoa: quem atende do computador e do
+/// celular precisa ser avisado nos dois. O `endpoint` é o que o navegador
+/// devolve e é único no mundo — é ele, e não o par usuário+aparelho, que
+/// identifica a inscrição.
+model PushSubscription {
+  id       String @id @default(uuid())
+  tenantId String
+  userId   String
+
+  /// A URL do serviço de push do navegador. Única globalmente: reinscrever
+  /// o mesmo aparelho devolve o mesmo endpoint, e o upsert por ele é o que
+  /// evita duplicar a cada abertura do painel.
+  endpoint String @unique
+  /// As duas chaves que cifram o conteúdo do aviso ponta a ponta. Sem elas
+  /// o serviço de push entregaria um envelope que ninguém abre.
+  p256dh String
+  auth   String
+
+  /// Pra dar nome ao aparelho na tela de quem quiser revisar as inscrições.
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("push_subscriptions")
 }

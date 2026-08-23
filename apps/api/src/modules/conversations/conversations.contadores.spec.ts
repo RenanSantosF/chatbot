@@ -52,6 +52,7 @@ function montar() {
     {} as never,
     { transcreverSeAutomatico: jest.fn() } as never,
     { registrar: jest.fn() } as never,
+    { avisarEquipe: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   return { service, consultas };
@@ -229,6 +230,7 @@ describe('o recorte por setor continua valendo', () => {
       {} as never,
       { transcreverSeAutomatico: jest.fn() } as never,
       { registrar: jest.fn() } as never,
+      { avisarEquipe: jest.fn().mockResolvedValue(undefined) } as never,
     );
     void service;
 

@@ -42,6 +42,7 @@ function servicoCom(conversaAtual: Record<string, unknown>) {
     {} as never,
     { transcreverSeAutomatico: jest.fn() } as never,
     { registrar: jest.fn() } as never,
+    { avisarEquipe: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   return { service, prisma, realtime };
@@ -245,6 +246,7 @@ function servicoDeResposta(
     {} as never,
     { transcreverSeAutomatico: jest.fn() } as never,
     { registrar: jest.fn() } as never,
+    { avisarEquipe: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   return { service, escritas, notas };

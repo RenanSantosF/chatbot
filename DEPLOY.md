@@ -65,6 +65,8 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `WHATSAPP_VERIFY_TOKEN` | qualquer string que você escolher (ex: `token-secreto-webhook`) — vai reaparecer no passo 4 |
    | `API_PUBLIC_URL` | a URL pública que o Railway vai te dar (Settings > Networking > Generate Domain) — só usada pra mostrar a URL do webhook pronta na tela de Configurações |
    | `GEMINI_API_KEY` / `GEMINI_MODEL` | opcional — deixe em branco. Cada empresa cadastra a própria chave pela tela `/dashboard/ai` |
+   | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
+   | `VAPID_SUBJECT` | `mailto:` com um e-mail seu (ex: `mailto:contato@suaempresa.com.br`). É por onde o serviço de push avisa em caso de abuso |
 
 5. Deploy. Confirme nos logs que apareceu `Nest application successfully started` e `Conectado ao Postgres`.
 

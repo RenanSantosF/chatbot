@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { SITE_NAME } from "@/lib/site";
 import { resumoDaMensagem } from "@/lib/mensagem";
+import { estaInscrito, inscreverParaAvisos } from "@/lib/push";
 
 /**
  * O estado do WhatsApp da empresa, empurrado pelo servidor.
@@ -163,6 +164,15 @@ export function RealtimeProvider({
   }, [historico?.importando, historico?.desde]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
+  /*
+   * Este aparelho recebe aviso pelo sistema (Web Push)?
+   *
+   * Num ref, e não em estado: quem lê isto é o ouvinte do socket, que é
+   * montado UMA vez. Em estado, ele leria para sempre o valor do primeiro
+   * render — falso — e o aviso da página continuaria saindo mesmo depois
+   * de o push começar a funcionar.
+   */
+  const temPushRef = useRef(false);
   const activeConversationRef = useRef<string | null>(null);
   const namesRef = useRef<Record<string, string>>({});
   const router = useRouter();
@@ -176,9 +186,27 @@ export function RealtimeProvider({
   }, [router]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setNotifPermission(Notification.permission);
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNotifPermission(Notification.permission);
+
+    /*
+     * Quem já autorizou volta inscrito, sem precisar autorizar de novo.
+     *
+     * A inscrição não sobrevive sozinha a tudo: o navegador pode rodar a
+     * chave, a pessoa pode limpar os dados do site, e o servidor pode ter
+     * trocado o par VAPID. Refazer a cada abertura do painel é barato (um
+     * GET e, quase sempre, nenhuma escrita) e é o que evita o pior caso —
+     * alguém achar que está sendo avisado e não estar.
+     */
+    if (Notification.permission === "granted") {
+      void inscreverParaAvisos().then((ok) => {
+        temPushRef.current = ok;
+      });
+    } else {
+      void estaInscrito().then((ok) => {
+        temPushRef.current = ok;
+      });
     }
   }, []);
 
@@ -287,7 +315,16 @@ export function RealtimeProvider({
           typeof document !== "undefined" &&
           (document.hidden || !document.hasFocus());
 
-        if (foraDeVista && Notification.permission === "granted") {
+        /*
+         * Com Web Push ativo, quem avisa é o service worker.
+         *
+         * Os dois caminhos desenham a MESMA notificação, e deixar os dois
+         * ligados faria a pessoa receber o aviso em dobro a cada mensagem.
+         * O do sistema é estritamente melhor — funciona com o painel
+         * fechado —, então ele ganha, e este aqui vira a reserva de quem
+         * não tem push (navegador sem suporte, servidor sem VAPID).
+         */
+        if (foraDeVista && !temPushRef.current && Notification.permission === "granted") {
           const notification = new Notification(namesRef.current[conversationId] ?? "Nova mensagem", {
             // Anexo tem `content` vazio, e um balão de notificação sem
             // texto parece defeito. O mesmo resumo que a lista de
@@ -344,7 +381,15 @@ export function RealtimeProvider({
 
   const enableNotifications = useCallback(async () => {
     if (!("Notification" in window)) return;
-    setNotifPermission(await Notification.requestPermission());
+    const permissao = await Notification.requestPermission();
+    setNotifPermission(permissao);
+
+    // A inscrição vem logo depois da autorização, e não numa tela de
+    // configuração à parte: quem acabou de autorizar espera ser avisado a
+    // partir de agora, inclusive com o painel fechado.
+    if (permissao === "granted") {
+      temPushRef.current = await inscreverParaAvisos();
+    }
   }, []);
 
   const value = useMemo<RealtimeContextValue>(

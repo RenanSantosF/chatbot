@@ -21,6 +21,7 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
 import { TranscricaoService } from '../ai/transcricao.service';
 import { AuditService } from '../audit/audit.service';
+import { PushService } from '../push/push.service';
 import type { VerificacaoDaResposta } from '../ai/ai-guardrails';
 import { CollectionService } from '../collection/collection.service';
 import { CustomersService } from '../customers/customers.service';
@@ -208,6 +209,29 @@ const MEDIA_MESSAGE_TYPE: Record<
   sticker: 'IMAGE',
 };
 
+/**
+ * Uma linha que descreve a mensagem no corpo da notificação.
+ *
+ * Anexo chega com `content` vazio, e um aviso sem texto no celular parece
+ * defeito do sistema. Os rótulos são os mesmos que o painel usa na prévia
+ * da lista de conversas — ver `resumoDaMensagem`, no lado do navegador.
+ */
+function resumoParaAviso(content: string, messageType: MessageType): string {
+  if (messageType === 'TEXT') return content;
+
+  const rotulo = RESUMO_DE_MIDIA[messageType] ?? 'Anexo';
+  const legenda = content.trim();
+  return legenda ? `${rotulo} · ${legenda}` : rotulo;
+}
+
+const RESUMO_DE_MIDIA: Partial<Record<MessageType, string>> = {
+  IMAGE: 'Imagem',
+  AUDIO: 'Áudio',
+  VIDEO: 'Vídeo',
+  DOCUMENT: 'Documento',
+  LOCATION: 'Localização',
+};
+
 const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
@@ -295,6 +319,7 @@ export class ConversationsService {
     private readonly tags: TagsService,
     private readonly transcricao: TranscricaoService,
     private readonly audit: AuditService,
+    private readonly push: PushService,
   ) {}
 
   /**
@@ -988,6 +1013,32 @@ export class ConversationsService {
       conversationId,
       message: comNome,
     });
+
+    /*
+     * O aviso que chega mesmo com o painel fechado.
+     *
+     * O tempo real acima só alcança quem está com a aba aberta. Este
+     * caminho alcança o aparelho — é ele que faz o celular do dono tocar
+     * às 20h, quando ninguém está olhando o computador.
+     *
+     * Sem `await` e com o erro engolido de propósito: isto roda dentro do
+     * webhook da Evolution, que reenvia a entrega quando a resposta
+     * demora. Esperar o serviço de push do Google pra confirmar uma
+     * mensagem que já está gravada seria trocar confiabilidade por um
+     * aviso.
+     *
+     * Só mensagem de CLIENTE: o que a própria empresa manda não precisa
+     * ser anunciado de volta pra ela.
+     */
+    if (fromCustomer && !isSystemNote) {
+      void this.push
+        .avisarEquipe(this.prisma.tenantId, {
+          titulo: conversation.customer?.name || 'Nova mensagem',
+          corpo: resumoParaAviso(message.content, message.messageType),
+          conversationId,
+        })
+        .catch(() => undefined);
+    }
 
     // Só ecoa pro WhatsApp respostas da empresa (IA ou atendente) — mensagens
     // do próprio cliente óbvio não, e mensagens SYSTEM (ex: aviso de
