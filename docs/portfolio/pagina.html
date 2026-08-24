@@ -1,0 +1,215 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inteliwa — portfólio</title>
+<style>
+  /* Página A4 na mesma métrica do PDF original: 794 x 1123 px a 96dpi.
+     As posições abaixo saíram da extração do PDF de referência, pra a
+     folha nova encaixar na mesma grade da que já existe. */
+  @page { size: A4; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --tinta:    rgb(11, 43, 60);    /* .0431 .1686 .2353 */
+    --tinta2:   rgb(19, 48, 63);
+    --verde:    rgb(2, 195, 154);   /* .0078 .7647 .6039 */
+    --azul:     rgb(28, 114, 147);  /* .1098 .4471 .5765 */
+    --texto:    rgb(74, 100, 112);  /* .2902 .3922 .4392 */
+    --apagado:  rgb(126, 151, 162); /* .4941 .5922 .6353 */
+    --claro:    rgb(155, 182, 194); /* .6078 .7137 .7608 */
+    --fundo:    rgb(221, 231, 235); /* .8667 .9059 .9216 */
+    --cartao:   rgb(244, 247, 249); /* .9569 .9686 .9765 */
+    --linha:    rgb(228, 237, 240);
+  }
+
+  html, body { width: 794px; height: 1123px; }
+  body {
+    font-family: "DejaVu Sans", sans-serif;
+    background: var(--fundo);
+    color: var(--texto);
+    position: relative;
+    overflow: hidden;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .folha { position: absolute; inset: 0; }
+
+  /* ---- topo ---- */
+  .chapeu {
+    position: absolute; left: 52.9px; top: 44px;
+    font-size: 10px; font-weight: bold; letter-spacing: 1.1px;
+    color: var(--azul);
+  }
+  h1 {
+    position: absolute; left: 52.9px; top: 66px;
+    font-size: 33.3px; font-weight: bold; color: var(--tinta);
+    letter-spacing: -0.4px;
+  }
+  .resumo {
+    position: absolute; left: 52.9px; top: 122px; width: 600px;
+    font-size: 14px; line-height: 21px; color: var(--texto);
+  }
+  .resumo b { color: var(--tinta); font-weight: bold; }
+
+  .selos {
+    position: absolute; left: 52.9px; top: 208px;
+    display: flex; gap: 7px;
+  }
+  .selo {
+    font-size: 10.4px; color: var(--azul);
+    background: var(--cartao); border: 1px solid var(--linha);
+    border-radius: 20px; padding: 4px 11px;
+  }
+
+  /* ---- imagem ---- */
+  .moldura {
+    position: absolute; left: 52.9px; top: 244px;
+    width: 688px; height: 252px;
+    border: 1px solid var(--linha); border-radius: 6px;
+    overflow: hidden; background: #fff;
+    box-shadow: 0 1px 3px rgba(11, 43, 60, 0.07);
+  }
+  .moldura img { width: 100%; display: block; }
+  .legenda {
+    position: absolute; left: 52.9px; top: 504px;
+    font-size: 10px; color: var(--apagado);
+  }
+
+  /* ---- três colunas ---- */
+  .colunas {
+    position: absolute; left: 52.9px; top: 534px;
+    width: 688px; height: 300px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+  }
+  .colunas h2 {
+    font-size: 9.6px; font-weight: bold; letter-spacing: 1px;
+    color: var(--tinta); margin-bottom: 10px;
+    padding-bottom: 5px; border-bottom: 2px solid var(--verde);
+  }
+  .colunas ul { list-style: none; }
+  .colunas li {
+    font-size: 10.4px; line-height: 15px;
+    margin-bottom: 7px; padding-left: 13px; position: relative;
+  }
+  .colunas li::before {
+    content: ""; position: absolute; left: 0; top: 6px;
+    width: 4px; height: 4px; border-radius: 50%; background: var(--claro);
+  }
+  .colunas li b { color: var(--tinta); font-weight: bold; }
+  .pilha li { margin-bottom: 5px; }
+
+  /* ---- faixa escura ---- */
+  .faixa {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 267px;
+    background: var(--tinta);
+    border-top: 3px solid var(--verde);
+    color: var(--claro);
+  }
+  .numeros {
+    position: absolute; left: 52.9px; top: 44px;
+    width: 240px;
+    display: flex; gap: 34px;
+  }
+  .numero .valor {
+    font-size: 34.7px; font-weight: bold; color: #fff; line-height: 1;
+  }
+  .numero .rotulo {
+    font-size: 8.4px; font-weight: bold; letter-spacing: 0.7px;
+    color: var(--verde); margin-top: 7px; line-height: 12px;
+  }
+  .nota {
+    position: absolute; left: 330px; top: 44px; width: 411px;
+    font-size: 11.4px; line-height: 17.5px; color: var(--claro);
+  }
+  .nota b { color: #fff; font-weight: bold; }
+
+  .rodape {
+    position: absolute; left: 52.9px; right: 52.9px; bottom: 28px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10px; color: var(--apagado);
+    padding-top: 14px; border-top: 1px solid rgba(155, 182, 194, 0.18);
+  }
+</style>
+
+<div class="folha">
+  <div class="chapeu">ATENDIMENTO NO WHATSAPP · EM PRODUÇÃO</div>
+  <h1>Inteliwa</h1>
+
+  <p class="resumo">
+    Atende clientes no WhatsApp com uma IA treinada no que a empresa sabe, e
+    passa a conversa pra uma pessoa no instante em que a resposta deixa de ter
+    lastro — <b>sem o cliente perceber a troca</b>.
+  </p>
+
+  <div class="selos">
+    <span class="selo">WhatsApp</span>
+    <span class="selo">IA com acervo próprio</span>
+    <span class="selo">Multiempresa</span>
+    <span class="selo">PWA</span>
+  </div>
+
+  <div class="moldura"><img src="HERO" alt="Painel de atendimento"></div>
+  <div class="legenda">
+    A caixa de entrada: filas de atendimento à esquerda, a conversa no centro e o
+    que se sabe do cliente à direita.
+  </div>
+
+  <div class="colunas">
+    <div>
+      <h2>O QUE FAZ</h2>
+      <ul>
+        <li><b>Responde sozinho</b> com o que a empresa ensinou: documentos, regras e respostas viram acervo de busca</li>
+        <li><b>Chama uma pessoa</b> quando a pergunta sai do que ela sabe — e sai de cena</li>
+        <li><b>Organiza a fila</b> por setor, com rodízio, etiquetas e alarme de quem espera há mais tempo</li>
+        <li><b>Transcreve áudio</b> do cliente, pra a conversa poder ser lida e buscada</li>
+        <li><b>Grupos do WhatsApp</b> em aba própria, fora da fila de atendimento</li>
+      </ul>
+    </div>
+    <div>
+      <h2>ONDE ESTÁ A DIFICULDADE</h2>
+      <ul>
+        <li><b>Prometer e não cumprir:</b> a IA escrevia “vou te transferir” e não chamava a ferramenta. A trava não impede a promessa — cumpre ela</li>
+        <li><b>Não afirmar sem lastro:</b> a resposta é conferida contra os fatos do acervo; o que não se sustenta vira transferência</li>
+        <li><b>O número é da empresa:</b> pausa antes de cada envio, “digitando” de verdade e teto de 30 primeiras abordagens por dia</li>
+        <li><b>Em grupo a IA nunca fala:</b> um robô respondendo quarenta pessoas é padrão de spam — e spam bloqueia número</li>
+      </ul>
+    </div>
+    <div>
+      <h2>COMO FOI FEITO</h2>
+      <ul class="pilha">
+        <li>NestJS 11 · TypeScript · PostgreSQL</li>
+        <li>Next.js 16 · React 19 · Tailwind 4</li>
+        <li>Busca por embeddings com pgvector, no mesmo banco</li>
+        <li>WhatsApp pela Evolution API, com webhook assinado</li>
+        <li>Isolamento por empresa em toda consulta</li>
+        <li>Instalável como aplicativo, com aviso pelo sistema</li>
+        <li>Monorepo pnpm com tipos compartilhados</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="faixa">
+    <div class="numeros">
+      <div class="numero">
+        <div class="valor">910</div>
+        <div class="rotulo">TESTES AUTOMATIZADOS</div>
+      </div>
+      <div class="numero">
+        <div class="valor">6</div>
+        <div class="rotulo">FERRAMENTAS DA IA</div>
+      </div>
+    </div>
+    <p class="nota">
+      A IA tem seis ferramentas — buscar cliente, transferir, encerrar, criar
+      tarefa, lembrar e coletar dados. Nenhuma delas depende de o modelo lembrar
+      de chamá-la: <b>quando o texto promete uma pessoa, o sistema transfere de
+      qualquer jeito</b>. O problema real em produção nunca foi a IA se recusar a
+      transferir — foi ela prometer e não fazer, com o cliente esperando alguém
+      que não vinha.
+    </p>
+    <div class="rodape">
+      <span>Renan Ferreira dos Santos · Desenvolvimento de sistemas</span>
+      <span>renan_ferreira.es@outlook.com</span>
+    </div>
+  </div>
+</div>
