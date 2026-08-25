@@ -172,3 +172,58 @@ describe('conversa de grupo', () => {
     expect(doCliente?.metadata?.participante).toBe('Ana');
   });
 });
+
+/**
+ * A IA não fala em grupo NEM quando o banco diz que ela pode.
+ *
+ * Relato de cliente: "a IA está respondendo automaticamente conversas de
+ * grupo". A regra existia, mas era garantida por um valor GRAVADO uma vez,
+ * no nascimento da conversa — e valor gravado não é regra, é histórico.
+ * Bastava um caminho criar ou reabrir a conversa sem a bandeira (e havia
+ * mais de um) pra `aiMode` ficar AI_ACTIVE, e daí em diante ninguém mais
+ * perguntava se aquilo era grupo.
+ *
+ * Estes testes cobrem o ponto por onde a IA de fato fala. É lá que a
+ * pergunta tem que ser feita, porque é o único lugar que decide.
+ */
+describe('a trava de grupo vale mesmo com a IA ligada na conversa', () => {
+  function comConversaLigada() {
+    const contexto = montar();
+    // A conversa JÁ existe e está com a IA no comando — o estado errado
+    // que ficou no banco de quem foi atingido pelo defeito.
+    (contexto.service as never as {
+      prisma: { db: { conversation: { findFirst: jest.Mock } } };
+    }).prisma.db.conversation.findFirst.mockResolvedValue({
+      id: 'conversa-1',
+      tenantId: 'tenant-teste',
+      customerId: 'cliente-1',
+      status: 'OPEN',
+      aiMode: 'AI_ACTIVE',
+      priority: 'NORMAL',
+      customer: { id: 'cliente-1', name: 'Fornecedores', phone: '120363000@g.us' },
+      messages: [],
+    });
+    return contexto;
+  }
+
+  it('não chama a IA numa conversa de grupo já marcada como AI_ACTIVE', async () => {
+    const { service, aiEngine } = comConversaLigada();
+
+    await service.receiveInbound({ ...doGrupo });
+
+    expect(aiEngine.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('e desliga a IA daquela conversa, pra ela não tentar de novo', async () => {
+    // Só não responder resolveria esta mensagem. Desligar resolve a
+    // conversa: ela sai de "com a IA" no painel e para de mentir sobre
+    // quem está no comando.
+    const { service, atualizacoes } = comConversaLigada();
+
+    await service.receiveInbound({ ...doGrupo });
+
+    expect(atualizacoes).toContainEqual(
+      expect.objectContaining({ aiMode: 'HUMAN_ACTIVE' }),
+    );
+  });
+});

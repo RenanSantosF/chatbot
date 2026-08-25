@@ -2909,7 +2909,7 @@ export class ConversationsService {
     // uma nova. Quem decide é a configuração de agrupamento — ver
     // reabrirParaAgrupamento.
     if (!conversation) {
-      conversation = await this.reabrirParaAgrupamento(customer.id);
+      conversation = await this.reabrirParaAgrupamento(customer.id, input.grupo);
     }
 
     // Guardado ANTES de gravar a mensagem: é a única janela em que dá pra
@@ -3039,6 +3039,37 @@ export class ConversationsService {
       if (saudada) latestConversation = saudada;
     }
 
+    /*
+     * EM GRUPO A IA NÃO FALA, e a trava é aqui.
+     *
+     * Ela já existia — no nascimento da conversa, onde o modo é escolhido
+     * — e isso não bastou. Um cliente relatou a IA respondendo no grupo
+     * dele, e o motivo é que "não fala em grupo" estava sendo garantido
+     * por um valor GRAVADO uma vez, não por uma regra conferida na hora.
+     * Qualquer caminho que criasse ou reabrisse a conversa sem a bandeira
+     * — e havia mais de um — deixava `aiMode` em AI_ACTIVE, e daí em
+     * diante ninguém mais perguntava se aquilo era um grupo.
+     *
+     * Aqui é o único lugar por onde a IA fala. Conferir neste ponto torna
+     * a promessa verdadeira independentemente de como o modo foi parar no
+     * banco, inclusive nas conversas que já estão erradas em produção.
+     */
+    // Duas fontes, e basta uma dizer "grupo": a bandeira de quem entregou
+    // a mensagem e a marca do cadastro. Depender só da primeira deixaria a
+    // trava de fora em qualquer chamador que esquecesse de passá-la — que
+    // é a forma exata como este defeito nasceu.
+    if ((input.grupo || customer.isGroup) && conversation.aiMode === 'AI_ACTIVE') {
+      this.logger.warn(
+        `Conversa de grupo ${conversation.id} estava com a IA ligada; desligando. ` +
+          'A IA nunca responde em grupo.',
+      );
+      await this.prisma.db.conversation.update({
+        where: { id: conversation.id },
+        data: { aiMode: 'HUMAN_ACTIVE' },
+      });
+      conversation = { ...conversation, aiMode: 'HUMAN_ACTIVE' };
+    }
+
     if (conversation.aiMode === 'AI_ACTIVE' && !(await this.chegouOutraDepois(inbound.message))) {
       const resultado = await this.aiEngine.generateReply(conversation.id);
 
@@ -3140,7 +3171,7 @@ export class ConversationsService {
    * confunde. Fora da janela, conversa nova — o histórico continua no
    * perfil do cliente de qualquer forma.
    */
-  private async reabrirParaAgrupamento(customerId: string) {
+  private async reabrirParaAgrupamento(customerId: string, grupo = false) {
     const settings = await this.inboxSettings.get();
     if (!settings.groupByCustomer) return null;
 
@@ -3180,8 +3211,14 @@ export class ConversationsService {
      * roda com a chave de ambiente em vez da própria. Nos dois, a conversa
      * NOVA ganhava IA e a REABERTA não — que é exatamente o relato de
      * "resolvo, o cliente escreve de novo e a IA não responde".
+     *
+     * E em GRUPO ela não reassume nunca, nem com tudo configurado. Este
+     * caminho não perguntava se era grupo, e um grupo resolvido — pela
+     * equipe ou pelo encerramento automático — voltava com a IA no
+     * comando na mensagem seguinte. É a mesma regra do nascimento da
+     * conversa, que faltava aqui.
      */
-    const iaAssume = await this.aiEngine.podeAtender();
+    const iaAssume = !grupo && (await this.aiEngine.podeAtender());
 
     /*
      * E a rodada nova também não nasce com dono.

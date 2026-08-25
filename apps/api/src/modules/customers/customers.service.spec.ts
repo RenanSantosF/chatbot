@@ -215,3 +215,59 @@ describe('cliente chegando por mensagem', () => {
     ).rejects.toThrow('banco fora');
   });
 });
+
+/**
+ * A marca de grupo se conserta sozinha.
+ *
+ * Ela era gravada só no nascimento do cliente, e quem entrou por um
+ * caminho que não passava a bandeira ficou errado pra sempre. O relato de
+ * cliente foi duplo, e são os dois lados do mesmo dado errado: "os grupos
+ * não estão na aba de grupos, e sim em Tudo" e "a IA está respondendo
+ * conversas de grupo".
+ *
+ * Toda mensagem passa por aqui, então este é o lugar onde o conserto
+ * chega a quem já está no banco — sem depender de ninguém rodar nada.
+ */
+describe('a marca de grupo do cliente', () => {
+  it('corrige quem está gravado como pessoa e é grupo', async () => {
+    const { service, atualizados } = servicoCom([
+      { id: 'c1', phone: '120363000@g.us', name: 'Fornecedores', isGroup: false },
+    ]);
+
+    const cliente = await service.findOrCreateByPhone({
+      phone: '120363000@g.us',
+      name: 'Fornecedores',
+      grupo: true,
+    });
+
+    expect(atualizados).toEqual([{ id: 'c1', data: { isGroup: true } }]);
+    expect(cliente).toMatchObject({ isGroup: true });
+  });
+
+  it('não escreve à toa quando a marca já está certa', async () => {
+    // Uma escrita por mensagem recebida, num grupo movimentado, seria
+    // caro e inútil.
+    const { service, atualizados } = servicoCom([
+      { id: 'c1', phone: '120363000@g.us', name: 'Fornecedores', isGroup: true },
+    ]);
+
+    await service.findOrCreateByPhone({
+      phone: '120363000@g.us',
+      name: 'Fornecedores',
+      grupo: true,
+    });
+
+    expect(atualizados).toEqual([]);
+  });
+
+  it('não mexe em nada quando ninguém disse se é grupo', async () => {
+    // Há chamadores que não sabem — e "não sei" não pode virar "não é".
+    const { service, atualizados } = servicoCom([
+      { id: 'c1', phone: '120363000@g.us', name: 'Fornecedores', isGroup: true },
+    ]);
+
+    await service.findOrCreateByPhone({ phone: '120363000@g.us', name: 'X' });
+
+    expect(atualizados).toEqual([]);
+  });
+});

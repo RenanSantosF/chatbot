@@ -24,6 +24,8 @@ function montar(
      */
     iaAtende?: boolean;
     agrupar?: boolean;
+    /** A conversa reaberta é de um GRUPO do WhatsApp? */
+    grupo?: boolean;
   } = {},
 ) {
   const atualizacoes: Record<string, unknown>[] = [];
@@ -88,9 +90,9 @@ function montar(
   const reabrir = () =>
     (
       service as unknown as {
-        reabrirParaAgrupamento: (id: string) => Promise<unknown>;
+        reabrirParaAgrupamento: (id: string, grupo?: boolean) => Promise<unknown>;
       }
-    ).reabrirParaAgrupamento('cliente-1');
+    ).reabrirParaAgrupamento('cliente-1', estado.grupo ?? false);
 
   return { reabrir, prisma, atualizacoes, notas, aiEngine };
 }
@@ -248,5 +250,35 @@ describe('a IA volta a atender quem escreve depois de resolvido', () => {
     await reabrir();
 
     expect(atualizacoes[0]).not.toHaveProperty('aiMode');
+  });
+});
+
+describe('grupo reaberto continua sem IA', () => {
+  it('a IA não reassume um GRUPO, nem com tudo configurado', async () => {
+    /*
+     * Faltava esta pergunta aqui. Um grupo resolvido — pela equipe ou
+     * pelo encerramento automático — voltava com a IA no comando na
+     * mensagem seguinte, e ela passava a responder na frente de todo
+     * mundo do grupo. É o relato de "a IA está respondendo conversas de
+     * grupo", por um caminho diferente do nascimento da conversa.
+     */
+    const { reabrir, atualizacoes } = montar({ iaAtende: true, grupo: true });
+
+    await reabrir();
+
+    expect(atualizacoes[0]).not.toHaveProperty('aiMode');
+  });
+
+  it('mas o resto da reabertura continua valendo pro grupo', async () => {
+    // Ele volta pra fila e perde o dono como qualquer conversa: o que
+    // muda é só quem responde.
+    const { reabrir, atualizacoes } = montar({ iaAtende: true, grupo: true });
+
+    await reabrir();
+
+    expect(atualizacoes[0]).toMatchObject({
+      status: 'OPEN',
+      assignedUserId: null,
+    });
   });
 });

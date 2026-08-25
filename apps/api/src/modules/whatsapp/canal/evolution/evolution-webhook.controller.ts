@@ -124,7 +124,25 @@ export class EvolutionWebhookController {
       return existente.name;
     }
 
-    const nome = await this.evolution.nomeDoGrupo(groupJid);
+    /*
+     * E se a pergunta falhar, a mensagem entra assim mesmo.
+     *
+     * Isto aqui é uma chamada de rede a um servidor que pode estar fora,
+     * lento, ou recusar o grupo do qual o número já saiu. Sem o `catch`,
+     * qualquer um desses casos virava exceção no controlador, o webhook
+     * respondia 500 e a MENSAGEM DO GRUPO SE PERDIA — a Evolution
+     * reentrega algumas vezes e desiste.
+     *
+     * O comentário acima sempre disse que segurar o recebimento por causa
+     * de um nome seria trocar mensagem perdida por estética. Era a
+     * intenção; o código não cumpria.
+     */
+    const nome = await this.evolution.nomeDoGrupo(groupJid).catch((erro) => {
+      this.logger.warn(
+        `Não deu pra descobrir o nome do grupo ${groupJid}: ${erro instanceof Error ? erro.message : erro}`,
+      );
+      return null;
+    });
     if (!nome) return groupJid;
 
     this.nomesDeGrupo.set(groupJid, nome);

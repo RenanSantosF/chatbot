@@ -353,6 +353,29 @@ export class CustomersService {
   async findOrCreateByPhone({ phone, name, grupo }: FindOrCreateInput) {
     const existing = await this.prisma.db.customer.findFirst({ where: { phone } });
     if (existing) {
+      /*
+       * E a marca de grupo é CORRIGIDA quando estiver errada.
+       *
+       * Ela era gravada só no nascimento. Quem já estava no banco com a
+       * marca errada — porque a linha nasceu antes de o recurso existir,
+       * ou por um caminho que não passava a bandeira — ficava errado pra
+       * sempre, e o estrago é grande: o grupo não aparece na aba Grupos
+       * (some dentro de "Tudo") e o resto do sistema o trata como
+       * cliente, inclusive deixando a IA responder nele.
+       *
+       * Aqui a conta é barata e definitiva: quem manda é o endereço. Um
+       * `@g.us` é grupo, e nada mais é. Como toda mensagem passa por
+       * aqui, o conserto acontece sozinho na primeira que chegar.
+       */
+      if (grupo !== undefined && existing.isGroup !== grupo) {
+        this.logger.warn(
+          `Cliente ${existing.id} (${phone}) estava marcado como ${existing.isGroup ? 'grupo' : 'pessoa'} e é ${grupo ? 'grupo' : 'pessoa'}. Corrigindo.`,
+        );
+        return this.prisma.db.customer.update({
+          where: { id: existing.id },
+          data: { isGroup: grupo },
+        });
+      }
       return existing;
     }
 
