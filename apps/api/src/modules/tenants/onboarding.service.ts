@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { AiEngineService } from '../ai/ai-engine.service';
 import { EstadoDoCanalService } from '../whatsapp/canal/estado-do-canal.service';
 import type { SalvarPerfilDto } from './dto/onboarding.dto';
 
@@ -30,6 +31,7 @@ export class OnboardingService {
     private readonly global: PrismaService,
     private readonly prisma: TenantPrismaService,
     private readonly estadoDoCanal: EstadoDoCanalService,
+    private readonly aiEngine: AiEngineService,
   ) {}
 
   async salvarPerfil(dto: SalvarPerfilDto) {
@@ -74,9 +76,11 @@ export class OnboardingService {
       // linha — o item ficava eternamente por fazer com o WhatsApp
       // funcionando e conversando.
       this.estadoDoCanal.doTenant(this.prisma.tenantId),
-      this.prisma.db.aiSettings.findFirst({
-        select: { active: true, apiKeyEncrypted: true },
-      }),
+      // Pelo motor: a conta feita aqui — `active && apiKeyEncrypted` —
+      // deixava o item eternamente por fazer pra quem roda com a chave de
+      // ambiente e pra quem nunca abriu a tela de IA, mesmo com a IA
+      // atendendo normalmente. Mesmo defeito que o do canal logo acima.
+      this.aiEngine.podeAtender(),
       this.prisma.db.user.count(),
       this.prisma.db.conversation.count(),
       this.global.client.tenant.findUnique({
@@ -98,7 +102,7 @@ export class OnboardingService {
         titulo: 'Ligar a inteligência artificial',
         descricao: 'Ela responde o repetitivo e chama a equipe quando precisa.',
         destino: '/dashboard/settings/ai',
-        feito: Boolean(ia?.active && ia.apiKeyEncrypted),
+        feito: ia,
       },
       {
         chave: 'equipe',

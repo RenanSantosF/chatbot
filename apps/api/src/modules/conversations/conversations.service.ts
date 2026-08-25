@@ -2799,17 +2799,17 @@ export class ConversationsService {
     // escrevia pra ninguém — a IA continuava calada, e agora sem nenhum
     // humano marcado como responsável.
     if (aiMode === 'AI_ACTIVE') {
-      const settings = await this.prisma.db.aiSettings.findFirst({
-        select: { active: true, apiKeyEncrypted: true },
-      });
-      if (!settings?.active) {
+      // Pelo motor, e não por uma consulta própria a `aiSettings`: a conta
+      // feita aqui na mão barrava quem roda com a chave de ambiente e quem
+      // nunca abriu a tela de IA — os dois casos em que a IA atende
+      // normalmente. O botão dizia "configure a chave" pra quem já estava
+      // sendo atendido por ela.
+      const { pode, motivo } = await this.aiEngine.diagnostico();
+      if (!pode) {
         throw new BadRequestException(
-          'A IA está desligada nas configurações. Ligue-a em Configurações > IA antes de reativar numa conversa.',
-        );
-      }
-      if (!settings.apiKeyEncrypted) {
-        throw new BadRequestException(
-          'A IA está sem chave de API. Configure-a em Configurações > IA antes de reativar numa conversa.',
+          motivo === 'desligada'
+            ? 'A IA está desligada nas configurações. Ligue-a em Configurações > IA antes de reativar numa conversa.'
+            : 'A IA está sem chave de API. Configure-a em Configurações > IA antes de reativar numa conversa.',
         );
       }
     }
@@ -3158,22 +3158,30 @@ export class ConversationsService {
     });
     if (!anterior) return null;
 
-    // Quem volta depois do atendimento encerrado é atendido pela IA de novo.
-    //
-    // Antes o aiMode ficava como estava no encerramento, e como quase todo
-    // atendimento termina com um humano no comando, a conversa reabria
-    // presa em HUMAN_ACTIVE: o cliente escrevia "Oi" e ninguém respondia —
-    // nem a IA, que estava desligada ali, nem um atendente, que não tinha
-    // motivo pra estar olhando uma conversa que já havia resolvido.
-    //
-    // O que foi encerrado, encerrou. A rodada nova começa como qualquer
-    // outra: a IA na frente, escalando pra gente quando precisar. Se a IA
-    // estiver desligada na empresa, o modo continua humano e a conversa
-    // aparece em Pendentes, que é o comportamento correto nesse caso.
-    const ia = await this.prisma.db.aiSettings.findFirst({
-      select: { active: true, apiKeyEncrypted: true },
-    });
-    const iaAssume = Boolean(ia?.active && ia.apiKeyEncrypted);
+    /*
+     * Quem volta depois do atendimento encerrado é atendido pela IA de novo.
+     *
+     * Antes o aiMode ficava como estava no encerramento, e como quase todo
+     * atendimento termina com um humano no comando, a conversa reabria
+     * presa em HUMAN_ACTIVE: o cliente escrevia "Oi" e ninguém respondia —
+     * nem a IA, que estava desligada ali, nem um atendente, que não tinha
+     * motivo pra estar olhando uma conversa que já havia resolvido.
+     *
+     * O que foi encerrado, encerrou. A rodada nova começa como qualquer
+     * outra: a IA na frente, escalando pra gente quando precisar. Se a IA
+     * estiver desligada na empresa, o modo continua humano e a conversa
+     * aparece em Pendentes, que é o comportamento correto nesse caso.
+     *
+     * A pergunta vai pro MOTOR, e é a mesma que decide o modo de uma
+     * conversa recém-nascida (ver `receiveInbound`). Aqui ela era refeita
+     * na unha — "aiSettings.active && apiKeyEncrypted" — e essa conta
+     * discorda da verdadeira em dois casos: empresa que nunca abriu a tela
+     * de IA (não tem linha, e sem linha o padrão é LIGADA) e empresa que
+     * roda com a chave de ambiente em vez da própria. Nos dois, a conversa
+     * NOVA ganhava IA e a REABERTA não — que é exatamente o relato de
+     * "resolvo, o cliente escreve de novo e a IA não responde".
+     */
+    const iaAssume = await this.aiEngine.podeAtender();
 
     /*
      * E a rodada nova também não nasce com dono.

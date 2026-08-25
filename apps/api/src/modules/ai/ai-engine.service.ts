@@ -110,8 +110,31 @@ export class AiEngineService {
    * que nunca configurou IA nenhuma.
    */
   async podeAtender(): Promise<boolean> {
+    return (await this.diagnostico()).pode;
+  }
+
+  /**
+   * A mesma pergunta, com o motivo — pra quem precisa explicar o "não".
+   *
+   * Existe porque a resposta estava sendo REMONTADA fora daqui. Três
+   * lugares consultavam `aiSettings` por conta própria e concluíam
+   * "active && apiKeyEncrypted", que não é a mesma regra: o resolvedor
+   * trata a ausência da linha como ligada, e aceita a chave de ambiente
+   * quando o tenant não tem a própria. Onde as duas discordavam, o sistema
+   * se contradizia — a conversa nova ganhava IA e a REABERTA não, com o
+   * cliente escrevendo pra ninguém.
+   *
+   * Quem precisa só do sim/não usa `podeAtender`. Este aqui é pra quem vai
+   * escrever o motivo na tela.
+   */
+  async diagnostico(): Promise<{
+    pode: boolean;
+    motivo?: 'desligada' | 'sem-chave';
+  }> {
     const { active, credentials } = await this.credentials.resolve();
-    return active && Boolean(credentials);
+    if (!active) return { pode: false, motivo: 'desligada' };
+    if (!credentials) return { pode: false, motivo: 'sem-chave' };
+    return { pode: true };
   }
 
   /**

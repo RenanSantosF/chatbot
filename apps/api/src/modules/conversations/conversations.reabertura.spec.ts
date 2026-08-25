@@ -12,7 +12,17 @@ import { ConversationsService } from './conversations.service';
 function montar(
   estado: {
     anterior?: Record<string, unknown> | null;
-    ia?: { active: boolean; apiKeyEncrypted: string | null } | null;
+    /**
+     * A IA tem condição de atender?
+     *
+     * É a pergunta que o código faz — ao MOTOR, não à tabela. O teste
+     * espiava `aiSettings.active && apiKeyEncrypted`, que parecia a mesma
+     * coisa e não era: essa conta dá "não" pra empresa que roda com a
+     * chave de ambiente e pra que nunca abriu a tela de IA, e nas duas a
+     * IA atende normalmente. Espiando a tabela, o teste passava verde
+     * enquanto o cliente ficava sem resposta.
+     */
+    iaAtende?: boolean;
     agrupar?: boolean;
   } = {},
 ) {
@@ -39,15 +49,6 @@ function montar(
           return { ...(anterior ?? {}), ...(args.data as object) };
         }),
       },
-      aiSettings: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue(
-            estado.ia === undefined
-              ? { active: true, apiKeyEncrypted: 'cifrada' }
-              : estado.ia,
-          ),
-      },
       message: {
         create: jest.fn().mockImplementation((args: { data: unknown }) => {
           notas.push(args.data as Record<string, unknown>);
@@ -64,11 +65,15 @@ function montar(
     }),
   };
 
+  const aiEngine = {
+    podeAtender: jest.fn().mockResolvedValue(estado.iaAtende ?? true),
+  };
+
   const service = new ConversationsService(
     prisma as never,
     {} as never,
     { emitToTenant: jest.fn() } as never,
-    {} as never,
+    aiEngine as never,
     {} as never,
     {} as never,
     inboxSettings as never,
@@ -87,7 +92,7 @@ function montar(
       }
     ).reabrirParaAgrupamento('cliente-1');
 
-  return { reabrir, prisma, atualizacoes, notas };
+  return { reabrir, prisma, atualizacoes, notas, aiEngine };
 }
 
 describe('a rodada nova na mesma conversa', () => {
@@ -129,9 +134,7 @@ describe('a rodada nova na mesma conversa', () => {
   it('apaga o motivo do escalonamento anterior mesmo sem a IA reassumir', async () => {
     // Ele explica por que a rodada PASSADA foi parar com gente; deixá-lo
     // faria o painel contar a história velha na conversa nova.
-    const { reabrir, atualizacoes } = montar({
-      ia: { active: false, apiKeyEncrypted: null },
-    });
+    const { reabrir, atualizacoes } = montar({ iaAtende: false });
 
     await reabrir();
 
@@ -152,9 +155,7 @@ describe('a rodada nova na mesma conversa', () => {
   it('sem IA configurada, o modo continua humano e a conversa vai pra Pendentes', async () => {
     // Sem chave de API, ligar a IA aqui produziria o aviso de
     // indisponibilidade em vez de atendimento.
-    const { reabrir, atualizacoes } = montar({
-      ia: { active: false, apiKeyEncrypted: null },
-    });
+    const { reabrir, atualizacoes } = montar({ iaAtende: false });
 
     await reabrir();
 
@@ -197,5 +198,55 @@ describe('a rodada nova na mesma conversa', () => {
 
     await expect(reabrir()).resolves.toBeNull();
     expect(prisma.db.conversation.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * O relato: "encerro, resolvo, mando mensagem de novo e a IA não responde".
+ *
+ * Ele estava certo, e a causa era uma pergunta respondida em dois lugares
+ * diferentes. Quem decide o modo de uma conversa RECÉM-NASCIDA pergunta ao
+ * motor (`podeAtender`); a reabertura refazia a conta na mão, olhando
+ * `aiSettings.active && apiKeyEncrypted`.
+ *
+ * As duas contas discordam em dois casos reais:
+ *
+ * - empresa que nunca abriu a tela de IA não tem linha em `aiSettings`, e
+ *   o resolvedor trata a ausência como LIGADA;
+ * - empresa que roda com a chave de ambiente não tem `apiKeyEncrypted`.
+ *
+ * Nos dois, a conversa nova ganhava IA e a reaberta não — o cliente
+ * escrevia e ninguém respondia, nem a IA (desligada ali) nem um atendente
+ * (que não tinha motivo pra olhar uma conversa já resolvida).
+ */
+describe('a IA volta a atender quem escreve depois de resolvido', () => {
+  it('pergunta ao MOTOR, e não à tabela de configuração', async () => {
+    // É a garantia contra a volta do defeito: qualquer conta refeita na
+    // mão aqui dentro passa a divergir do motor de novo.
+    const { reabrir, aiEngine, prisma } = montar();
+
+    await reabrir();
+
+    expect(aiEngine.podeAtender).toHaveBeenCalled();
+    expect(prisma.db).not.toHaveProperty('aiSettings');
+  });
+
+  it('reassume quando o motor diz que a IA atende', async () => {
+    const { reabrir, atualizacoes } = montar({ iaAtende: true });
+
+    await reabrir();
+
+    expect(atualizacoes[0]).toMatchObject({ aiMode: 'AI_ACTIVE' });
+  });
+
+  it('e não reassume quando o motor diz que não', async () => {
+    // Ligar a IA sem ela poder responder produz o aviso de
+    // indisponibilidade em vez de atendimento. Continua humano, e a
+    // conversa aparece em Pendentes — que é o certo nesse caso.
+    const { reabrir, atualizacoes } = montar({ iaAtende: false });
+
+    await reabrir();
+
+    expect(atualizacoes[0]).not.toHaveProperty('aiMode');
   });
 });
