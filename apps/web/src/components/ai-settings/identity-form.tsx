@@ -13,6 +13,9 @@ import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import type { AiSettings, AiTone } from "@/lib/types";
 
+/** Mesmo valor do backend (ver UpdateAiSettingsDto) — a tela precisa saber o teto pra avisar ANTES do clique em salvar, não só depois. */
+const LIMITE_DE_INSTRUCOES = 8000;
+
 const TONE_OPTIONS: { value: AiTone; label: string }[] = [
   { value: "PROFESSIONAL", label: "Profissional" },
   { value: "FRIENDLY", label: "Amigável" },
@@ -99,7 +102,19 @@ export function IdentityForm({
             placeholder="Ex: fale sempre de forma simples, sem termos técnicos."
             value={customInstructions}
             onChange={(e) => setCustomInstructions(e.target.value)}
+            maxLength={LIMITE_DE_INSTRUCOES}
           />
+          <span
+            className={cn(
+              "self-end text-xs tabular-nums",
+              customInstructions.length > LIMITE_DE_INSTRUCOES * 0.9
+                ? "text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            {customInstructions.length.toLocaleString("pt-BR")} /{" "}
+            {LIMITE_DE_INSTRUCOES.toLocaleString("pt-BR")}
+          </span>
         </div>
         <div>
           <Button onClick={handleSave} disabled={saving}>
