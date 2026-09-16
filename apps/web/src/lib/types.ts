@@ -266,9 +266,6 @@ export interface AiSettings {
   aiName: string;
   tone: AiTone;
   customInstructions: string | null;
-  hasApiKey: boolean;
-  apiKeyPreview: string | null;
-  model: string | null;
   memoryMode: AiMemoryMode;
 }
 

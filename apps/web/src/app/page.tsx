@@ -83,7 +83,7 @@ const PERGUNTAS = [
   {
     pergunta: "Quanto custa?",
     resposta:
-      "Você conecta seu próprio número e usa sua própria chave de inteligência artificial, então os custos da Meta e do provedor de IA são cobrados direto na sua conta, sem intermediário. A página de termos explica cada um deles.",
+      "Uma assinatura mensal, sem taxa de instalação. A inteligência artificial já vem inclusa — você não precisa criar conta em provedor nenhum nem cadastrar chave de API, só ligar a IA e configurar como ela atende.",
   },
   {
     pergunta: "E se a IA não souber responder?",
@@ -258,10 +258,10 @@ export default async function Home() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Você conecta seu próprio número e usa sua própria chave de IA. Os custos da Meta
-              e do provedor de IA são cobrados direto na sua conta —{" "}
+              Você conecta seu próprio número. A inteligência artificial já vem inclusa na
+              assinatura — sem chave de provedor pra cadastrar —{" "}
               <Link href="/termos" className="underline underline-offset-4 hover:text-foreground">
-                explicamos cada um
+                veja os termos
               </Link>
               .
             </p>

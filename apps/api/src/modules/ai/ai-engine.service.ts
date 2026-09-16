@@ -162,10 +162,13 @@ export class AiEngineService {
       };
     }
     if (!credentials) {
-      this.logger.warn('Sem API key de IA configurada.');
+      // Isto é um problema da PLATAFORMA (variável de ambiente ausente),
+      // nunca da empresa — desde que a chave deixou de ser cadastrada por
+      // tenant, não há nada que o dono da empresa possa configurar aqui.
+      this.logger.error('GEMINI_API_KEY não configurada no ambiente da plataforma.');
       return {
         tipo: 'indisponivel',
-        motivo: 'O atendimento automático ainda não foi configurado e o cliente está esperando.',
+        motivo: 'O atendimento automático está temporariamente indisponível e o cliente está esperando.',
       };
     }
 
@@ -353,7 +356,7 @@ export class AiEngineService {
     const { credentials } = await this.credentials.resolve();
     if (!credentials) {
       throw new Error(
-        'Nenhuma API key de IA configurada. Adicione uma em Configurações > IA.',
+        'A IA da plataforma está sem credencial configurada. Isso é um problema nosso, não desta empresa — avise o suporte.',
       );
     }
 

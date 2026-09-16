@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ApiKeyCard } from "@/components/ai-settings/api-key-card";
 import { IdentityForm } from "@/components/ai-settings/identity-form";
 import { MemoryCard } from "@/components/ai-settings/memory-card";
 import { PageSkeleton } from "@/components/page-skeleton";
@@ -42,7 +41,6 @@ export default function AiSettingsPage() {
       ) : (
         <>
           <IdentityForm settings={settings} onUpdated={setSettings} />
-          <ApiKeyCard settings={settings} onUpdated={setSettings} />
           <MemoryCard settings={settings} onUpdated={setSettings} />
           <ToolsManager tools={tools} onChange={setTools} />
           <Simulator />

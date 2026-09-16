@@ -140,9 +140,9 @@ export function porQueAIaNaoRespondeu(erro: unknown): FalhaDaIa {
 export function porQueOCopilotoFalhou(erro: unknown): string {
   switch (classificarFalhaDaIa(erro)) {
     case 'limite':
-      return 'A chave de IA desta empresa atingiu o limite de uso. Isso costuma liberar sozinho depois de alguns minutos; se for constante, é caso de aumentar o plano no provedor.';
+      return 'O provedor de IA da plataforma atingiu o limite de uso. Isso costuma liberar sozinho depois de alguns minutos; se for constante, avise o suporte.';
     case 'credencial':
-      return 'A chave de IA foi recusada pelo provedor. Confira em Configurações > IA se ela ainda é válida.';
+      return 'A IA da plataforma está com um problema de configuração. Avise o suporte — isso não depende de nada configurado por esta empresa.';
     case 'tempo':
       return 'O provedor de IA demorou demais para responder. Tente de novo em alguns instantes.';
     default:

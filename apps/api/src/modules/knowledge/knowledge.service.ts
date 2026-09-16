@@ -65,7 +65,7 @@ export class KnowledgeService {
     const { credentials } = await this.credentials.resolve();
     if (!credentials) {
       throw new BadRequestException(
-        'Configure a API key da IA em Configurações > IA antes de enviar documentos.',
+        'A IA da plataforma está temporariamente indisponível — não dá pra processar documentos agora. Tente de novo em instantes.',
       );
     }
 

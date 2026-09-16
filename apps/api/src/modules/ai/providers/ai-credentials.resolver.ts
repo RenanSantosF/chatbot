@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { EncryptionService } from '../../../common/crypto/encryption.service';
 import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
 
 export interface AiCredentials {
@@ -17,36 +16,31 @@ export interface AiResolution {
  * Única fonte de verdade pra "qual credencial de IA usar nesta requisição".
  * Usado tanto pra gerar respostas de chat (AiEngineService) quanto pra
  * gerar embeddings da base de conhecimento (KnowledgeService) — os dois
- * usam a MESMA chave do tenant, então essa lógica não pode viver duplicada
- * em cada um.
+ * usam a MESMA chave, então essa lógica não pode viver duplicada em cada
+ * um.
+ *
+ * A chave é da PLATAFORMA, não do tenant: uma única `GEMINI_API_KEY` paga
+ * por nós e configurada por variável de ambiente, nunca cadastrada pela
+ * empresa. Isso simplifica o onboarding (a empresa só liga a IA, não
+ * precisa ter conta no Google) e é o que permite cobrar por assinatura em
+ * vez de repassar custo de provedor.
  */
 @Injectable()
 export class AiCredentialsResolver {
-  constructor(
-    private readonly tenantPrisma: TenantPrismaService,
-    private readonly encryption: EncryptionService,
-  ) {}
+  constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
   async resolve(): Promise<AiResolution> {
     const settings = await this.tenantPrisma.db.aiSettings.findFirst();
     const active = !settings || settings.active;
 
-    if (settings?.apiKeyEncrypted) {
-      return {
-        active,
-        credentials: { apiKey: this.encryption.decrypt(settings.apiKeyEncrypted), model: settings.model ?? undefined },
-      };
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return { active, credentials: null };
     }
 
-    // Fallback só pra desenvolvimento local — em produção cada tenant tem
-    // que configurar a própria chave, nunca compartilhar a da plataforma.
-    if (process.env.GEMINI_API_KEY) {
-      return {
-        active,
-        credentials: { apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL },
-      };
-    }
-
-    return { active, credentials: null };
+    return {
+      active,
+      credentials: { apiKey, model: process.env.GEMINI_MODEL },
+    };
   }
 }

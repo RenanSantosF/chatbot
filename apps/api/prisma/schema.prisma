@@ -897,25 +897,23 @@ enum AiMemoryMode {
   FULL
 }
 
-// Identidade, comportamento e credencial de IA — uma linha por tenant
-// (1:1). Criada com valores padrão junto do tenant no registro (ver
-// AuthService.register). Cada empresa usa a própria API key: nunca
-// compartilhado entre tenants, nunca em texto puro (ver EncryptionService).
+// Identidade e comportamento de IA — uma linha por tenant (1:1). Criada
+// com valores padrão junto do tenant no registro (ver AuthService.register).
+// A credencial do provedor NÃO mora aqui: é uma única chave da plataforma,
+// configurada por variável de ambiente (GEMINI_API_KEY/GEMINI_MODEL — ver
+// AiCredentialsResolver) e paga por nós. A empresa não cadastra chave
+// nenhuma; ela só liga a IA e ajusta como ela se comporta.
 model AiSettings {
   id                 String         @id @default(uuid())
   tenantId           String         @unique
-  /// Desligada até alguém ligar, e a razão é prática: a IA não funciona
-  /// sem chave de modelo, e a empresa não tem uma no minuto em que cria a
-  /// conta. Nascendo ligada, toda mensagem do primeiro dia batia num
-  /// provedor sem credencial e virava escalonamento com motivo de erro —
-  /// o pior primeiro contato possível com o produto.
+  /// Desligada até alguém ligar, de propósito: uma conta nova ainda não
+  /// ensinou nada pra IA, e responder cliente de verdade sem nenhuma
+  /// instrução cadastrada é pior do que esperar a empresa configurar.
   active             Boolean        @default(false)
   aiName             String         @default("Assistente")
   tone               AiTone         @default(PROFESSIONAL)
   customInstructions String?
   provider           AiProviderKind @default(GEMINI)
-  apiKeyEncrypted    String?
-  model              String?
   memoryMode         AiMemoryMode   @default(IMPORTANT_ONLY)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt

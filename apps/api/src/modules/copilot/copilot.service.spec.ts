@@ -67,7 +67,7 @@ describe('o assistente do painel nunca devolve erro cru', () => {
     expect(resposta.content).toMatch(/limite de uso/i);
   });
 
-  it('chave recusada aponta a tela onde se resolve', async () => {
+  it('chave recusada é sinalizada como problema da plataforma, não da empresa', async () => {
     const { service } = montar({
       provedor: async () => {
         throw new Error(
@@ -79,7 +79,7 @@ describe('o assistente do painel nunca devolve erro cru', () => {
     const resposta = await perguntar(service);
 
     expect(resposta.falhou).toBe(true);
-    expect(resposta.content).toContain('Configurações > IA');
+    expect(resposta.content).toContain('suporte');
   });
 
   it('demora do provedor vira convite a tentar de novo', async () => {

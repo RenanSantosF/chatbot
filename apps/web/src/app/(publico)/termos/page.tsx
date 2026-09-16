@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   // num grupo aparecia com a chamada de venda da home.
   openGraph: { type: "article", locale: "pt_BR", url: "/termos", title: "Termos de uso — Inteliwa" },
   description:
-    "Condições de uso da Inteliwa, incluindo os custos cobrados por terceiros (Meta e provedor de IA) que não passam por nós.",
+    "Condições de uso da Inteliwa: o que está incluído na assinatura e o único custo cobrado à parte, por terceiros (Meta, só na conexão oficial).",
 };
 
 export default function TermosPage() {
@@ -41,32 +41,28 @@ export default function TermosPage() {
         </p>
       </Secao>
 
-      <Secao titulo="Custos que não são nossos">
+      <Secao titulo="O que está incluído na assinatura">
         <p>
-          Além do que você paga pela Inteliwa, existem dois custos cobrados{" "}
-          <strong>diretamente por terceiros</strong>, na conta que está no seu nome. Nós não
-          intermediamos, não marcamos preço e não temos como alterá-los.
+          A inteligência artificial já vem inclusa na sua assinatura da Inteliwa — não existe
+          chave de provedor pra cadastrar nem conta separada pra abrir. Cada plano inclui uma
+          quantidade de respostas automáticas por mês; mensagens que a IA não responder (fora
+          desse limite, ou fora do horário em que ela está ligada) continuam chegando
+          normalmente pro painel, sem custo adicional, esperando uma pessoa da equipe.
         </p>
 
         <Atencao>
-          <strong>Meta (WhatsApp).</strong> A Meta cobra por conversa iniciada, com preço
-          que varia conforme o tipo (atendimento, marketing, utilidade, autenticação) e o
-          país do cliente. Ela mantém uma cota mensal de conversas de atendimento sem custo
-          e reajusta a tabela periodicamente. O valor é cobrado da conta comercial da sua
-          empresa na Meta, com o meio de pagamento que você cadastrou lá.
-        </Atencao>
-
-        <Atencao>
-          <strong>Provedor de inteligência artificial.</strong> A chave de API é sua e o
-          consumo é cobrado por quem fornece o modelo (hoje, o Google Gemini), medido por
-          quantidade de texto processado. Conversa longa custa mais que conversa curta, e
-          base de conhecimento grande aumenta o custo de cada resposta.
+          <strong>Meta (WhatsApp), se você usar a conexão oficial.</strong> Quando a empresa
+          conecta pela API oficial da Meta, a própria Meta cobra por conversa iniciada, com
+          preço que varia conforme o tipo (atendimento, marketing, utilidade, autenticação) e
+          o país do cliente — cobrado direto da conta comercial da empresa na Meta. Isso não
+          se aplica à conexão padrão por QR code, que usa o número como um aparelho vinculado
+          e não tem esse custo.
         </Atencao>
 
         <p>
-          Os dois provedores publicam as tabelas vigentes em seus próprios sites, e é lá que
-          o preço do dia deve ser conferido. Nós não reproduzimos valores aqui de propósito:
-          um número desatualizado num documento como este é pior que número nenhum.
+          Quando a Meta cobra, ela publica a tabela vigente no próprio site, e é lá que o
+          preço do dia deve ser conferido — não reproduzimos valores aqui de propósito: um
+          número desatualizado num documento como este é pior que número nenhum.
         </p>
       </Secao>
 

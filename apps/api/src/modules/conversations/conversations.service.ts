@@ -2809,7 +2809,7 @@ export class ConversationsService {
         throw new BadRequestException(
           motivo === 'desligada'
             ? 'A IA está desligada nas configurações. Ligue-a em Configurações > IA antes de reativar numa conversa.'
-            : 'A IA está sem chave de API. Configure-a em Configurações > IA antes de reativar numa conversa.',
+            : 'A IA da plataforma está temporariamente indisponível (problema nosso, não desta empresa). Tente de novo em instantes.',
         );
       }
     }

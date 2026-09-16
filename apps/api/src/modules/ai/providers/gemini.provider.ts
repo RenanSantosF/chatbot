@@ -107,7 +107,7 @@ function comoErroDeTempo(error: unknown, oQue: string): Error {
 
   return abortou
     ? new Error(
-        `O provedor de IA não respondeu em ${TEMPO_LIMITE_MS / 1000} segundos (${oQue}). Tente de novo; se persistir, confira a chave e o modelo em Configurações > IA.`,
+        `O provedor de IA não respondeu em ${TEMPO_LIMITE_MS / 1000} segundos (${oQue}). Tente de novo; se persistir, avise o suporte.`,
       )
     : error instanceof Error
       ? error

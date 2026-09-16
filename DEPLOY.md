@@ -64,7 +64,8 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `WEB_APP_URL` | a URL do serviço web (passo 3, ex: `https://seu-app.up.railway.app`) — sem isso, CORS bloqueia o frontend |
    | `WHATSAPP_VERIFY_TOKEN` | qualquer string que você escolher (ex: `token-secreto-webhook`) — vai reaparecer no passo 4 |
    | `API_PUBLIC_URL` | a URL pública que o Railway vai te dar (Settings > Networking > Generate Domain) — só usada pra mostrar a URL do webhook pronta na tela de Configurações |
-   | `GEMINI_API_KEY` / `GEMINI_MODEL` | opcional — deixe em branco. Cada empresa cadastra a própria chave pela tela `/dashboard/ai` |
+   | `GEMINI_API_KEY` | **obrigatória** — a chave da plataforma (sua, do Google AI Studio). Sem ela nenhuma empresa consegue usar IA, e a mensagem mostrada é "problema nosso", não algo que o cliente resolva |
+   | `GEMINI_MODEL` | opcional — deixe em branco pra usar o padrão do código (`gemini-3.1-flash-lite`, o mais barato da família) |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
    | `VAPID_SUBJECT` | um e-mail seu. **O `mailto:` na frente faz parte do valor** (`mailto:voce@seudominio.com`) — a norma pede uma URL, não um e-mail solto. Se você esquecer, o sistema completa sozinho e registra no log |
 

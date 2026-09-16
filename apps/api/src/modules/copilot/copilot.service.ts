@@ -161,7 +161,7 @@ export class CopilotService {
     const resolution = await this.credentials.resolve();
     if (!resolution.credentials) {
       throw new BadRequestException(
-        'Configure a chave da IA em Configurações > IA pra usar o assistente.',
+        'A IA da plataforma está temporariamente indisponível — não dá pra usar o assistente agora.',
       );
     }
 
