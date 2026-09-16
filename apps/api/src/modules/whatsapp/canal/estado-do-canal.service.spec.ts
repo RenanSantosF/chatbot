@@ -59,6 +59,24 @@ describe('a importação do histórico tem fim', () => {
     const estado = await service.doTenant('tenant-1');
 
     expect(estado.historico.importando).toBe(false);
+    // Desistiu, e não terminou — a tela precisa das duas coisas pra não
+    // tratar "vencemos a paciência" como "chegou tudo".
+    expect(estado.historico.expirou).toBe(true);
+  });
+
+  it('devolve o prazo pronto, pro navegador não recomeçar a própria contagem', async () => {
+    const iniciadoEm = Date.now() - 60_000;
+    const service = montar(
+      conectado({
+        historicoEstado: 'IMPORTANDO',
+        historicoIniciadoEm: new Date(iniciadoEm),
+      }),
+    );
+
+    const estado = await service.doTenant('tenant-1');
+
+    expect(estado.historico.expiraEm).toBe(iniciadoEm + 10 * 60_000);
+    expect(estado.historico.expirou).toBe(false);
   });
 
   it('para na hora quando o aparelho avisa que terminou', async () => {

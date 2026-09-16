@@ -54,15 +54,19 @@ export interface HistoricoDoCanal {
    */
   progresso: number;
   /**
-   * Quando esta espera começou.
+   * Epoch ms em que a paciência do servidor vence — só enquanto
+   * `importando`.
    *
-   * O servidor desiste de esperar depois de alguns minutos, mas essa
-   * conta só é refeita quando a página carrega. No navegador a espera era
-   * re-armada a cada aviso de conexão — e como a sessão reconecta várias
-   * vezes por hora, o "trazendo as conversas" girava pra sempre, mesmo
-   * sem importação nenhuma acontecendo.
+   * Vem PRONTO do servidor (ver EstadoDoCanalService), e o navegador só
+   * espera até ele — nunca decide quando ele é. Antes o navegador reiniciava
+   * a própria contagem a cada montagem do componente: recarregar a página
+   * no meio de uma importação de nove minutos dava outros dez de brinde, e
+   * recarregar de novo perto do fim dava mais dez — essa era a causa mais
+   * provável do "fica girando um tempão" relatado.
    */
-  desde: number;
+  expiraEm: number | null;
+  /** A paciência venceu sem o aparelho confirmar o fim da importação. */
+  expirou: boolean;
 }
 
 /** Até quando dizer que as conversas estão vindo, sem notícia de lote nenhum. */
@@ -85,6 +89,15 @@ interface RealtimeContextValue {
   informarCanal: (estado: Omit<EstadoDoCanal, "em">) => void;
   /** Nulo enquanto não se sabe — canal oficial nunca importa nada. */
   historico: HistoricoDoCanal | null;
+  /**
+   * Corrige o histórico a partir de quem acabou de consultá-lo.
+   *
+   * Mesma ideia de `informarCanal`, pro outro lado da tela: o polling de
+   * segurança em `/whatsapp/evolution/conferir` (ver ConectarEvolution)
+   * também descobre a verdade fora de um evento de socket, e precisa de um
+   * jeito de atualizar o estado compartilhado quando descobre.
+   */
+  informarHistorico: (historico: HistoricoDoCanal) => void;
   unreadCounts: Record<string, number>;
   totalUnread: number;
   clearUnread: (conversationId: string) => void;
@@ -151,29 +164,33 @@ export function RealtimeProvider({
       : null,
   );
   const [historico, setHistorico] = useState<HistoricoDoCanal | null>(
-    // Função de inicialização: `Date.now()` no corpo do componente seria
-    // lido a cada renderização, e a regra de pureza barra — com razão.
-    () => (canalInicial?.historico ? { ...canalInicial.historico, desde: Date.now() } : null),
+    () => canalInicial?.historico ?? null,
   );
 
   /*
-   * A espera tem fim mesmo sem notícia.
+   * A espera tem fim mesmo sem notícia — e sem depender do servidor
+   * empurrar mais nada.
    *
    * Sem isto, uma importação que nunca manda o primeiro lote — porque o
    * aparelho não tinha o que mandar, ou porque o evento se perdeu — deixa
    * o aviso girando indefinidamente. Girar pra sempre é pior que dizer
-   * que acabou: quem olha conclui que o sistema travou.
+   * que acabou: quem olha conclui que o sistema travou. `expirou` marca
+   * essa desistência como um caso próprio, distinto de "terminou normal",
+   * pra tela poder avisar em vez de só apagar o giro em silêncio.
    */
   useEffect(() => {
-    if (!historico?.importando) return;
+    if (!historico?.importando || historico.expiraEm === null) return;
 
-    const restante = PACIENCIA_MS - (Date.now() - historico.desde);
+    const restante = historico.expiraEm - Date.now();
     const timer = setTimeout(
-      () => setHistorico((atual) => (atual ? { ...atual, importando: false } : atual)),
+      () =>
+        setHistorico((atual) =>
+          atual ? { ...atual, importando: false, expiraEm: null, expirou: true } : atual,
+        ),
       Math.max(0, restante),
     );
     return () => clearTimeout(timer);
-  }, [historico?.importando, historico?.desde]);
+  }, [historico?.importando, historico?.expiraEm]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
   /*
@@ -256,12 +273,22 @@ export function RealtimeProvider({
         evento.estado === "CONECTADO"
           ? // Só re-arma se não havia espera em andamento: reconectar não
             // recomeça importação nenhuma, e tratar como se recomeçasse é
-            // o que fazia o aviso não terminar nunca.
+            // o que fazia o aviso não terminar nunca. O prazo nasce AQUI,
+            // no instante em que o pareamento de verdade aconteceu — o
+            // navegador está vendo o evento ao vivo, então `Date.now()` é
+            // exato (diferente do caso de recarregar a página, coberto
+            // pelo `expiraEm` que já vem pronto do servidor).
             (atual) =>
               atual?.importando
                 ? atual
-                : { importando: true, mensagens: 0, progresso: 0, desde: Date.now() }
-          : { importando: false, mensagens: 0, progresso: 0, desde: Date.now() },
+                : {
+                    importando: true,
+                    mensagens: 0,
+                    progresso: 0,
+                    expiraEm: Date.now() + PACIENCIA_MS,
+                    expirou: false,
+                  }
+          : { importando: false, mensagens: 0, progresso: 0, expiraEm: null, expirou: false },
       );
     });
 
@@ -281,9 +308,17 @@ export function RealtimeProvider({
           importando: evento.estado === "IMPORTANDO",
           mensagens: evento.mensagens,
           progresso: evento.progresso ?? 0,
-          // Lote que chega renova a paciência: há importação de verdade
-          // acontecendo, e ela pode demorar mais que a janela.
-          desde: evento.estado === "IMPORTANDO" ? Date.now() : (atual?.desde ?? Date.now()),
+          expirou: false,
+          // O prazo NÃO se renova a cada lote — a janela de paciência do
+          // servidor é fixa desde o início da importação (ver
+          // EstadoDoCanalService). Preserva o que já estava, e só arma um
+          // novo se este lote chegou antes de qualquer outra notícia (uma
+          // aba que abriu direto numa tela sem passar pelo evento de
+          // conexão).
+          expiraEm:
+            evento.estado === "IMPORTANDO"
+              ? (atual?.expiraEm ?? Date.now() + PACIENCIA_MS)
+              : null,
         }));
       },
     );
@@ -400,6 +435,10 @@ export function RealtimeProvider({
     setCanal({ ...estado, em: Date.now() });
   }, []);
 
+  const informarHistorico = useCallback((novo: HistoricoDoCanal) => {
+    setHistorico(novo);
+  }, []);
+
   const enableNotifications = useCallback(async () => {
     if (!("Notification" in window)) return;
     const permissao = await Notification.requestPermission();
@@ -433,6 +472,7 @@ export function RealtimeProvider({
       canal,
       informarCanal,
       historico,
+      informarHistorico,
       unreadCounts,
       totalUnread,
       clearUnread,
@@ -448,6 +488,7 @@ export function RealtimeProvider({
       canal,
       informarCanal,
       historico,
+      informarHistorico,
       unreadCounts,
       totalUnread,
       clearUnread,

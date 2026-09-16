@@ -41,6 +41,10 @@ export interface EstadoDoCanalSessao {
     mensagens: number;
     /** De 0 a 100, contado pelo aparelho. */
     progresso: number;
+    /** Epoch ms em que a paciência vence — só enquanto `importando`. */
+    expiraEm: number | null;
+    /** A paciência venceu sem o aparelho confirmar o fim da importação. */
+    expirou: boolean;
   };
 }
 

@@ -9,11 +9,9 @@ import { EncryptionService } from '../../../../common/crypto/encryption.service'
 import { CustomersService } from '../../../customers/customers.service';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../../../common/prisma/tenant-prisma.service';
+import { EstadoDoCanalService } from '../estado-do-canal.service';
 import * as evolution from './evolution.client';
-import {
-  normalizarEndereco,
-  servidorDaPlataforma,
-} from './evolution-servidor';
+import { normalizarEndereco, servidorDaPlataforma } from './evolution-servidor';
 
 /**
  * A tela de conectar o WhatsApp pela Evolution.
@@ -46,6 +44,7 @@ export class EvolutionService {
     private readonly global: PrismaService,
     private readonly encryption: EncryptionService,
     private readonly customers: CustomersService,
+    private readonly estadoDoCanal: EstadoDoCanalService,
   ) {}
 
   /**
@@ -70,7 +69,8 @@ export class EvolutionService {
     // copiado pra variável — o servidor de mensagens então guarda um
     // destino que não dá pra chamar, e o sintoma é o de sempre: tudo
     // conectado e nenhuma mensagem no painel.
-    const base = bruto && !/^https?:\/\//i.test(bruto) ? `https://${bruto}` : bruto;
+    const base =
+      bruto && !/^https?:\/\//i.test(bruto) ? `https://${bruto}` : bruto;
     if (!base) {
       throw new BadRequestException(
         'Configure API_PUBLIC_URL com o endereço público desta API antes de conectar: é para lá que o servidor de mensagens envia o que chega.',
@@ -164,7 +164,9 @@ export class EvolutionService {
       Date.now() - existente!.updatedAt.getTime() < VALIDADE_DO_PAREAMENTO_MS;
 
     const precisaDeSocketNovo =
-      Boolean(existente) && existente!.estado !== 'CONECTADO' && !pareamentoFresco;
+      Boolean(existente) &&
+      existente!.estado !== 'CONECTADO' &&
+      !pareamentoFresco;
 
     if (precisaDeSocketNovo) {
       // Melhor esforço: o servidor guarda a sessão velha sem uso nenhum, e
@@ -182,7 +184,8 @@ export class EvolutionService {
       !existente || precisaDeSocketNovo
         ? `inteliwa-${randomUUID()}`
         : existente.instance;
-    const webhookSecret = existente?.webhookSecret ?? randomBytes(24).toString('hex');
+    const webhookSecret =
+      existente?.webhookSecret ?? randomBytes(24).toString('hex');
 
     const config = existente
       ? await this.prisma.db.evolutionSettings.update({
@@ -394,19 +397,33 @@ export class EvolutionService {
     const pairingCode = evolution.codigoDePareamento(resposta.dados);
     await this.prisma.db.evolutionSettings.update({
       where: { id: config.id },
-      data: { qrCode, pairingCode, estado: 'AGUARDANDO_QRCODE', lastError: null },
+      data: {
+        qrCode,
+        pairingCode,
+        estado: 'AGUARDANDO_QRCODE',
+        lastError: null,
+      },
     });
 
     return { qrCode, pairingCode };
   }
 
   /**
-   * Confere no servidor em que pé está a sessão.
+   * Confere no servidor em que pé está a sessão — e, junto, em que pé está
+   * a importação do histórico.
    *
    * Existe além do webhook porque o webhook pode ter se perdido — o
    * servidor reiniciou, a rede oscilou, a URL mudou. Sem esta conferência
    * sob demanda, o painel diria "conectado" para uma sessão que caiu horas
    * atrás, e ninguém entenderia por que as mensagens não saem.
+   *
+   * O histórico vai junto pelo mesmo motivo: o aviso de cada lote chega só
+   * por WebSocket (`canal.historico`), e se essa conexão cair bem no meio
+   * da importação — proxy, celular em segundo plano, rede instável —, a
+   * tela ficava girando sem nenhum jeito de descobrir que o Postgres já
+   * sabia que tinha terminado. Esta chamada é a rede de segurança que a
+   * tela usa por polling enquanto está "trazendo as conversas" (ver
+   * ConectarEvolution), do mesmo jeito que já usava só pra conexão.
    */
   async conferir() {
     const { config, credenciais } = await this.credenciais();
@@ -417,7 +434,10 @@ export class EvolutionService {
         where: { id: config.id },
         data: { lastError: resposta.erro },
       });
-      return { estado: config.estado, lastError: resposta.erro };
+      const { historico } = await this.estadoDoCanal.doTenant(
+        this.prisma.tenantId,
+      );
+      return { estado: config.estado, lastError: resposta.erro, historico };
     }
 
     const estado = traduzirEstado(resposta.dados?.instance?.state);
@@ -433,7 +453,10 @@ export class EvolutionService {
       },
     });
 
-    return { estado, lastError: null };
+    const { historico } = await this.estadoDoCanal.doTenant(
+      this.prisma.tenantId,
+    );
+    return { estado, lastError: null, historico };
   }
 
   /**

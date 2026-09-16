@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
-import { useRealtime } from "@/components/realtime-provider";
+import { useRealtime, type HistoricoDoCanal } from "@/components/realtime-provider";
 import { cn } from "@/lib/utils";
 
 type Estado = "DESCONECTADO" | "AGUARDANDO_QRCODE" | "CONECTADO";
@@ -66,7 +66,7 @@ export function ConectarEvolution() {
       : "QRCODE",
   );
   const [numero, setNumero] = useState("");
-  const { canal, historico, informarCanal } = useRealtime();
+  const { canal, historico, informarCanal, informarHistorico } = useRealtime();
 
   /** Relê o estado depois de uma ação de quem está olhando a tela. */
   const carregar = useCallback(async () => {
@@ -169,15 +169,25 @@ export function ConectarEvolution() {
       .catch(() => undefined);
   }, [canal?.estado, avisarConectado]);
 
-  // Rede de segurança pro caso de a conexão de tempo real ter caído
-  // justamente durante a leitura do código.
+  // Rede de segurança pro caso de a conexão de tempo real ter caído — na
+  // leitura do código, e também durante a trazida do histórico.
+  //
+  // Antes só cobria a espera do QR code: uma vez conectado, o polling
+  // parava e a barra de progresso ficava 100% dependente do WebSocket
+  // entregar `canal.historico`. Numa rede instável (proxy, celular em
+  // segundo plano) isso é exatamente o "fica girando um tempão sem mudar
+  // nada" — o servidor já sabia que tinha terminado, só ninguém perguntou.
+  const sincronizando = exibido?.estado === "CONECTADO" && Boolean(historico?.importando);
   useEffect(() => {
-    if (exibido?.estado !== "AGUARDANDO_QRCODE") return;
+    if (exibido?.estado !== "AGUARDANDO_QRCODE" && !sincronizando) return;
 
     const timer = setInterval(() => {
-      void apiFetch<{ estado: Estado }>("/whatsapp/evolution/conferir")
+      void apiFetch<{ estado: Estado; historico?: HistoricoDoCanal }>(
+        "/whatsapp/evolution/conferir",
+      )
         .then((resultado) => {
           if (resultado.estado === "CONECTADO") avisarConectado();
+          if (resultado.historico) informarHistorico(resultado.historico);
           return carregar();
         })
         .catch(() => {
@@ -186,7 +196,7 @@ export function ConectarEvolution() {
     }, INTERVALO_MS);
 
     return () => clearInterval(timer);
-  }, [exibido?.estado, carregar, avisarConectado]);
+  }, [exibido?.estado, sincronizando, carregar, avisarConectado, informarHistorico]);
 
   /** Só os dígitos — é o que a API valida e o que o WhatsApp entende. */
   const digitos = numero.replace(/\D/g, "");
@@ -241,7 +251,6 @@ export function ConectarEvolution() {
   if (carregando) return null;
 
   const conectado = exibido?.estado === "CONECTADO";
-  const sincronizando = conectado && Boolean(historico?.importando);
   const aguardando = exibido?.estado === "AGUARDANDO_QRCODE";
   // Já existe sessão: o botão deixa de ser "conectar" e passa a ser
   // "gerar novo QR code", que é o que ele de fato faz nesse ponto.
@@ -277,7 +286,12 @@ export function ConectarEvolution() {
                   ? historico && historico.mensagens > 0
                     ? `Trazendo as conversas do aparelho — ${historico.mensagens.toLocaleString("pt-BR")} mensagens até agora.`
                     : "Trazendo as conversas do aparelho — isso pode levar alguns minutos."
-                  : "As mensagens desta empresa saem por este aparelho."}
+                  : historico?.expirou
+                    ? // Distinto de "terminou normal": o aparelho nunca
+                      // confirmou o fim, e quem está vendo merece saber
+                      // que a espera foi abandonada, não que acabou bem.
+                      `Não deu pra confirmar se todas as conversas chegaram${historico.mensagens > 0 ? ` — ${historico.mensagens.toLocaleString("pt-BR")} vieram` : ""}. As mais recentes já devem estar aqui; se faltar alguma mais antiga, desconecte e leia o QR code de novo.`
+                    : "As mensagens desta empresa saem por este aparelho."}
               </span>
               {/* A barra só aparece quando há percentual de verdade: uma
                   barra parada no zero passa a impressão contrária da que

@@ -53,14 +53,21 @@ function montar(config: Record<string, unknown> | null = null) {
     importarAgenda: jest.fn().mockResolvedValue({ recebidos: 0, salvos: 0 }),
   };
 
+  const estadoDoCanal = {
+    doTenant: jest.fn().mockResolvedValue({
+      historico: { importando: false, mensagens: 0, progresso: 0, expiraEm: null, expirou: false },
+    }),
+  };
+
   const service = new EvolutionService(
     prisma as unknown as TenantPrismaService,
     global as unknown as PrismaService,
     encryption as unknown as EncryptionService,
     customers as never,
+    estadoDoCanal as never,
   );
 
-  return { service, prisma, global, customers };
+  return { service, prisma, global, customers, estadoDoCanal };
 }
 
 /**
@@ -326,6 +333,41 @@ describe('reconexão', () => {
     await expect(service.conectar()).resolves.toMatchObject({
       estado: 'CONECTADO',
       qrCode: null,
+    });
+  });
+});
+
+describe('conferir', () => {
+  // Rede de segurança pra quando o WebSocket cair no meio da importação
+  // do histórico: a tela passa a poder perguntar aqui em vez de depender
+  // só do evento `canal.historico` (ver ConectarEvolution).
+  it('devolve o andamento do histórico junto do estado da conexão', async () => {
+    global.fetch = jest.fn(async (url: unknown) => {
+      const endereco = String(url);
+      if (endereco.includes('/instance/connectionState/')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ instance: { state: 'open' } }),
+        } as Response;
+      }
+      return { ok: true, status: 200, text: async () => '{}' } as Response;
+    }) as unknown as typeof fetch;
+
+    const { service, estadoDoCanal } = montar({ baseUrl: 'https://evo.exemplo.com' });
+    estadoDoCanal.doTenant.mockResolvedValue({
+      historico: { importando: true, mensagens: 40, progresso: 50, expiraEm: 123, expirou: false },
+    });
+
+    const resultado = await service.conferir();
+
+    expect(resultado.estado).toBe('CONECTADO');
+    expect(resultado.historico).toEqual({
+      importando: true,
+      mensagens: 40,
+      progresso: 50,
+      expiraEm: 123,
+      expirou: false,
     });
   });
 });

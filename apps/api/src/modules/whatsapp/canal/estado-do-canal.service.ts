@@ -69,39 +69,61 @@ export class EstadoDoCanalService {
       estado: config?.estado ?? 'DESCONECTADO',
       motivo: config?.lastError ?? null,
       jaConectou: Boolean(config),
-      historico: {
-        importando: sincronizando(config),
-        mensagens: config?.historicoMensagens ?? 0,
-        progresso: config?.historicoProgresso ?? 0,
-      },
+      historico: historicoDoConfig(config),
     };
   }
-
 }
 
 /**
- * Ainda vale dizer que as conversas estão vindo?
+ * Em que pé está a trazida das conversas do aparelho.
  *
- * Só enquanto o estado é IMPORTANDO **e** a janela de paciência não
- * venceu. As duas condições precisam existir: a primeira some quando o
- * aparelho avisa que mandou o último lote, e a segunda cobre o caso — que
- * é o comum — em que esse aviso nunca chega.
+ * `importando` e `expirou` juntos dizem tudo que a tela precisa: os dois
+ * falsos é "nada acontecendo" (nunca houve importação, ou ela terminou
+ * normalmente); `importando` verdadeiro é "ainda vale esperar";
+ * `expirou` verdadeiro é o caso que faltava — a janela de paciência
+ * venceu SEM o aparelho confirmar o fim, e a tela precisa dizer isso em
+ * vez de simplesmente parar de girar como se nada tivesse acontecido.
+ *
+ * `expiraEm` é o instante (epoch ms) em que a paciência vence, calculado
+ * aqui — no servidor — e não no navegador. Antes o navegador reiniciava a
+ * própria contagem a cada montagem do componente (recarregar a página
+ * enquanto a importação estava na metade dava outros dez minutos de
+ * brinde, e recarregar de novo perto do fim dava mais dez — é a causa
+ * mais provável de "fica girando um tempão"). Com o prazo vindo pronto
+ * daqui, o navegador só espera até ele, não decide quando ele é.
  */
-function sincronizando(
+function historicoDoConfig(
   config: {
     estado: 'CONECTADO' | 'AGUARDANDO_QRCODE' | 'DESCONECTADO';
     historicoEstado: 'NUNCA' | 'IMPORTANDO' | 'CONCLUIDO';
+    historicoMensagens: number;
+    historicoProgresso: number;
     historicoIniciadoEm: Date | null;
   } | null,
-): boolean {
+): EstadoDoCanal['historico'] {
+  const base = {
+    mensagens: config?.historicoMensagens ?? 0,
+    progresso: config?.historicoProgresso ?? 0,
+  };
+
   // Sessão fora do ar não está trazendo nada: quem manda o histórico é o
   // aparelho, e ele não tem por onde. Sem esta linha, desconectar deixava
   // as duas faixas na tela ao mesmo tempo — "está desconectado" e "está
   // trazendo as conversas" — que juntas não fazem sentido nenhum.
-  if (config?.estado !== 'CONECTADO') return false;
-  if (config.historicoEstado !== 'IMPORTANDO') return false;
-  if (!config.historicoIniciadoEm) return false;
-  return Date.now() - config.historicoIniciadoEm.getTime() < HISTORICO_PACIENCIA_MS;
+  if (
+    config?.estado !== 'CONECTADO' ||
+    config.historicoEstado !== 'IMPORTANDO' ||
+    !config.historicoIniciadoEm
+  ) {
+    return { ...base, importando: false, expiraEm: null, expirou: false };
+  }
+
+  const prazo = config.historicoIniciadoEm.getTime() + HISTORICO_PACIENCIA_MS;
+  const venceu = Date.now() >= prazo;
+
+  return venceu
+    ? { ...base, importando: false, expiraEm: null, expirou: true }
+    : { ...base, importando: true, expiraEm: prazo, expirou: false };
 }
 
 export interface EstadoDoCanal {
@@ -123,5 +145,9 @@ export interface EstadoDoCanal {
      * sozinha não servia: ela sobe sem teto e ninguém sabe se falta muito.
      */
     progresso: number;
+    /** Epoch ms em que a paciência vence — só enquanto `importando`. */
+    expiraEm: number | null;
+    /** A paciência venceu sem o aparelho confirmar o fim da importação. */
+    expirou: boolean;
   };
 }
