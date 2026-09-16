@@ -40,7 +40,12 @@ function montar(config: Record<string, unknown> | null = null) {
   };
 
   const global = {
-    client: { tenant: { update: jest.fn().mockResolvedValue({}) } },
+    client: {
+      tenant: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+    },
   };
 
   const encryption = {
@@ -55,8 +60,19 @@ function montar(config: Record<string, unknown> | null = null) {
 
   const estadoDoCanal = {
     doTenant: jest.fn().mockResolvedValue({
-      historico: { importando: false, mensagens: 0, progresso: 0, expiraEm: null, expirou: false },
+      historico: {
+        importando: false,
+        mensagens: 0,
+        progresso: 0,
+        expiraEm: null,
+        expirou: false,
+      },
     }),
+  };
+
+  const storage = {
+    apagarChaves: jest.fn().mockResolvedValue(0),
+    apagarDaEmpresa: jest.fn().mockResolvedValue(0),
   };
 
   const service = new EvolutionService(
@@ -65,9 +81,10 @@ function montar(config: Record<string, unknown> | null = null) {
     encryption as unknown as EncryptionService,
     customers as never,
     estadoDoCanal as never,
+    storage as never,
   );
 
-  return { service, prisma, global, customers, estadoDoCanal };
+  return { service, prisma, global, customers, estadoDoCanal, storage };
 }
 
 /**
@@ -104,24 +121,29 @@ function servidor({
       return {
         ok: false,
         status: 403,
-        text: async () => JSON.stringify({ message: 'instance already exists' }),
+        text: async () =>
+          JSON.stringify({ message: 'instance already exists' }),
       } as Response;
     }
 
     return {
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ qrcode: { base64: 'data:image/png;base64,AA' } }),
+      text: async () =>
+        JSON.stringify({ qrcode: { base64: 'data:image/png;base64,AA' } }),
     } as Response;
-  }) as unknown as typeof fetch;
+  });
 
   return chamadas;
 }
 
 /** O endereço registrado, venha ele da criação ou da chamada própria. */
-function webhookRegistrado(chamadas: { url: string; corpo: Record<string, unknown> }[]) {
+function webhookRegistrado(
+  chamadas: { url: string; corpo: Record<string, unknown> }[],
+) {
   const set = chamadas.find((c) => c.url.includes('/webhook/set/'));
-  return (set?.corpo as { webhook?: { url?: string; events?: string[] } })?.webhook;
+  return (set?.corpo as { webhook?: { url?: string; events?: string[] } })
+    ?.webhook;
 }
 
 describe('endereço do webhook', () => {
@@ -162,7 +184,9 @@ describe('endereço do webhook', () => {
 
     await service.conectar();
 
-    expect(chamadas.some((c) => c.url.includes('/instance/connect/'))).toBe(true);
+    expect(chamadas.some((c) => c.url.includes('/instance/connect/'))).toBe(
+      true,
+    );
     expect(webhookRegistrado(chamadas)).toMatchObject({
       enabled: true,
       url: `https://api.exemplo.com/api/webhooks/evolution/${'a'.repeat(48)}`,
@@ -175,14 +199,16 @@ describe('endereço do webhook', () => {
     process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
     global.fetch = jest.fn(async (url: unknown) =>
       String(url).includes('/webhook/set/')
-        ? ({ ok: false, status: 400, text: async () => '{"message":"invalid url"}' } as Response)
+        ? ({
+            ok: false,
+            status: 400,
+            text: async () => '{"message":"invalid url"}',
+          } as Response)
         : ({ ok: true, status: 200, text: async () => '{}' } as Response),
-    ) as unknown as typeof fetch;
+    );
     const { service } = montar();
 
-    await expect(
-      service.conectar(),
-    ).rejects.toThrow(/endereço de retorno/);
+    await expect(service.conectar()).rejects.toThrow(/endereço de retorno/);
   });
 
   it('não deixa barra dobrada quando o endereço termina em barra', async () => {
@@ -211,9 +237,6 @@ describe('endereço do webhook', () => {
       `https://api-production-7156.up.railway.app/api/webhooks/evolution/${'a'.repeat(48)}`,
     );
   });
-
-
-
 
   it('estreia um nome de sessão novo a cada pareamento', async () => {
     // O servidor só pede um código ao WhatsApp quando o socket sobe;
@@ -268,9 +291,7 @@ describe('endereço do webhook', () => {
     servidor();
     const { service } = montar();
 
-    await expect(
-      service.conectar(),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.conectar()).rejects.toThrow(BadRequestException);
   });
 });
 
@@ -326,7 +347,7 @@ describe('reconexão', () => {
         } as Response;
       }
       return { ok: true, status: 200, text: async () => '{}' } as Response;
-    }) as unknown as typeof fetch;
+    });
 
     const { service } = montar({ baseUrl: 'https://evo.exemplo.com' });
 
@@ -334,6 +355,73 @@ describe('reconexão', () => {
       estado: 'CONECTADO',
       qrCode: null,
     });
+  });
+});
+
+describe('troca de número', () => {
+  const antes = { ...process.env };
+  beforeEach(() => {
+    process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
+    process.env.EVOLUTION_BASE_URL = 'https://evo.exemplo.com';
+    process.env.EVOLUTION_API_KEY = 'chave-da-plataforma';
+  });
+  afterEach(() => {
+    process.env = { ...antes };
+  });
+
+  it('confirmando a troca, apaga o histórico depois de o servidor aceitar a sessão nova', async () => {
+    servidor();
+    const { service, global, storage } = montar({
+      baseUrl: 'https://evo.exemplo.com',
+    });
+
+    await service.conectar('5511999998888', true);
+
+    expect(global.client.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('"messages"'),
+      'tenant-1',
+    );
+    expect(global.client.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('"customers"'),
+      'tenant-1',
+    );
+    expect(storage.apagarDaEmpresa).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('sem confirmar, reconectar não apaga nada', async () => {
+    servidor();
+    const { service, global, storage } = montar({
+      baseUrl: 'https://evo.exemplo.com',
+    });
+
+    await service.conectar('5511999998888');
+
+    expect(global.client.$executeRawUnsafe).not.toHaveBeenCalled();
+    expect(storage.apagarDaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('confirmando no primeiro pareamento (sem sessão anterior), não há o que apagar', async () => {
+    servidor();
+    const { service, global, storage } = montar(null);
+
+    await service.conectar('5511999998888', true);
+
+    expect(global.client.$executeRawUnsafe).not.toHaveBeenCalled();
+    expect(storage.apagarDaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('se o servidor recusar a sessão nova, nada é apagado', async () => {
+    servidor({ recusa: '/instance/create' });
+    const { service, global, storage } = montar({
+      baseUrl: 'https://evo.exemplo.com',
+    });
+
+    await expect(service.conectar('5511999998888', true)).rejects.toThrow(
+      BadRequestException,
+    );
+
+    expect(global.client.$executeRawUnsafe).not.toHaveBeenCalled();
+    expect(storage.apagarDaEmpresa).not.toHaveBeenCalled();
   });
 });
 
@@ -352,11 +440,19 @@ describe('conferir', () => {
         } as Response;
       }
       return { ok: true, status: 200, text: async () => '{}' } as Response;
-    }) as unknown as typeof fetch;
+    });
 
-    const { service, estadoDoCanal } = montar({ baseUrl: 'https://evo.exemplo.com' });
+    const { service, estadoDoCanal } = montar({
+      baseUrl: 'https://evo.exemplo.com',
+    });
     estadoDoCanal.doTenant.mockResolvedValue({
-      historico: { importando: true, mensagens: 40, progresso: 50, expiraEm: 123, expirou: false },
+      historico: {
+        importando: true,
+        mensagens: 40,
+        progresso: 50,
+        expiraEm: 123,
+        expirou: false,
+      },
     });
 
     const resultado = await service.conferir();
@@ -458,9 +554,10 @@ describe('troca de canal', () => {
       return {
         ok: true,
         status: 200,
-        text: async () => JSON.stringify({ qrcode: { base64: 'data:image/png;base64,AA' } }),
+        text: async () =>
+          JSON.stringify({ qrcode: { base64: 'data:image/png;base64,AA' } }),
       } as Response;
-    }) as unknown as typeof fetch;
+    });
 
     const { service } = montar();
     await expect(service.conectar()).resolves.toBeDefined();
@@ -564,7 +661,7 @@ describe('pareamento por código', () => {
         } as Response;
       }
       return { ok: true, status: 200, text: async () => '{}' } as Response;
-    }) as unknown as typeof fetch;
+    });
 
     const { service } = montar();
 

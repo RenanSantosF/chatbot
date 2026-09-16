@@ -5,13 +5,36 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { apagarEmLotes } from '../../../../common/prisma/apagar-em-lotes';
 import { EncryptionService } from '../../../../common/crypto/encryption.service';
 import { CustomersService } from '../../../customers/customers.service';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../../../common/prisma/tenant-prisma.service';
+import { StorageService } from '../../../storage/storage.service';
 import { EstadoDoCanalService } from '../estado-do-canal.service';
 import * as evolution from './evolution.client';
 import { normalizarEndereco, servidorDaPlataforma } from './evolution-servidor';
+
+/**
+ * As tabelas que pertencem à CONVERSA com o número anterior, e não à
+ * empresa em si.
+ *
+ * Uma troca de número apaga só isto — nunca a base de conhecimento
+ * (`knowledge_documents`/`knowledge_chunks`, que é treino da IA, e treino
+ * não é conversa), nunca `audit_logs` (é o registro de quem fez o quê, e
+ * precisa sobreviver ao que ele descreve, do jeito que já sobrevive a uma
+ * mensagem apagada), e nunca a própria empresa ou suas configurações. A
+ * ordem importa: filhos antes dos pais, pra não esbarrar em nada que
+ * ainda referencia uma linha já apagada.
+ */
+const TABELAS_DA_CONVERSA = [
+  'messages',
+  'conversation_tags',
+  'tasks',
+  'customer_notes',
+  'conversations',
+  'customers',
+] as const;
 
 /**
  * A tela de conectar o WhatsApp pela Evolution.
@@ -45,6 +68,7 @@ export class EvolutionService {
     private readonly encryption: EncryptionService,
     private readonly customers: CustomersService,
     private readonly estadoDoCanal: EstadoDoCanalService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -105,7 +129,7 @@ export class EvolutionService {
    * memória do servidor que ninguém sabe apagar — e o nome dela, que é
    * aleatório, se perde junto.
    */
-  async conectar(numero?: string | null) {
+  async conectar(numero?: string | null, confirmarTrocaDeNumero?: boolean) {
     const existente = await this.prisma.db.evolutionSettings.findFirst();
 
     /*
@@ -259,6 +283,26 @@ export class EvolutionService {
       throw new BadRequestException(
         resposta.erro ?? 'Não deu pra criar a sessão no servidor de mensagens.',
       );
+    }
+
+    /*
+     * A troca de número só apaga depois de o servidor aceitar a nova
+     * sessão — nunca antes.
+     *
+     * `confirmarTrocaDeNumero` é a pessoa dizendo, de próprio punho, que
+     * este pareamento é de outro número (ver PearEvolutionDto). Não dá pra
+     * confirmar isso comparando telefone: o número que a Evolution de fato
+     * vincula só se sabe depois da leitura do QR code, e no caminho por
+     * QR nem existe telefone digitado pra comparar. Perguntar direto é
+     * mais simples e nunca apaga (ou deixa de apagar) o histórico errado
+     * por causa de um formato de número diferente.
+     *
+     * Depois de aceito, e não antes: se o servidor de mensagens recusasse
+     * a sessão nova, apagar aqui destruiria o histórico da empresa sem
+     * ela sequer conseguir se reconectar.
+     */
+    if (confirmarTrocaDeNumero && existente) {
+      await this.apagarHistoricoAnterior(this.prisma.tenantId);
     }
 
     // O endereço é registrado SEMPRE, e não só quando a sessão nasce.
@@ -425,6 +469,54 @@ export class EvolutionService {
    * tela usa por polling enquanto está "trazendo as conversas" (ver
    * ConectarEvolution), do mesmo jeito que já usava só pra conexão.
    */
+  /**
+   * Apaga o histórico de conversas, clientes e anexos do número anterior.
+   *
+   * Chamado só quando a pessoa confirmou que está trocando de número (ver
+   * `conectar`) — nunca por conta própria numa reconexão comum. As
+   * mensagens de um número que não atende mais esta empresa não têm
+   * serventia (e, pior, misturariam contatos de quem nunca falou com o
+   * número novo), mas a base de conhecimento e as configurações da IA
+   * continuam valendo: quem muda de número não teve que reensinar a IA do
+   * zero.
+   */
+  private async apagarHistoricoAnterior(tenantId: string): Promise<void> {
+    const anexos = await this.global.client.$queryRaw<{ chave: string }[]>`
+      SELECT DISTINCT "metadata" ->> 'storageKey' AS chave
+      FROM "messages"
+      WHERE "tenantId" = ${tenantId}
+        AND "metadata" ->> 'storageKey' IS NOT NULL
+    `;
+
+    const apagadas = await apagarEmLotes(
+      this.global.client,
+      tenantId,
+      TABELAS_DA_CONVERSA,
+      { soltarCitacoesDeMensagem: true },
+    );
+
+    let removidos = 0;
+    try {
+      removidos = await this.storage.apagarChaves(
+        anexos.map((linha) => linha.chave).filter(Boolean),
+      );
+      removidos += await this.storage.apagarDaEmpresa(tenantId);
+    } catch (erro) {
+      // Melhor esforço: um anexo órfão no bucket não pode impedir a troca
+      // de número. Fica pra limpeza manual depois.
+      this.logger.warn(
+        `Tenant ${tenantId}: nem todo anexo do número anterior foi apagado do armazenamento (${
+          erro instanceof Error ? erro.message : erro
+        }).`,
+      );
+    }
+
+    this.logger.warn(
+      `Tenant ${tenantId}: troca de número confirmada — ${apagadas} linhas e ` +
+        `${removidos} anexos do histórico anterior apagados.`,
+    );
+  }
+
   async conferir() {
     const { config, credenciais } = await this.credenciais();
 

@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Matches } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
 
 /**
  * O número do aparelho que vai atender, quando o pareamento é por código.
@@ -23,8 +23,23 @@ export class PearEvolutionDto {
   @IsOptional()
   @IsString()
   @Matches(/^\d{10,15}$/, {
-    message:
-      'Informe o número com DDI e DDD, só dígitos (ex.: 5527999998888).',
+    message: 'Informe o número com DDI e DDD, só dígitos (ex.: 5527999998888).',
   })
   numero?: string;
+
+  /**
+   * A pessoa disse explicitamente que este pareamento é de um número
+   * DIFERENTE do que já estava conectado.
+   *
+   * Não é inferido comparando telefones — o número que a Evolution de
+   * fato vincula só é confirmado depois da leitura do QR code (ou nem
+   * chega a ser guardado, no caminho por código), então tentar adivinhar
+   * aqui seria arriscar apagar (ou deixar de apagar) o histórico errado.
+   * Perguntar direto é mais simples e nunca erra: quando marcado, o
+   * histórico de conversas, clientes e anexos da sessão anterior é
+   * apagado ANTES do novo pareamento (ver EvolutionService.conectar).
+   */
+  @IsOptional()
+  @IsBoolean()
+  confirmarTrocaDeNumero?: boolean;
 }

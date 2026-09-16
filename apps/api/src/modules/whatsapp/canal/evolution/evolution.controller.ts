@@ -33,7 +33,7 @@ export class EvolutionController {
   @Post()
   @RequiresPermission('whatsapp.manage')
   conectar(@Body() dto: PearEvolutionDto) {
-    return this.evolution.conectar(dto.numero);
+    return this.evolution.conectar(dto.numero, dto.confirmarTrocaDeNumero);
   }
 
   /** O pareamento expira em cerca de um minuto; a tela pede outro. */

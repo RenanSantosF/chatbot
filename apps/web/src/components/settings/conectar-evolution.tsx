@@ -66,6 +66,17 @@ export function ConectarEvolution() {
       : "QRCODE",
   );
   const [numero, setNumero] = useState("");
+  /**
+   * "Isto é o mesmo número de antes, ou um diferente?"
+   *
+   * Não dá pra adivinhar isso comparando telefone: o número que a
+   * Evolution de fato vincula só se confirma depois da leitura do QR
+   * code, e no pareamento por QR nem existe um número digitado pra
+   * comparar. Perguntar direto, com um padrão seguro ("mesmo número",
+   * que nunca apaga nada), é mais simples e nunca erra o lado — ver
+   * PearEvolutionDto.confirmarTrocaDeNumero.
+   */
+  const [trocaDeNumero, setTrocaDeNumero] = useState(false);
   const { canal, historico, informarCanal, informarHistorico } = useRealtime();
 
   /** Relê o estado depois de uma ação de quem está olhando a tela. */
@@ -207,14 +218,17 @@ export function ConectarEvolution() {
     try {
       // O servidor de mensagens é da plataforma, e a API já sabe qual é
       // (ver evolution-servidor.ts). O único dado que sai daqui é o
-      // telefone, e só quando o pareamento é por código.
+      // telefone (só no pareamento por código) e a confirmação de troca
+      // de número, quando a pessoa marcou.
       await apiFetch("/whatsapp/evolution", {
         method: "POST",
-        body: JSON.stringify(
-          modo === "CODIGO" ? { numero: digitos } : {},
-        ),
+        body: JSON.stringify({
+          ...(modo === "CODIGO" ? { numero: digitos } : {}),
+          ...(trocaDeNumero ? { confirmarTrocaDeNumero: true } : {}),
+        }),
       });
       await carregar();
+      setTrocaDeNumero(false);
     } catch (erro) {
       toast.error(
         erro instanceof ApiError ? erro.message : "Não deu pra conectar ao servidor.",
@@ -360,6 +374,45 @@ export function ConectarEvolution() {
 
         {!conectado ? (
           <div className="flex flex-col gap-3">
+            {/* Só pergunta quando há uma sessão anterior — conta nova não
+                tem o que perder, e perguntar à toa só atrapalharia o
+                primeiro contato com o produto. */}
+            {jaConfigurado ? (
+              <div className="flex flex-col gap-2 rounded-md border p-3">
+                <div
+                  role="radiogroup"
+                  aria-label="Este pareamento é do mesmo número ou de um número diferente"
+                  className="flex items-center gap-1 rounded-lg bg-muted p-0.5"
+                >
+                  <OpcaoDeModo
+                    ativa={!trocaDeNumero}
+                    onClick={() => setTrocaDeNumero(false)}
+                    icone={Smartphone}
+                    rotulo="Mesmo número de antes"
+                  />
+                  <OpcaoDeModo
+                    ativa={trocaDeNumero}
+                    onClick={() => setTrocaDeNumero(true)}
+                    icone={RefreshCw}
+                    rotulo="Número diferente"
+                  />
+                </div>
+                {trocaDeNumero ? (
+                  <p className="text-xs text-pretty text-destructive">
+                    As conversas, os clientes e os anexos de hoje pertencem ao número
+                    anterior. Ao confirmar o pareamento abaixo, esse histórico é apagado —
+                    a base de conhecimento e as configurações da IA continuam do jeito que
+                    estão.
+                  </p>
+                ) : (
+                  <p className="text-xs text-pretty text-muted-foreground">
+                    Reconectando o mesmo número (por exemplo, depois de uma queda): nada é
+                    apagado.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             {/* Dois caminhos para o mesmo pareamento.
 
                 A imagem é mais rápida no computador. O código existe pelo
@@ -409,12 +462,17 @@ export function ConectarEvolution() {
             ) : null}
 
             <Button
+              variant={trocaDeNumero ? "destructive" : "default"}
               onClick={() => void conectar()}
               disabled={conectando || (modo === "CODIGO" && !numeroValido)}
               className="self-start"
             >
               {conectando ? <Spinner className="size-4" /> : <QrCode className="size-4" />}
-              {jaConfigurado ? "Gerar novo pareamento" : "Conectar WhatsApp"}
+              {trocaDeNumero
+                ? "Confirmar e apagar o histórico anterior"
+                : jaConfigurado
+                  ? "Gerar novo pareamento"
+                  : "Conectar WhatsApp"}
             </Button>
 
             {modo === "QRCODE" ? (
