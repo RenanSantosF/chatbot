@@ -96,13 +96,22 @@ export type AiMode = "AI_ACTIVE" | "HUMAN_ACTIVE" | "AI_ASSIST" | "PAUSED";
 export type ConversationPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 export type MessageSenderType = "CUSTOMER" | "AI" | "AGENT" | "SYSTEM";
 
-export interface Customer {
+/**
+ * O cliente como a LISTA do Inbox precisa dele: quem é, e nada mais.
+ *
+ * `metadata` fica de fora porque é onde a IA vai guardando o que aprende
+ * sobre a pessoa — cresce sem teto e a lista nunca o mostra.
+ */
+export interface CustomerResumo {
   id: string;
   name: string;
   /** Só dígitos, para pessoa. Para GRUPO, o JID inteiro (`...@g.us`). */
   phone: string;
   /** É um grupo do WhatsApp, e não uma pessoa. */
   isGroup?: boolean;
+}
+
+export interface Customer extends CustomerResumo {
   email: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
@@ -217,23 +226,45 @@ export interface ConversationSummary {
    */
   waitingSince?: string | null;
   createdAt: string;
-  customer: Customer;
+  customer: CustomerResumo;
   assignedUser: AssignedUser | null;
   /** Falso enquanto o responsável indicado não confirmou (ver API). */
   assignmentAccepted: boolean;
   queue: ConversationQueue | null;
-  escalationReason: string | null;
-  escalationSummary: string | null;
-  collectedData: Record<string, string> | null;
   /** Etiquetas da conversa, na ordem em que foram postas. */
   tags?: Tag[];
   /** Só a mensagem mais recente, pra prévia na lista. */
   lastMessage?: { content: string; senderType: MessageSenderType; messageType: MessageType } | null;
 }
 
+/**
+ * O detalhe traz o que a LISTA não traz.
+ *
+ * A separação é o contrato do endpoint, não enfeite de tipo: a lista
+ * devolve só a capa (ver `conversationListSelect` na API) justamente pra
+ * não arrastar a memória da IA sobre o cliente e os dados coletados em
+ * toda página de trinta conversas. Quem precisa desses campos é o painel
+ * lateral, e ele só existe com uma conversa aberta.
+ */
 export interface ConversationDetail extends ConversationSummary {
+  customer: Customer;
+  escalationReason: string | null;
+  escalationSummary: string | null;
+  collectedData: Record<string, string> | null;
   messages: ConversationMessage[];
 }
+
+/**
+ * O que o evento `conversation.updated` carrega: a conversa inteira, menos
+ * o histórico de mensagens.
+ *
+ * Diferente da LISTA de propósito. A lista é paginada e pede a capa; o
+ * evento chega de uma conversa só, e o painel lateral da conversa aberta
+ * é atualizado com ele — se viesse só a capa, abrir uma conversa e
+ * receber um evento dela apagaria da tela os dados coletados e a memória
+ * do cliente até alguém recarregar.
+ */
+export type ConversationUpdate = Omit<ConversationDetail, "messages">;
 
 export type AiToolPermission = "ALLOW" | "DENY" | "REQUIRES_APPROVAL";
 

@@ -277,6 +277,47 @@ const conversationInclude = {
 } as const;
 
 /**
+ * A CAPA da conversa: só o que a lista do Inbox desenha de fato.
+ *
+ * O `conversationInclude` acima traz a linha inteira, e três campos dela
+ * não têm tamanho previsível: `collectedData` e `escalationSummary` (o que
+ * a IA coletou e resumiu) e `customer.metadata` (o que a IA foi lembrando
+ * do cliente, que só cresce). Nenhum dos três aparece na lista — quem os
+ * mostra é o painel lateral, que só abre com a conversa e busca o detalhe
+ * completo. Trazê-los em trinta conversas por página era mandar pro
+ * navegador, a cada abertura do Inbox e a cada troca de filtro, um monte
+ * de JSON que ninguém lê.
+ *
+ * É a mesma ideia do WhatsApp Web: a lista carrega a capa, a conversa
+ * carrega o resto quando é aberta.
+ */
+const conversationListSelect = {
+  id: true,
+  status: true,
+  aiMode: true,
+  priority: true,
+  unreadCount: true,
+  assignmentAccepted: true,
+  lastMessageAt: true,
+  waitingSince: true,
+  createdAt: true,
+  assignedUserId: true,
+  queueId: true,
+  customer: { select: { id: true, name: true, phone: true, isGroup: true } },
+  assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
+  queue: { select: { id: true, key: true, name: true } },
+  tags: {
+    select: { tag: { select: { id: true, name: true, color: true } } },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  messages: {
+    take: 1,
+    orderBy: { createdAt: 'desc' as const },
+    select: { content: true, senderType: true, messageType: true },
+  },
+} as const;
+
+/**
  * O include traz a última mensagem dentro de `messages`, mas esse nome
  * colide com o histórico completo do detalhe da conversa — o painel faz
  * `{...detalhe, ...resumo}` ao receber um evento, e o array de um item
@@ -361,7 +402,7 @@ export class ConversationsService {
 
     const items = await this.prisma.db.conversation.findMany({
       where: this.montarWhere(filter, recorte),
-      include: conversationInclude,
+      select: conversationListSelect,
       // Na fila, quem espera há MAIS tempo primeiro; `nulls: 'last'` joga
       // pro fim quem não está esperando ninguém — sem isso o Postgres põe
       // os nulos na frente e a fila abre com quem já foi respondido.
@@ -676,6 +717,26 @@ export class ConversationsService {
     options: { cursor?: string; limit?: number } = {},
   ) {
     await this.requireConversationExists(conversationId);
+    return this.paginarMensagens(conversationId, options);
+  }
+
+  /**
+   * A paginação em si, SEM reconferir se a conversa existe.
+   *
+   * Separada de `listMessages` por causa de quem já carregou a conversa
+   * uma linha antes: `getById` buscava a conversa, entrava aqui e o método
+   * ia ao banco de novo só pra perguntar se ela existe. Eram três idas ao
+   * banco pra abrir uma conversa em vez de duas — invisível com o banco na
+   * mesma máquina, um terço a mais de espera quando ele está do outro lado
+   * da rede, que é o caso em produção.
+   *
+   * Privada de propósito: quem vem da rota pública continua passando por
+   * `listMessages`, que confere o acesso antes.
+   */
+  private async paginarMensagens(
+    conversationId: string,
+    options: { cursor?: string; limit?: number } = {},
+  ) {
     const take = Math.min(Math.max(options.limit ?? 40, 1), 100);
 
     const items = await this.prisma.db.message.findMany({
@@ -842,7 +903,11 @@ export class ConversationsService {
 
     // Só a página mais recente: uma conversa de meses não pode travar a
     // abertura carregando tudo. O resto sobe conforme a pessoa rola.
-    const messages = await this.listMessages(id);
+    //
+    // `paginarMensagens` e não `listMessages`: a conversa acabou de ser
+    // lida acima, então perguntar de novo ao banco se ela existe é uma ida
+    // e volta jogada fora bem no caminho de abrir a conversa.
+    const messages = await this.paginarMensagens(id);
 
     return {
       ...conversation,
