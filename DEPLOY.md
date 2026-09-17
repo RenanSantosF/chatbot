@@ -66,9 +66,10 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `API_PUBLIC_URL` | a URL pública que o Railway vai te dar (Settings > Networking > Generate Domain) — só usada pra mostrar a URL do webhook pronta na tela de Configurações |
    | `GEMINI_API_KEY` | **obrigatória** — a chave da plataforma (sua, do Google AI Studio). Sem ela nenhuma empresa consegue usar IA, e a mensagem mostrada é "problema nosso", não algo que o cliente resolva |
    | `GEMINI_MODEL` | opcional — deixe em branco pra usar o padrão do código (`gemini-3.1-flash-lite`, o mais barato da família) |
-   | `STRIPE_SECRET_KEY` | opcional — sem ela, a tela de assinatura mostra "fale com o suporte" em vez de travar. Chave secreta da sua conta Stripe (a mesma de outro sistema seu, se preferir) |
-   | `STRIPE_PRICE_ID` | o id do preço (`price_...`) da assinatura, criado no Dashboard do Stripe > Product catalog |
-   | `STRIPE_WEBHOOK_SECRET` | o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
+   | `STRIPE_SECRET_KEY` | **obrigatória** — sem ela, ninguém consegue criar conta: o cadastro termina no Checkout, e sem chave o Checkout não abre. Chave secreta da sua conta Stripe (a mesma de outro sistema seu, se preferir) |
+   | `STRIPE_PRICE_ID` | **obrigatória** — o id do preço (`price_...`) da assinatura mensal, criado no Dashboard do Stripe > Product catalog |
+   | `STRIPE_TOPUP_PRICE_ID` | opcional — o id do preço (`price_...`) do pacote avulso de 1.000 respostas extras de IA. Sem ela, o botão "Comprar mensagens extras" mostra erro; o resto do sistema funciona igual |
+   | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
    | `VAPID_SUBJECT` | um e-mail seu. **O `mailto:` na frente faz parte do valor** (`mailto:voce@seudominio.com`) — a norma pede uma URL, não um e-mail solto. Se você esquecer, o sistema completa sozinho e registra no log |
 
@@ -471,46 +472,69 @@ uma mensagem antes de considerar feito.
 Uma conta Stripe só, da plataforma — quem assina é a empresa cliente, mas
 quem recebe é você, do mesmo jeito que já funciona noutro sistema seu.
 Nenhum cartão passa por este código: o painel só abre uma sessão do
-Checkout (pra assinar) ou do Portal (pra trocar cartão/cancelar) e manda a
-pessoa pro Stripe.
+Checkout (pra assinar ou comprar um pacote extra) ou do Portal (pra trocar
+cartão/cancelar) e manda a pessoa pro Stripe.
+
+**Não tem teste grátis.** O cadastro termina no Checkout — a conta nasce no
+banco, mas fica bloqueada (ver `BillingGuard`) até a assinatura ser
+confirmada pelo webhook. Sem `STRIPE_SECRET_KEY`/`STRIPE_PRICE_ID`/
+`STRIPE_WEBHOOK_SECRET` configuradas, **ninguém consegue criar conta** —
+essas três variáveis são obrigatórias, não opcionais.
+
+**Preço sugerido**: R$ 197/mês, incluindo 3.000 respostas automáticas de
+IA. Pacote avulso: R$ 49,90 por 1.000 respostas extras (pra quem bate no
+teto antes do mês virar, sem esperar). Os dois números vêm da margem sobre
+o custo real do provedor de IA — ver o comentário em
+`apps/api/src/modules/ai/ai-usage.service.ts` — e de comparação com o
+mercado brasileiro de chatbot de WhatsApp com IA (R$ 100–500/mês,
+concorrente direto mais próximo por volta de R$ 190–200/mês). Ajuste como
+preferir; é só o preço cadastrado no Stripe que decide, o código não tem
+valor nenhum fixo.
 
 1. No [Dashboard do Stripe](https://dashboard.stripe.com), crie um
-   **Product** com um **Price** recorrente (mensal, por exemplo). Copie o
-   id do preço (`price_...`) — é o `STRIPE_PRICE_ID`.
-2. Em **Developers > API keys**, copie a **Secret key** (`sk_live_...` em
+   **Product** com um **Price** recorrente (mensal). Copie o id do preço
+   (`price_...`) — é o `STRIPE_PRICE_ID`.
+2. Crie um **segundo Product**, este com um **Price** único (não
+   recorrente) — o pacote de 1.000 mensagens extras. Copie o id
+   (`price_...`) — é o `STRIPE_TOPUP_PRICE_ID`. Pule este passo se não for
+   vender pacote avulso agora; o resto do sistema funciona sem ele.
+3. Em **Developers > API keys**, copie a **Secret key** (`sk_live_...` em
    produção, `sk_test_...` pra testar) — é o `STRIPE_SECRET_KEY`.
-3. Em **Developers > Webhooks**, crie um endpoint:
+4. Em **Developers > Webhooks**, crie um endpoint:
    - URL: `https://sua-api.up.railway.app/api/webhooks/stripe`
    - Eventos: `checkout.session.completed`, `customer.subscription.updated`,
      `customer.subscription.deleted`
    - Copie o **Signing secret** (`whsec_...`) — é o `STRIPE_WEBHOOK_SECRET`.
-4. Habilite o **Customer Portal** em **Settings > Billing > Customer
+5. Habilite o **Customer Portal** em **Settings > Billing > Customer
    portal** (senão o botão "Gerenciar assinatura" do painel dá erro ao
    abrir).
-5. Coloque as três variáveis no serviço da API (tabela do passo 2) e
-   redeploy.
-6. Teste: em `/dashboard/settings/account`, clique em "Assinar agora",
+6. Coloque as variáveis no serviço da API (tabela do passo 2) e redeploy.
+7. Teste o cadastro de ponta a ponta: crie uma conta nova em `/register`,
    complete o Checkout com um [cartão de teste do
    Stripe](https://docs.stripe.com/testing) (modo `sk_test_`), e confirme
-   que a tela volta mostrando "Plano: Assinatura ativa" — foi o webhook
-   que fez essa gravação, então isso também confirma que o passo 3 está
-   certo.
+   que você cai no painel (não na tela de "assinatura necessária") — foi o
+   webhook que liberou o acesso, então isso também confirma que o passo 4
+   está certo.
 
-Sem essas variáveis, a tela de assinatura mostra "fale com o suporte" em
-vez de travar — o resto do sistema continua funcionando normalmente.
+**Carência de 2 dias**: se o cartão de uma empresa já ativa falhar (cobrança
+recusada, cartão vencido), ela continua com acesso por 2 dias, vendo um
+aviso com contagem regressiva em toda tela do painel. Depois disso, o
+acesso é bloqueado até regularizar — não precisa configurar nada a mais
+pra isso funcionar, é automático a partir dos mesmos três eventos do passo
+4.
 
 ---
 
 ## Checklist rápido pra saber se está tudo certo
 
 - [ ] `https://sua-api.up.railway.app/api` responde (qualquer rota autenticada deve dar 401, não erro de conexão)
-- [ ] Criar conta em `https://seu-app.vercel.app/register` funciona e leva pro dashboard
+- [ ] Criar conta em `https://seu-app.vercel.app/register` leva direto pro Checkout do Stripe, e pagar com um cartão de teste leva pro dashboard (ver seção 6 — sem isso configurado, ninguém consegue criar conta)
 - [ ] Inbox conecta em tempo real (manda uma mensagem simulada e ela aparece sem dar F5)
 - [ ] `/dashboard/settings/ai` liga a IA sem erro (a chave é da plataforma — ver `GEMINI_API_KEY` no passo 2, não uma tela de configuração)
 - [ ] `/dashboard/settings` mostra a URL do webhook correta (com o domínio da API em produção, não `localhost`)
 - [ ] Handshake do webhook: a Meta aceitou a URL sem erro ao salvar
 - [ ] Mensagem real do WhatsApp chega no Inbox
-- [ ] `/dashboard/settings/account` abre o Checkout do Stripe sem erro (ver seção 6)
+- [ ] `/dashboard/settings/account` abre o Portal do Stripe sem erro pra uma conta já assinante ("Gerenciar assinatura")
 
 ## Coisas pra saber antes de escalar de verdade
 

@@ -4,6 +4,30 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 
 /**
+ * Dois dias entre a assinatura ficar em atraso e o acesso ser cortado.
+ *
+ * Curto o bastante pra não virar um mês de uso de graça, longo o
+ * bastante pra dar tempo de trocar um cartão vencido sem que a empresa
+ * perca atendimentos no meio do caminho — o Stripe já tenta cobrar de
+ * novo automaticamente antes de chegar aqui, então quem chega neste
+ * relógio é quem realmente precisa agir.
+ */
+const DIAS_DE_CARENCIA = 2;
+const CARENCIA_MS = DIAS_DE_CARENCIA * 24 * 60 * 60 * 1000;
+
+/**
+ * Quantas respostas o pacote avulso acrescenta, e por quanto.
+ *
+ * Um pacote só, de propósito — dar a escolher quantidade era resolver um
+ * problema que ninguém tem ainda (o plano mensal já cobre uso normal
+ * sobrando; ver o comentário em AiUsageService). R$49,90 por 1.000
+ * respostas fica em torno de R$0,05 por resposta, contra um custo real de
+ * provedor de menos de um centavo — a mesma margem generosa do plano
+ * mensal, só que fatiada pra quem precisa de um empurrão no meio do mês.
+ */
+const MENSAGENS_POR_PACOTE_EXTRA = 1000;
+
+/**
  * A assinatura da empresa, via Stripe.
  *
  * Uma conta Stripe só, da plataforma — a mesma que já funciona noutro
@@ -69,6 +93,57 @@ export class BillingService {
     return {
       assinaturaAtiva: Boolean(conta.stripeSubscriptionId),
       planLabel: conta.planLabel,
+      ...this.statusDeAcesso(conta),
+    };
+  }
+
+  /**
+   * Se esta empresa pode usar o sistema agora, e por quê.
+   *
+   * Função pura sobre os dois campos que decidem tudo — sem consulta ao
+   * banco aqui dentro — pra o mesmo cálculo servir tanto o guard que
+   * bloqueia requisição (BillingGuard) quanto a tela que mostra o aviso
+   * (AuthController.me), sem duplicar a régua em dois lugares.
+   *
+   * Uma conta que nunca assinou (`assinaturaVencidaEm` nulo e sem
+   * assinatura) fica bloqueada direto, sem carência — carência é o prazo
+   * pra quem já pagava resolver um problema de cobrança, não um período
+   * de teste grátis disfarçado.
+   */
+  statusDeAcesso(conta: {
+    stripeSubscriptionId: string | null;
+    assinaturaVencidaEm: Date | null;
+  }): {
+    bloqueado: boolean;
+    emCarencia: boolean;
+    vencidoDesde: number | null;
+    bloqueiaEm: number | null;
+  } {
+    if (conta.stripeSubscriptionId) {
+      return {
+        bloqueado: false,
+        emCarencia: false,
+        vencidoDesde: null,
+        bloqueiaEm: null,
+      };
+    }
+
+    if (!conta.assinaturaVencidaEm) {
+      return {
+        bloqueado: true,
+        emCarencia: false,
+        vencidoDesde: null,
+        bloqueiaEm: null,
+      };
+    }
+
+    const bloqueiaEm = conta.assinaturaVencidaEm.getTime() + CARENCIA_MS;
+    const bloqueado = Date.now() >= bloqueiaEm;
+    return {
+      bloqueado,
+      emCarencia: !bloqueado,
+      vencidoDesde: conta.assinaturaVencidaEm.getTime(),
+      bloqueiaEm,
     };
   }
 
@@ -78,6 +153,14 @@ export class BillingService {
    * Um plano só por enquanto (`STRIPE_PRICE_ID`) — quando existir mais de
    * um, o preço escolhido na tela vira parâmetro aqui, mas a mecânica de
    * abrir e sincronizar continua a mesma.
+   *
+   * O VALOR em si vive só no Stripe (o código não tem número nenhum
+   * fixo), mas a recomendação registrada em DEPLOY.md é R$197/mês com
+   * 3.000 respostas de IA incluídas — parity com o concorrente direto mais
+   * próximo (chatbot de WhatsApp por QR code com IA, ~R$190-200/mês no
+   * mercado brasileiro), e margem folgada sobre o custo real do provedor
+   * (ver o comentário de `aiMonthlyMessageLimit` no schema e o de
+   * AiUsageService).
    */
   async criarCheckout(): Promise<{ url: string }> {
     const precoId = process.env.STRIPE_PRICE_ID;
@@ -114,6 +197,48 @@ export class BillingService {
           : {}),
       success_url: `${base}/dashboard/settings/account?assinatura=sucesso`,
       cancel_url: `${base}/dashboard/settings/account?assinatura=cancelada`,
+    });
+
+    if (!sessao.url) {
+      throw new BadRequestException(
+        'Não deu pra criar a sessão de pagamento agora. Tente de novo.',
+      );
+    }
+    return { url: sessao.url };
+  }
+
+  /**
+   * Abre uma sessão de Checkout pra comprar um pacote avulso de respostas
+   * de IA, sem esperar o mês virar.
+   *
+   * Pagamento único (`mode: 'payment'`), não assinatura — é o que separa
+   * este evento do outro no webhook (ver processarEvento). Só faz sentido
+   * pra quem já é cliente, então usa o customer do Stripe já existente em
+   * vez de pedir e-mail de novo.
+   */
+  async criarCheckoutExtra(): Promise<{ url: string }> {
+    const precoId = process.env.STRIPE_TOPUP_PRICE_ID;
+    if (!precoId) {
+      throw new BadRequestException(
+        'Pacote de mensagens extras não está configurado nesta instalação. Fale com o suporte.',
+      );
+    }
+
+    const conta = await this.contaAtual();
+    if (!conta.stripeCustomerId) {
+      throw new BadRequestException(
+        'Esta empresa ainda não tem assinatura — assine antes de comprar um pacote extra.',
+      );
+    }
+
+    const base = this.urlBase();
+    const sessao = await this.stripe().checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{ price: precoId, quantity: 1 }],
+      client_reference_id: this.prisma.tenantId,
+      customer: conta.stripeCustomerId,
+      success_url: `${base}/dashboard/settings/ai?pacoteExtra=sucesso`,
+      cancel_url: `${base}/dashboard/settings/ai?pacoteExtra=cancelado`,
     });
 
     if (!sessao.url) {
@@ -169,11 +294,13 @@ export class BillingService {
   /**
    * O que muda em `BillingAccount` quando o Stripe avisa alguma coisa.
    *
-   * Só os três eventos que decidem se a empresa está em dia:
-   * `checkout.session.completed` é a primeira assinatura nascendo — é dali
-   * que sai o vínculo entre o cliente do Stripe e o tenant, que os outros
-   * dois eventos (mudança e cancelamento) usam pra achar a linha certa,
-   * já sem `client_reference_id` nenhum vindo junto.
+   * `checkout.session.completed` cobre dois casos, diferenciados por
+   * `mode`: uma assinatura nascendo (`subscription` — é dali que sai o
+   * vínculo entre o cliente do Stripe e o tenant, que os outros eventos
+   * usam pra achar a linha certa) ou um pacote avulso de mensagens sendo
+   * pago (`payment` — ver criarCheckoutExtra). Os dois eventos de
+   * assinatura (mudança e cancelamento) decidem se a carência começa,
+   * continua ou termina.
    */
   async processarEvento(evento: Stripe.Event): Promise<void> {
     switch (evento.type) {
@@ -183,6 +310,27 @@ export class BillingService {
         if (!tenantId) {
           this.logger.warn(
             'checkout.session.completed sem client_reference_id — evento ignorado.',
+          );
+          return;
+        }
+
+        if (sessao.mode === 'payment') {
+          const resultado = await this.global.client.billingAccount.updateMany({
+            where: { tenantId },
+            data: {
+              aiExtraMessagesThisPeriod: {
+                increment: MENSAGENS_POR_PACOTE_EXTRA,
+              },
+            },
+          });
+          if (resultado.count === 0) {
+            this.logger.warn(
+              `Pacote extra pago pro tenant ${tenantId}, sem BillingAccount correspondente.`,
+            );
+            return;
+          }
+          this.logger.log(
+            `Pacote extra de ${MENSAGENS_POR_PACOTE_EXTRA} mensagens creditado pro tenant ${tenantId}.`,
           );
           return;
         }
@@ -214,6 +362,7 @@ export class BillingService {
             stripeCustomerId: customerId,
             stripeSubscriptionId: subscriptionId,
             planLabel: 'Assinatura ativa',
+            assinaturaVencidaEm: null,
           },
         });
         this.logger.log(`Assinatura criada pro tenant ${tenantId}.`);
@@ -244,12 +393,26 @@ export class BillingService {
         // se reflete o que ele decidiu.
         const emDia =
           assinatura.status === 'active' || assinatura.status === 'trialing';
+        const cancelada = evento.type === 'customer.subscription.deleted';
 
         await this.global.client.billingAccount.update({
           where: { id: conta.id },
           data: {
             stripeSubscriptionId: emDia ? assinatura.id : null,
-            planLabel: emDia ? 'Assinatura ativa' : 'Cancelada',
+            planLabel: emDia
+              ? 'Assinatura ativa'
+              : cancelada
+                ? 'Cancelada'
+                : 'Pagamento pendente',
+            // Recupera, limpa o relógio. Fica ruim pela primeira vez, o
+            // relógio começa agora. Já estava ruim, o relógio FICA — uma
+            // nova tentativa de cobrança falhando de novo não pode
+            // reiniciar a carência e esticar o prazo pra sempre.
+            ...(emDia
+              ? { assinaturaVencidaEm: null }
+              : conta.assinaturaVencidaEm
+                ? {}
+                : { assinaturaVencidaEm: new Date() }),
           },
         });
         this.logger.log(

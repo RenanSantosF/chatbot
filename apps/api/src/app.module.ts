@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/auth/permissions.guard';
 import { RolesGuard } from './common/auth/roles.guard';
+import { BillingGuard } from './common/billing/billing.guard';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AiModule } from './modules/ai/ai.module';
@@ -87,6 +88,7 @@ import { StorageModule } from './modules/storage/storage.module';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_GUARD, useClass: BillingGuard },
   ],
 })
 export class AppModule {}

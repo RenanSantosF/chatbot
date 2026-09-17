@@ -11,6 +11,8 @@ export interface LimiteDaIa {
   podeResponder: boolean;
   usadas: number;
   limite: number;
+  /** Quanto do `limite` veio de pacote avulso comprado, e não do plano. */
+  extras: number;
 }
 
 /**
@@ -82,17 +84,24 @@ export class AiUsageService {
         aiRepliesUsed: 0,
         aiInputTokensUsed: 0,
         aiOutputTokensUsed: 0,
+        // Pacote avulso vale pro período em que foi comprado, não pra
+        // sempre — do contrário uma compra de reforço em março viraria
+        // cota extra permanente, mês após mês, sem custo nenhum a mais.
+        aiExtraMessagesThisPeriod: 0,
       },
     });
   }
 
-  /** A IA desta conta ainda tem quanto sobrando no mês? */
+  /** A IA desta conta ainda tem quanto sobrando no mês (plano + pacotes avulsos)? */
   async limite(): Promise<LimiteDaIa> {
     const conta = await this.linhaDoPeriodoAtual();
+    const limite =
+      conta.aiMonthlyMessageLimit + conta.aiExtraMessagesThisPeriod;
     return {
-      podeResponder: conta.aiRepliesUsed < conta.aiMonthlyMessageLimit,
+      podeResponder: conta.aiRepliesUsed < limite,
       usadas: conta.aiRepliesUsed,
-      limite: conta.aiMonthlyMessageLimit,
+      limite,
+      extras: conta.aiExtraMessagesThisPeriod,
     };
   }
 

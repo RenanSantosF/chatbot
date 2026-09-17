@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,14 +37,17 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import type {
+  EstadoDaCobranca,
   EstadoDoCanalSessao,
   SessionTenant,
   SessionUser,
   UserRole,
 } from "@/lib/types";
 import { SITE_NAME } from "@/lib/site";
+import { toast } from "sonner";
 
 // `roles` ausente = todo mundo vê. As telas de configuração da empresa
 // ficam só com quem administra — o mesmo recorte que os guards da API já
@@ -195,6 +199,79 @@ function HistoricoChegando() {
   );
 }
 
+/** "2 dias, 4 horas e 12 minutos" — sempre os dois maiores, nunca mais que isso. */
+function formatarTempoRestante(ms: number): string {
+  if (ms <= 0) return "menos de um minuto";
+  const minutosTotais = Math.floor(ms / 60_000);
+  const dias = Math.floor(minutosTotais / (60 * 24));
+  const horas = Math.floor((minutosTotais % (60 * 24)) / 60);
+  const minutos = minutosTotais % 60;
+
+  const partes: string[] = [];
+  if (dias > 0) partes.push(`${dias} dia${dias === 1 ? "" : "s"}`);
+  if (horas > 0) partes.push(`${horas} hora${horas === 1 ? "" : "s"}`);
+  if (dias === 0 && minutos > 0) partes.push(`${minutos} minuto${minutos === 1 ? "" : "s"}`);
+  if (partes.length === 0) return "menos de um minuto";
+  return partes.slice(0, 2).join(" e ");
+}
+
+/**
+ * A assinatura venceu, e o acesso vai ser cortado num prazo contado —
+ * fica visível em TODA tela, de propósito, porque é o único aviso deste
+ * painel que tem um relógio correndo contra a operação da empresa.
+ *
+ * O prazo em si (`bloqueiaEm`) vem pronto do servidor — o contador aqui só
+ * traduz a diferença pro relógio do navegador a cada minuto, nunca decide
+ * sozinho quando bloquear (isso é o BillingGuard, no servidor).
+ */
+function CobrancaVencida({ cobranca, role }: { cobranca: EstadoDaCobranca; role: UserRole }) {
+  const [agora, setAgora] = useState(() => Date.now());
+  const [indo, setIndo] = useState(false);
+
+  useEffect(() => {
+    if (!cobranca.emCarencia) return;
+    const timer = setInterval(() => setAgora(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [cobranca.emCarencia]);
+
+  if (!cobranca.emCarencia || !cobranca.bloqueiaEm) return null;
+
+  async function regularizar() {
+    setIndo(true);
+    try {
+      const { url } = await apiFetch<{ url: string }>("/billing/checkout", { method: "POST" });
+      window.location.href = url;
+    } catch (erro) {
+      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra abrir o pagamento.");
+      setIndo(false);
+    }
+  }
+
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-xs text-destructive"
+    >
+      <TriangleAlert className="size-3.5 shrink-0" />
+      <span className="font-medium">Assinatura vencida.</span>
+      <span className="text-destructive/80">
+        O acesso será bloqueado em {formatarTempoRestante(cobranca.bloqueiaEm - agora)}.
+      </span>
+      {role === "OWNER" ? (
+        <button
+          type="button"
+          disabled={indo}
+          onClick={() => void regularizar()}
+          className="inline-flex items-center gap-1 font-medium underline underline-offset-2 disabled:opacity-60"
+        >
+          {indo ? <Spinner className="size-3" /> : null}
+          Regularizar pagamento
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function Nav({ role }: { role: UserRole }) {
   const pathname = usePathname();
   const { totalUnread } = useRealtime();
@@ -246,10 +323,12 @@ function Nav({ role }: { role: UserRole }) {
 function Shell({
   user,
   tenant,
+  cobranca,
   children,
 }: {
   user: SessionUser;
   tenant: SessionTenant;
+  cobranca: EstadoDaCobranca;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -341,6 +420,7 @@ function Shell({
             <LogOut className="size-4" />
           </Button>
         </header>
+        <CobrancaVencida cobranca={cobranca} role={user.role} />
         <CanalCaido />
         <HistoricoChegando />
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
@@ -392,6 +472,7 @@ export function DashboardShell(props: {
   user: SessionUser;
   tenant: SessionTenant;
   canal: EstadoDoCanalSessao;
+  cobranca: EstadoDaCobranca;
   children: React.ReactNode;
 }) {
   return (

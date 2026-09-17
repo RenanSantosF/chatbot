@@ -1,9 +1,20 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res, UnauthorizedException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Res,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Throttle, seconds } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/auth/current-user.decorator';
 import { Public } from '../../common/auth/public.decorator';
+import { BillingExempt } from '../../common/billing/billing-exempt.decorator';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { BillingService } from '../billing/billing.service';
 import { AuthService, type AuthResult } from './auth.service';
 import type { RequestUser } from './auth.types';
 import { LoginDto } from './dto/login.dto';
@@ -19,6 +30,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
     private readonly estadoDoCanal: EstadoDoCanalService,
+    private readonly billing: BillingService,
   ) {}
 
   private setSessionCookie(res: Response, token: string) {
@@ -46,7 +58,10 @@ export class AuthController {
   @Public()
   @Throttle({ curto: { ttl: seconds(60), limit: 5 } })
   @Post('register')
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.register(dto);
     this.setSessionCookie(res, result.accessToken);
     return this.toResponseBody(result);
@@ -67,7 +82,10 @@ export class AuthController {
   @Throttle({ curto: { ttl: seconds(60), limit: 10 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.login(dto);
     this.setSessionCookie(res, result.accessToken);
     return this.toResponseBody(result);
@@ -81,14 +99,22 @@ export class AuthController {
     return { ok: true };
   }
 
+  @BillingExempt()
   @Get('socket-token')
   socketToken(@CurrentUser() user: RequestUser) {
     return { token: this.authService.issueSocketToken(user) };
   }
 
+  /**
+   * `@BillingExempt()`: é a chamada que o painel usa pra DESCOBRIR que a
+   * empresa está bloqueada (`cobranca` abaixo) e mostrar a tela de
+   * pagamento — bloquear a própria chamada deixaria a pessoa presa numa
+   * tela em branco, sem saber por quê.
+   */
+  @BillingExempt()
   @Get('me')
   async me(@CurrentUser() user: RequestUser) {
-    const [tenant, account, canal] = await Promise.all([
+    const [tenant, account, canal, cobranca] = await Promise.all([
       this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } }),
       this.prisma.client.user.findUnique({
         where: { id: user.userId },
@@ -100,6 +126,7 @@ export class AuthController {
       // existir, e a faixa só aparecia por acaso, se a sessão oscilasse
       // com a aba aberta.
       this.estadoDoCanal.doTenant(user.tenantId),
+      this.billing.status(),
     ]);
     if (!tenant || !account) {
       throw new UnauthorizedException();
@@ -118,6 +145,7 @@ export class AuthController {
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       canal,
+      cobranca,
     };
   }
 }

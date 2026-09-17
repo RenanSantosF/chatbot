@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { PagamentoBloqueado } from "@/components/billing/pagamento-bloqueado";
 import { apiFetchServer } from "@/lib/api-server";
 import type { MeResponse } from "@/lib/types";
 
@@ -26,8 +27,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect("/login");
   }
 
+  // Bloqueado substitui o painel inteiro — não faz sentido renderizar Inbox,
+  // Clientes etc. por trás de uma tela que impede qualquer chamada de
+  // funcionar (ver BillingGuard).
+  if (session.cobranca.bloqueado) {
+    return <PagamentoBloqueado user={session.user} cobranca={session.cobranca} />;
+  }
+
   return (
-    <DashboardShell user={session.user} tenant={session.tenant} canal={session.canal}>
+    <DashboardShell
+      user={session.user}
+      tenant={session.tenant}
+      canal={session.canal}
+      cobranca={session.cobranca}
+    >
       {children}
     </DashboardShell>
   );

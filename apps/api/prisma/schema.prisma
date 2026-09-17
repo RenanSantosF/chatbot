@@ -1276,6 +1276,20 @@ model BillingAccount {
   /// sem rotina agendada nenhuma (mesma ideia de `historicoIniciadoEm` no
   /// canal do WhatsApp).
   aiUsagePeriodStart    DateTime?
+  /// Respostas extras compradas avulsas pra este período, além do que o
+  /// plano já inclui (ver BillingService.criarCheckoutExtra) — pra quem
+  /// bate no teto do mês não precisar esperar o mês virar. Some junto com
+  /// o resto do período quando o mês muda (ver AiUsageService).
+  aiExtraMessagesThisPeriod Int @default(0)
+
+  /// Quando a assinatura foi vista pela primeira vez fora de "active"
+  /// (atraso de pagamento ou cancelamento), numa conta que já tinha
+  /// assinado antes. É o relógio da carência de 2 dias (ver
+  /// BillingService.statusDeAcesso) — só é preenchido nessa transição, pra
+  /// tentativa de cobrança repetida do Stripe não reiniciar o prazo. Uma
+  /// conta que nunca assinou fica bloqueada direto, sem carência nenhuma:
+  /// carência é pra quem já pagava e parou, não pra quem nunca pagou.
+  assinaturaVencidaEm DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

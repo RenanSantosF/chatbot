@@ -48,10 +48,28 @@ export interface EstadoDoCanalSessao {
   };
 }
 
+/**
+ * Se esta empresa pode usar o sistema agora — vem do BillingService, ver
+ * lá o porquê de cada campo (não tem trial: quem nunca assinou fica
+ * bloqueado direto, sem carência; carência de 2 dias é só pra quem já
+ * pagava e ficou em atraso).
+ */
+export interface EstadoDaCobranca {
+  assinaturaAtiva: boolean;
+  planLabel: string;
+  bloqueado: boolean;
+  emCarencia: boolean;
+  /** Epoch ms — desde quando a assinatura está em atraso. */
+  vencidoDesde: number | null;
+  /** Epoch ms — quando o acesso será cortado, se ninguém regularizar. */
+  bloqueiaEm: number | null;
+}
+
 export interface MeResponse {
   user: SessionUser;
   tenant: SessionTenant;
   canal: EstadoDoCanalSessao;
+  cobranca: EstadoDaCobranca;
 }
 
 export interface TeamMember {

@@ -2,14 +2,19 @@
 
 import { Gauge } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 
 interface LimiteDaIa {
   podeResponder: boolean;
   usadas: number;
   limite: number;
+  extras: number;
 }
 
 /**
@@ -23,12 +28,37 @@ interface LimiteDaIa {
  */
 export function UsageCard() {
   const [uso, setUso] = useState<LimiteDaIa | null>(null);
+  const [comprando, setComprando] = useState(false);
 
   useEffect(() => {
     apiFetch<LimiteDaIa>("/ai/settings/uso")
       .then(setUso)
       .catch(() => setUso(null));
+
+    // O Stripe volta pra cá depois do Checkout do pacote extra, com o
+    // resultado na URL — mesmo padrão do SubscriptionCard.
+    const parametros = new URLSearchParams(window.location.search);
+    const resultado = parametros.get("pacoteExtra");
+    if (resultado === "sucesso") {
+      toast.success("Pacote extra de 1.000 respostas creditado.");
+    } else if (resultado === "cancelado") {
+      toast("Compra do pacote extra não concluída — nada foi cobrado.");
+    }
+    if (resultado) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
+
+  async function comprarPacoteExtra() {
+    setComprando(true);
+    try {
+      const { url } = await apiFetch<{ url: string }>("/billing/checkout-extra", { method: "POST" });
+      window.location.href = url;
+    } catch (erro) {
+      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra abrir o pagamento.");
+      setComprando(false);
+    }
+  }
 
   if (!uso) {
     return (
@@ -53,16 +83,17 @@ export function UsageCard() {
         <CardDescription>
           {uso.podeResponder
             ? "Volta a zero no início do próximo mês."
-            : "Limite atingido — a IA para de responder sozinha até o mês virar. O atendimento continua chegando normalmente pra equipe."}
+            : "Limite atingido — a IA para de responder sozinha até comprar um pacote extra ou o mês virar. O atendimento continua chegando normalmente pra equipe."}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+      <CardContent className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">
           <span className="text-2xl font-semibold tabular-nums">
             {uso.usadas.toLocaleString("pt-BR")}
           </span>
           <span className="text-sm text-muted-foreground">
             de {uso.limite.toLocaleString("pt-BR")} incluídas
+            {uso.extras > 0 ? ` (${uso.extras.toLocaleString("pt-BR")} de pacote extra)` : ""}
           </span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -73,6 +104,12 @@ export function UsageCard() {
             style={{ width: `${percentual}%` }}
           />
         </div>
+        {perto ? (
+          <Button size="sm" variant="outline" disabled={comprando} onClick={() => void comprarPacoteExtra()}>
+            {comprando ? <Spinner className="size-3.5" /> : null}
+            Comprar 1.000 respostas extras
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +17,6 @@ import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [companyName, setCompanyName] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState("");
@@ -26,6 +24,16 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  /**
+   * A última etapa do cadastro é o pagamento — não existe uso sem assinar.
+   *
+   * A conta nasce aqui (mesma chamada de sempre), mas quem acabou de se
+   * cadastrar nunca chega a VER o painel antes de pagar: o navegador é
+   * mandado direto pro Checkout do Stripe. Enquanto isso não acontece, o
+   * BillingGuard do lado do servidor bloqueia qualquer outra rota mesmo
+   * que alguém tente pular esta tela (ver app.module.ts) — este redirect
+   * é a experiência boa, aquele guard é quem garante de verdade.
+   */
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -35,11 +43,10 @@ export default function RegisterPage() {
         method: "POST",
         body: JSON.stringify({ companyName, ownerName, email, password }),
       });
-      router.push("/dashboard");
-      router.refresh();
+      const { url } = await apiFetch<{ url: string }>("/billing/checkout", { method: "POST" });
+      window.location.href = url;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não deu pra criar sua conta agora.");
-    } finally {
       setLoading(false);
     }
   }
@@ -48,7 +55,10 @@ export default function RegisterPage() {
     <Card className="w-full max-w-sm bg-transparent ring-0">
       <CardHeader className="px-0">
         <CardTitle className="text-2xl tracking-tight">Crie sua empresa</CardTitle>
-        <CardDescription>Comece a configurar sua IA de atendimento em minutos.</CardDescription>
+        <CardDescription>
+          Último passo depois deste formulário: a assinatura, direto no Checkout seguro do
+          Stripe.
+        </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="flex flex-col gap-4 px-0">
@@ -105,7 +115,7 @@ export default function RegisterPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-4 px-0">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Criando conta..." : "Criar conta"}
+            {loading ? "Preparando pagamento..." : "Continuar para o pagamento"}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
             Já tem uma conta?{" "}

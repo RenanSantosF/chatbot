@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
+import { Public } from '../../common/auth/public.decorator';
 import { BillingService } from './billing.service';
 
 /**
@@ -17,8 +18,11 @@ import { BillingService } from './billing.service';
  * empresa certa (ver BillingService.processarEvento). Quem protege esta
  * rota é a assinatura HMAC do cabeçalho `stripe-signature`, não login
  * nenhum: um corpo sem ela, ou com uma assinatura que não bate, nunca
- * chega a ser processado.
+ * chega a ser processado. `@Public()` é obrigatório aqui — o Stripe nunca
+ * manda cookie de sessão nenhum, e sem isto o JwtAuthGuard rejeitava todo
+ * evento com 401 antes mesmo de a assinatura HMAC ser conferida.
  */
+@Public()
 @Controller('webhooks/stripe')
 export class BillingWebhookController {
   constructor(private readonly billing: BillingService) {}

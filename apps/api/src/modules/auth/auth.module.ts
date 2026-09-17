@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule, type JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { BillingModule } from '../billing/billing.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -10,13 +11,15 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 @Module({
   imports: [
     WhatsappModule,
+    BillingModule,
 
     PassportModule,
     TenantsModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: {
-        expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as JwtSignOptions['expiresIn'],
+        expiresIn: (process.env.JWT_EXPIRES_IN ??
+          '7d') as JwtSignOptions['expiresIn'],
       },
     }),
   ],

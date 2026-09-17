@@ -84,7 +84,7 @@ const PERGUNTAS = [
   {
     pergunta: "Quanto custa?",
     resposta:
-      "Uma assinatura mensal, sem taxa de instalação. A inteligência artificial já vem inclusa — você não precisa criar conta em provedor nenhum nem cadastrar chave de API, só ligar a IA e configurar como ela atende.",
+      "R$ 197 por mês, sem taxa de instalação e sem contrato de fidelidade, com 3.000 respostas automáticas de IA inclusas. Se sua operação crescer e precisar de mais respostas no meio do mês, dá pra comprar um pacote extra na hora, sem esperar o mês virar. A inteligência artificial já vem inclusa no valor — você não precisa criar conta em provedor nenhum nem cadastrar chave de API.",
   },
   {
     pergunta: "E se a IA não souber responder?",
@@ -104,18 +104,19 @@ const PERGUNTAS = [
 ];
 
 /**
- * O que o plano único inclui, dito sem inventar um preço.
+ * O que o plano único inclui.
  *
- * A tela de criar conta não cobra nada na hora — a assinatura é um passo
- * separado, depois de configurar (ver /dashboard/settings/account). Então
- * o preço em si não é fixado aqui: quem decide o valor final é o Checkout
- * do Stripe, e um número desatualizado nesta página seria pior do que
- * nenhum. O que dá pra afirmar com certeza é o que o plano inclui — e
+ * O preço mostrado na seção de preços é texto solto, não vem de nenhuma
+ * constante do sistema — quem cobra de verdade é o Checkout do Stripe
+ * (`STRIPE_PRICE_ID`), configurado fora do código. Se o valor cadastrado
+ * no Stripe mudar, este texto também precisa mudar à mão; o que dá pra
+ * afirmar com certeza sem risco de desatualizar é o que o plano inclui —
  * isso sim vem de uma constante real do sistema (ver AiUsageService).
  */
 const PLANO_INCLUI = [
   "IA para atender automaticamente, sem cadastrar chave de provedor nenhuma",
   "Até 3.000 respostas automáticas por mês inclusas",
+  "Precisou de mais? Compre um pacote extra na hora, sem esperar o mês virar",
   "Conexão do WhatsApp por QR code, sem taxa de instalação",
   "Time completo, filas por setor e permissões por papel",
   "Anexos guardados sem prazo de expiração",
@@ -349,26 +350,32 @@ export default async function Home() {
                 Um plano só, tudo incluso
               </h2>
               <p className="max-w-2xl text-muted-foreground text-pretty">
-                Assinatura mensal, sem taxa de instalação e sem contrato de fidelidade. A conta é
-                gratuita pra criar e configurar — a assinatura só é pedida quando você decidir
-                colocar a IA pra atender de verdade.
+                Assinatura mensal, sem taxa de instalação e sem contrato de fidelidade. O
+                pagamento é a última etapa do cadastro — sem período de teste, pra você já entrar
+                configurando com a IA de verdade ligada.
               </p>
             </div>
 
             <div className="grid gap-6 rounded-xl border bg-card p-6 sm:grid-cols-[1fr_auto] sm:items-center sm:p-8">
-              <ul className="flex flex-col gap-3">
-                {PLANO_INCLUI.map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm">
-                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                    <span className="text-pretty">{item}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-semibold tracking-tight">R$ 197</span>
+                  <span className="text-sm text-muted-foreground">/mês</span>
+                </div>
+                <ul className="flex flex-col gap-3">
+                  {PLANO_INCLUI.map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-sm">
+                      <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                      <span className="text-pretty">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
               <Link
                 href="/register"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
               >
-                Criar conta grátis
+                Assinar agora
                 <ArrowRight className="size-4" />
               </Link>
             </div>

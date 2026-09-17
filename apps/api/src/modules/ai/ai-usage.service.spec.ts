@@ -16,6 +16,7 @@ function montar(conta: Record<string, unknown> | null) {
     aiInputTokensUsed: 0n,
     aiOutputTokensUsed: 0n,
     aiUsagePeriodStart: null,
+    aiExtraMessagesThisPeriod: 0,
     ...conta,
   };
 
@@ -38,7 +39,10 @@ function montar(conta: Record<string, unknown> | null) {
     tenantId: 'tenant-1',
     db: {
       billingAccount: {
-        findFirst: jest.fn().mockResolvedValue(conta),
+        // `criada` (com os padrões) e não o `conta` cru: um teste que só
+        // define os dois ou três campos que importa pra ele não deveria
+        // precisar listar todos os outros só pra não virar `undefined`.
+        findFirst: jest.fn().mockResolvedValue(conta ? criada : null),
         create: jest.fn().mockResolvedValue(criada),
         update,
       },
@@ -58,7 +62,30 @@ describe('AiUsageService.limite', () => {
 
     const limite = await service.limite();
 
-    expect(limite).toEqual({ podeResponder: true, usadas: 5, limite: 10 });
+    expect(limite).toEqual({
+      podeResponder: true,
+      usadas: 5,
+      limite: 10,
+      extras: 0,
+    });
+  });
+
+  it('soma o pacote extra comprado ao limite e ainda deixa responder depois de bater no teto do plano', async () => {
+    const { service } = montar({
+      aiMonthlyMessageLimit: 10,
+      aiRepliesUsed: 10,
+      aiExtraMessagesThisPeriod: 5,
+      aiUsagePeriodStart: new Date(),
+    });
+
+    const limite = await service.limite();
+
+    expect(limite).toEqual({
+      podeResponder: true,
+      usadas: 10,
+      limite: 15,
+      extras: 5,
+    });
   });
 
   it('para de deixar responder ao bater no teto', async () => {
@@ -85,10 +112,18 @@ describe('AiUsageService.limite', () => {
 
     const limite = await service.limite();
 
-    expect(limite).toEqual({ podeResponder: true, usadas: 0, limite: 10 });
+    expect(limite).toEqual({
+      podeResponder: true,
+      usadas: 0,
+      limite: 10,
+      extras: 0,
+    });
     expect(prisma.db.billingAccount.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ aiRepliesUsed: 0 }),
+        data: expect.objectContaining({
+          aiRepliesUsed: 0,
+          aiExtraMessagesThisPeriod: 0,
+        }),
       }),
     );
   });
