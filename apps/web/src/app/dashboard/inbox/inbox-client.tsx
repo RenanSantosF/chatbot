@@ -275,9 +275,21 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     filtersRef.current = filters;
   }, [filters]);
 
+  /**
+   * Só a contagem MAIS RECENTE vale — mesma regra da lista (`pedidoDaLista`).
+   *
+   * Sem isso, trocar de filtro rápido deixava o cabeçalho respondendo sobre
+   * o recorte anterior: a contagem antiga chega depois da nova e sobrescreve
+   * os números, e aí os botões passam a discordar da lista embaixo deles —
+   * exatamente a contradição que os contadores por faceta vieram resolver.
+   */
+  const pedidoDaContagem = useRef(0);
   const loadCounts = useCallback((current: InboxFilters = filtersRef.current) => {
+    const meu = ++pedidoDaContagem.current;
     apiFetch<FilterCounts>(buildQuery(current, null, "/conversations/counts"))
-      .then(setCounts)
+      .then((novos) => {
+        if (meu === pedidoDaContagem.current) setCounts(novos);
+      })
       .catch(() => {});
   }, []);
 
@@ -345,11 +357,23 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     }
   }, []);
 
+  /**
+   * A página seguinte só entra se o recorte não mudou no meio do caminho.
+   *
+   * `loadConversations` já descartava resposta velha por geração, mas esta
+   * aqui não: rolar até o fim e trocar de filtro antes de a página voltar
+   * emendava conversas do recorte antigo embaixo do novo, e ainda deixava o
+   * cursor do recorte antigo valendo — então continuar rolando trazia mais
+   * do filtro errado. A geração é a MESMA de `loadConversations`, porque
+   * uma busca nova da lista também invalida a continuação da anterior.
+   */
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return;
+    const meu = pedidoDaLista.current;
     setLoadingMore(true);
     try {
       const page = await apiFetch<Page<ConversationSummary>>(buildQuery(filters, cursor));
+      if (meu !== pedidoDaLista.current) return;
       // Concatena filtrando duplicatas: entre uma página e outra uma
       // conversa pode ter subido pro topo e apareceria duas vezes.
       setConversations((prev) => {
@@ -405,12 +429,28 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     [clearUnread, agendarContagem],
   );
 
+  /**
+   * A página antiga só entra se ainda for a MESMA conversa.
+   *
+   * O id era lido antes do `await` e o resultado aplicado no que estivesse
+   * aberto quando a resposta voltasse. Rolar pra cima na conversa A e
+   * trocar pra B antes de responder colava o histórico de A dentro de B —
+   * e o cursor de A virava o cursor de B, então continuar rolando trazia
+   * mais conversa errada. Conferir o id na volta descarta a resposta que
+   * perdeu a corrida, que é o que ela merece.
+   */
   const loadOlderMessages = useCallback(async () => {
-    if (!messagesCursor || !selectedIdRef.current) return;
+    const daConversa = selectedIdRef.current;
+    if (!messagesCursor || !daConversa) return;
     const page = await apiFetch<Page<ConversationMessage>>(
-      `/conversations/${selectedIdRef.current}/messages?cursor=${messagesCursor}`,
+      `/conversations/${daConversa}/messages?cursor=${messagesCursor}`,
     );
-    setDetail((prev) => (prev ? { ...prev, messages: [...page.items, ...prev.messages] } : prev));
+    if (selectedIdRef.current !== daConversa) return;
+    setDetail((prev) =>
+      prev && prev.id === daConversa
+        ? { ...prev, messages: [...page.items, ...prev.messages] }
+        : prev,
+    );
     setMessagesCursor(page.nextCursor);
   }, [messagesCursor]);
 

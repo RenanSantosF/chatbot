@@ -141,12 +141,17 @@ export function ConversationList({
         const priority = PRIORITY_META[conversation.priority];
         const showPriority = conversation.priority === "URGENT" || conversation.priority === "HIGH";
         const last = conversation.lastMessage;
-        const preview = last
-          ? `${last.senderType === "CUSTOMER" ? "" : "Você: "}${resumoDaMensagem(
-              last.content,
-              last.messageType,
-            )}`
-          : "Sem mensagens ainda";
+        // Apagada não mostra o texto nem fica em branco: a prévia diz o
+        // que aconteceu. O conteúdo já nem chega da API (ver
+        // `previaVisivel`), então sem este ramo a linha viraria só "Você: ".
+        const preview = !last
+          ? "Sem mensagens ainda"
+          : last.deletedAt
+            ? "Mensagem apagada"
+            : `${last.senderType === "CUSTOMER" ? "" : "Você: "}${resumoDaMensagem(
+                last.content,
+                last.messageType,
+              )}`;
         const espera = descreverEspera(conversation.waitingSince, relogio);
         // A terceira linha só nasce quando tem o que dizer. Conversa
         // aberta, sem dono e sem etiqueta é o caso comum, e nele a linha

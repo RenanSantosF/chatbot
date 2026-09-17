@@ -397,8 +397,16 @@ export class EvolutionService {
       },
     });
 
+    // A URL de retorno NÃO entra no log.
+    //
+    // O segredo do webhook viaja dentro do caminho dela (ver
+    // `urlDoWebhook`), e é ele que autentica cada entrega da Evolution —
+    // é credencial de entrada, não endereço de diagnóstico. Registrada
+    // aqui, ela vazava pra qualquer lugar que lê log da aplicação. O que
+    // ajuda a diagnosticar é saber QUAL sessão e QUAL empresa, e isso
+    // continua aqui.
     this.logger.log(
-      `Sessão ${config.instance} pronta pro tenant ${this.prisma.tenantId} (${estado}); retorno em ${url}.`,
+      `Sessão ${config.instance} pronta pro tenant ${this.prisma.tenantId} (${estado}).`,
     );
 
     // A empresa passa a ser da Evolution assim que a sessão existe, e não

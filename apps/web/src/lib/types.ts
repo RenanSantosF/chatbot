@@ -196,6 +196,8 @@ export interface ConversationMessage {
     content: string;
     senderType: MessageSenderType;
     messageType: MessageType;
+    /** A mensagem citada foi apagada: a tarjinha não mostra mais o texto. */
+    deletedAt?: string | null;
   } | null;
   createdAt: string;
 }
@@ -234,7 +236,13 @@ export interface ConversationSummary {
   /** Etiquetas da conversa, na ordem em que foram postas. */
   tags?: Tag[];
   /** Só a mensagem mais recente, pra prévia na lista. */
-  lastMessage?: { content: string; senderType: MessageSenderType; messageType: MessageType } | null;
+  lastMessage?: {
+    content: string;
+    senderType: MessageSenderType;
+    messageType: MessageType;
+    /** Apagada: o conteúdo não vem, e a prévia diz isso em vez de ficar vazia. */
+    deletedAt?: string | null;
+  } | null;
 }
 
 /**

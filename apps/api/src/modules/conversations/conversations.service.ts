@@ -269,10 +269,18 @@ const conversationInclude = {
   },
   // Prévia da última mensagem — é o que faz a lista parecer um mensageiro
   // em vez de uma tabela de chamados. Uma só, a mais recente.
+  //
+  // `deletedAt` junto porque sem ele não dá pra saber que o texto não pode
+  // mais sair daqui (ver `previaVisivel`).
   messages: {
     take: 1,
     orderBy: { createdAt: 'desc' },
-    select: { content: true, senderType: true, messageType: true },
+    select: {
+      content: true,
+      senderType: true,
+      messageType: true,
+      deletedAt: true,
+    },
   },
 } as const;
 
@@ -313,7 +321,12 @@ const conversationListSelect = {
   messages: {
     take: 1,
     orderBy: { createdAt: 'desc' as const },
-    select: { content: true, senderType: true, messageType: true },
+    select: {
+      content: true,
+      senderType: true,
+      messageType: true,
+      deletedAt: true,
+    },
   },
 } as const;
 
@@ -340,15 +353,34 @@ export function mediaIdDe(metadata: unknown): string | undefined {
   return typeof valor === 'string' && valor ? valor : undefined;
 }
 
+/**
+ * A prévia da lista, sem o texto do que foi apagado.
+ *
+ * Apagar um balão escondia o conteúdo DENTRO da conversa e deixava a
+ * mesma frase intacta na prévia da lista — que é justamente o que fica
+ * visível de longe, numa tela compartilhada, sem ninguém abrir nada. O
+ * `deletedAt` viaja junto pra tela conseguir escrever "mensagem apagada"
+ * no lugar, em vez de mostrar uma linha em branco.
+ */
+function previaVisivel<M extends { content: string; deletedAt: Date | null }>(
+  mensagem: M | undefined,
+): M | null {
+  if (!mensagem) return null;
+  return mensagem.deletedAt ? { ...mensagem, content: '' } : mensagem;
+}
+
 function toSummary<
-  T extends { messages: unknown[]; tags?: { tag: unknown }[] },
+  T extends {
+    messages: { content: string; deletedAt: Date | null }[];
+    tags?: { tag: unknown }[];
+  },
 >(conversation: T) {
   const { messages, tags, ...rest } = conversation;
   return {
     ...rest,
     // A ligação é detalhe do banco; quem desenha quer a etiqueta.
     tags: (tags ?? []).map((ligacao) => ligacao.tag),
-    lastMessage: messages[0] ?? null,
+    lastMessage: previaVisivel(messages[0]),
   };
 }
 
@@ -362,6 +394,9 @@ const messageInclude = {
       content: true,
       senderType: true,
       messageType: true,
+      // Pra tarjinha de citação não virar a última cópia visível do texto
+      // que alguém apagou (ver `esconderApagada`).
+      deletedAt: true,
     },
   },
 } as const;
@@ -772,9 +807,26 @@ export class ConversationsService {
       deletedAt: Date | null;
       content: string;
       metadata: Prisma.JsonValue | null;
+      replyTo?: { content: string; deletedAt: Date | null } | null;
     },
   >(mensagem: T): T {
-    if (!mensagem.deletedAt) return mensagem;
+    // A mensagem CITADA foi apagada, mas esta aqui não.
+    //
+    // Some o texto da tarjinha de citação e o balão continua: apagar a
+    // original tem que valer em toda cópia dela, e a citação era a última
+    // que restava na tela — bastava alguém ter respondido àquela mensagem
+    // pro conteúdo continuar visível depois de apagado.
+    const citada =
+      mensagem.replyTo?.deletedAt != null
+        ? { ...mensagem.replyTo, content: '' }
+        : mensagem.replyTo;
+
+    if (!mensagem.deletedAt) {
+      return citada === mensagem.replyTo
+        ? mensagem
+        : { ...mensagem, replyTo: citada };
+    }
+
     return {
       ...mensagem,
       content: '',

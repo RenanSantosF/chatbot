@@ -411,7 +411,14 @@ export function MessageBubble({
           <p className="font-medium opacity-80">
             {message.replyTo.senderType === "CUSTOMER" ? "Cliente" : "Você"}
           </p>
-          <p className="line-clamp-2 opacity-70">{message.replyTo.content || "Anexo"}</p>
+          {/* Citação de mensagem apagada não mostra o texto — o conteúdo
+              nem vem mais da API (ver `esconderApagada`), e sem este ramo
+              a tarjinha diria "Anexo" pra uma frase que foi apagada. */}
+          <p className={cn("line-clamp-2 opacity-70", message.replyTo.deletedAt && "italic")}>
+            {message.replyTo.deletedAt
+              ? "Mensagem apagada"
+              : message.replyTo.content || "Anexo"}
+          </p>
         </div>
       ) : null}
 
