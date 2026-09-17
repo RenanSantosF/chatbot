@@ -8,6 +8,7 @@ import { CryptoModule } from './common/crypto/crypto.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { CollectionModule } from './modules/collection/collection.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CustomersModule } from './modules/customers/customers.module';
@@ -55,6 +56,7 @@ import { StorageModule } from './modules/storage/storage.module';
     CryptoModule,
     PrismaModule,
     AuthModule,
+    BillingModule,
     TenantsModule,
     UsersModule,
     CustomersModule,

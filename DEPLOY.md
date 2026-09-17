@@ -66,6 +66,9 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `API_PUBLIC_URL` | a URL pública que o Railway vai te dar (Settings > Networking > Generate Domain) — só usada pra mostrar a URL do webhook pronta na tela de Configurações |
    | `GEMINI_API_KEY` | **obrigatória** — a chave da plataforma (sua, do Google AI Studio). Sem ela nenhuma empresa consegue usar IA, e a mensagem mostrada é "problema nosso", não algo que o cliente resolva |
    | `GEMINI_MODEL` | opcional — deixe em branco pra usar o padrão do código (`gemini-3.1-flash-lite`, o mais barato da família) |
+   | `STRIPE_SECRET_KEY` | opcional — sem ela, a tela de assinatura mostra "fale com o suporte" em vez de travar. Chave secreta da sua conta Stripe (a mesma de outro sistema seu, se preferir) |
+   | `STRIPE_PRICE_ID` | o id do preço (`price_...`) da assinatura, criado no Dashboard do Stripe > Product catalog |
+   | `STRIPE_WEBHOOK_SECRET` | o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
    | `VAPID_SUBJECT` | um e-mail seu. **O `mailto:` na frente faz parte do valor** (`mailto:voce@seudominio.com`) — a norma pede uma URL, não um e-mail solto. Se você esquecer, o sistema completa sozinho e registra no log |
 
@@ -463,15 +466,51 @@ uma mensagem antes de considerar feito.
 
 ---
 
+## 6. Assinatura (Stripe)
+
+Uma conta Stripe só, da plataforma — quem assina é a empresa cliente, mas
+quem recebe é você, do mesmo jeito que já funciona noutro sistema seu.
+Nenhum cartão passa por este código: o painel só abre uma sessão do
+Checkout (pra assinar) ou do Portal (pra trocar cartão/cancelar) e manda a
+pessoa pro Stripe.
+
+1. No [Dashboard do Stripe](https://dashboard.stripe.com), crie um
+   **Product** com um **Price** recorrente (mensal, por exemplo). Copie o
+   id do preço (`price_...`) — é o `STRIPE_PRICE_ID`.
+2. Em **Developers > API keys**, copie a **Secret key** (`sk_live_...` em
+   produção, `sk_test_...` pra testar) — é o `STRIPE_SECRET_KEY`.
+3. Em **Developers > Webhooks**, crie um endpoint:
+   - URL: `https://sua-api.up.railway.app/api/webhooks/stripe`
+   - Eventos: `checkout.session.completed`, `customer.subscription.updated`,
+     `customer.subscription.deleted`
+   - Copie o **Signing secret** (`whsec_...`) — é o `STRIPE_WEBHOOK_SECRET`.
+4. Habilite o **Customer Portal** em **Settings > Billing > Customer
+   portal** (senão o botão "Gerenciar assinatura" do painel dá erro ao
+   abrir).
+5. Coloque as três variáveis no serviço da API (tabela do passo 2) e
+   redeploy.
+6. Teste: em `/dashboard/settings/account`, clique em "Assinar agora",
+   complete o Checkout com um [cartão de teste do
+   Stripe](https://docs.stripe.com/testing) (modo `sk_test_`), e confirme
+   que a tela volta mostrando "Plano: Assinatura ativa" — foi o webhook
+   que fez essa gravação, então isso também confirma que o passo 3 está
+   certo.
+
+Sem essas variáveis, a tela de assinatura mostra "fale com o suporte" em
+vez de travar — o resto do sistema continua funcionando normalmente.
+
+---
+
 ## Checklist rápido pra saber se está tudo certo
 
 - [ ] `https://sua-api.up.railway.app/api` responde (qualquer rota autenticada deve dar 401, não erro de conexão)
 - [ ] Criar conta em `https://seu-app.vercel.app/register` funciona e leva pro dashboard
 - [ ] Inbox conecta em tempo real (manda uma mensagem simulada e ela aparece sem dar F5)
-- [ ] `/dashboard/ai` salva a API key do Gemini sem erro
+- [ ] `/dashboard/settings/ai` liga a IA sem erro (a chave é da plataforma — ver `GEMINI_API_KEY` no passo 2, não uma tela de configuração)
 - [ ] `/dashboard/settings` mostra a URL do webhook correta (com o domínio da API em produção, não `localhost`)
 - [ ] Handshake do webhook: a Meta aceitou a URL sem erro ao salvar
 - [ ] Mensagem real do WhatsApp chega no Inbox
+- [ ] `/dashboard/settings/account` abre o Checkout do Stripe sem erro (ver seção 6)
 
 ## Coisas pra saber antes de escalar de verdade
 

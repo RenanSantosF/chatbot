@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { SubscriptionCard } from "@/components/settings/subscription-card";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 
@@ -80,10 +81,10 @@ export default function AccountPage() {
     <div className="flex flex-col gap-8">
       <div>
         <h2 className="text-lg font-semibold">Conta</h2>
-        <p className="text-sm text-muted-foreground">
-          {resumo.nome} — plano {resumo.plano}.
-        </p>
+        <p className="text-sm text-muted-foreground">{resumo.nome}</p>
       </div>
+
+      <SubscriptionCard />
 
       <div className="rounded-lg border border-destructive/40">
         <div className="flex items-start gap-3 border-b border-destructive/40 bg-destructive/5 p-4">

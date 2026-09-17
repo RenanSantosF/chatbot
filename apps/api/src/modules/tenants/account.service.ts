@@ -197,20 +197,26 @@ export class AccountService {
     }
 
     /*
-     * ⚠️ COBRANÇA: ISTO PRECISA MUDAR QUANDO O PLANO FOR PAGO.
+     * ⚠️ COBRANÇA: A BARREIRA JÁ VALE DE VERDADE — O CANCELAMENTO
+     * AUTOMÁTICO, AINDA NÃO.
      *
-     * Hoje a barreira é esta: existe assinatura registrada? Então a conta
-     * não é apagada, e a pessoa é mandada cancelar primeiro. É o
-     * comportamento certo ENQUANTO não houver integração de verdade — o
-     * pior desfecho possível é apagar a empresa aqui e a assinatura
-     * continuar viva no Stripe, cobrando todo mês de um cliente que não
-     * tem mais conta, sem tela nenhuma pra ele cancelar e sem ninguém pra
-     * reclamar até a fatura chegar.
+     * Desde que o Stripe entrou (ver BillingService), `stripeSubscriptionId`
+     * é gravado de verdade por webhook — não fica mais sempre nulo. Então
+     * esta barreira, que antes era teórica, agora bloqueia contas com
+     * assinatura de fato ativa: existe assinatura registrada? Então a
+     * conta não é apagada, e a pessoa é mandada cancelar primeiro (pelo
+     * Portal do Stripe — ver BillingService.criarPortal). É o comportamento
+     * certo ENQUANTO apagar não cancela sozinho — o pior desfecho possível
+     * é apagar a empresa aqui e a assinatura continuar viva no Stripe,
+     * cobrando todo mês de um cliente que não tem mais conta, sem tela
+     * nenhuma pra ele cancelar e sem ninguém pra reclamar até a fatura
+     * chegar.
      *
-     * Quando a cobrança entrar de fato (Stripe ou outro), o caminho certo
-     * é o inverso e tem uma ordem obrigatória:
+     * Fazer o cancelamento acontecer SOZINHO aqui dentro (em vez de só
+     * bloquear e mandar cancelar à parte) é o próximo passo, e tem uma
+     * ordem obrigatória:
      *
-     *   1. Cancelar a assinatura no provedor (`stripeSubscriptionId`),
+     *   1. Cancelar a assinatura no Stripe (`stripeSubscriptionId`),
      *      esperando a confirmação DELE — não a nossa suposição.
      *   2. Só então apagar. Se o cancelamento falhar, PARE aqui: é melhor
      *      uma conta viva que ninguém quer do que uma cobrança órfã.

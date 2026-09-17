@@ -3042,7 +3042,9 @@ export class ConversationsService {
          */
         metadata: input.participante
           ? {
-              ...(input.metadata ?? {}),
+              ...(typeof input.metadata === 'object' && input.metadata
+                ? input.metadata
+                : {}),
               participante: input.participante,
             }
           : input.metadata,
