@@ -1,6 +1,6 @@
 "use client";
 
-import { Route, Trash2 } from "lucide-react";
+import { ListTree, Route, Sparkles, Trash2, User } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,33 @@ import { ApiError } from "@/lib/api-error";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import type { ConversationPriority, Queue, RoutingRule, TeamMember } from "@/lib/types";
+
+/**
+ * Assuntos comuns a praticamente qualquer empresa que atende gente.
+ *
+ * A folha em branco é o maior obstáculo pra criar a primeira regra — não
+ * dá pra saber o que "cabe" ali sem exemplo. Um clique aqui preenche nome
+ * e assunto com um texto já bom o bastante pra usar, e falta só escolher
+ * pra quem mandar: a parte que só quem usa o sistema sabe responder.
+ */
+const SUGESTOES: { name: string; subject: string }[] = [
+  {
+    name: "Financeiro",
+    subject: "Boleto, segunda via, atraso de pagamento, renegociação de dívida, cobrança.",
+  },
+  {
+    name: "Suporte técnico",
+    subject: "Problema técnico, erro no sistema, dúvida de uso, algo que parou de funcionar.",
+  },
+  {
+    name: "Vendas",
+    subject: "Interesse em comprar, pedido de orçamento, dúvida sobre planos e preços.",
+  },
+  {
+    name: "Cancelamento",
+    subject: "Pedido de cancelamento, desistência, reembolso.",
+  },
+];
 
 export function RoutingRulesCard({
   rules,
@@ -42,6 +69,22 @@ export function RoutingRulesCard({
     setTarget("");
     setOpen(false);
   }
+
+  /** Já chega escrita — só falta escolher pra quem vai. */
+  function abrirComSugestao(sugestao: (typeof SUGESTOES)[number]) {
+    setName(sugestao.name);
+    setSubject(sugestao.subject);
+    setMinPriority("NORMAL");
+    setTarget("");
+    setOpen(true);
+  }
+
+  // Sugestão some da lista assim que já existe uma regra com aquele nome
+  // — sem isso, alguém que já criou "Financeiro" continuaria vendo o
+  // atalho de "Financeiro" como se nada tivesse sido feito ainda.
+  const sugestoesDisponiveis = SUGESTOES.filter(
+    (sugestao) => !rules.some((rule) => rule.name.toLowerCase() === sugestao.name.toLowerCase()),
+  );
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -117,7 +160,12 @@ export function RoutingRulesCard({
                         {PRIORITY_META[rule.minPriority].label} ou mais
                       </span>
                     ) : null}
-                    <Badge variant="secondary" className="text-[10px]">
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      {rule.targetUser ? (
+                        <User className="size-2.5" />
+                      ) : (
+                        <ListTree className="size-2.5" />
+                      )}
                       {rule.targetUser ? rule.targetUser.name : (rule.targetQueue?.name ?? "sem destino")}
                     </Badge>
                   </div>
@@ -240,10 +288,30 @@ export function RoutingRulesCard({
             </div>
           </form>
         ) : (
-          <div className="w-fit">
-            <Button size="sm" onClick={() => setOpen(true)}>
-              Nova regra
-            </Button>
+          <div className="flex flex-col gap-3">
+            <div className="w-fit">
+              <Button size="sm" onClick={() => setOpen(true)}>
+                Nova regra
+              </Button>
+            </div>
+            {sugestoesDisponiveis.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Sparkles className="size-3.5" />
+                  Ou comece de um assunto comum:
+                </span>
+                {sugestoesDisponiveis.map((sugestao) => (
+                  <button
+                    key={sugestao.name}
+                    type="button"
+                    onClick={() => abrirComSugestao(sugestao)}
+                    className="rounded-full border border-dashed px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary"
+                  >
+                    {sugestao.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
       </CardContent>

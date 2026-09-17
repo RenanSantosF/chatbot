@@ -10,7 +10,10 @@ import { QueuesService } from '../../queues/queues.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { CollectionService } from '../../collection/collection.service';
 import { RoutingService } from '../../routing/routing.service';
-import type { AiToolCallResult, AiToolDeclaration } from '../providers/ai-provider.interface';
+import type {
+  AiToolCallResult,
+  AiToolDeclaration,
+} from '../providers/ai-provider.interface';
 
 interface ToolExecutionContext {
   conversationId: string;
@@ -21,7 +24,10 @@ interface BuiltInTool {
   name: string;
   description: string;
   parametersSchema: Record<string, unknown>;
-  execute: (args: Record<string, unknown>, ctx: ToolExecutionContext) => Promise<unknown>;
+  execute: (
+    args: Record<string, unknown>,
+    ctx: ToolExecutionContext,
+  ) => Promise<unknown>;
 }
 
 export interface ConfiguredTool {
@@ -92,7 +98,10 @@ export class AiToolsService {
       parametersSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Telefone ou nome (ou parte do nome) do cliente' },
+          query: {
+            type: 'string',
+            description: 'Telefone ou nome (ou parte do nome) do cliente',
+          },
         },
         required: ['query'],
       },
@@ -102,10 +111,19 @@ export class AiToolsService {
           return [];
         }
         const customers = await this.prisma.db.customer.findMany({
-          where: { OR: [{ phone: { contains: query } }, { name: { contains: query, mode: 'insensitive' } }] },
+          where: {
+            OR: [
+              { phone: { contains: query } },
+              { name: { contains: query, mode: 'insensitive' } },
+            ],
+          },
           take: 5,
         });
-        return customers.map((customer) => ({ id: customer.id, name: customer.name, phone: customer.phone }));
+        return customers.map((customer) => ({
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+        }));
       },
     },
     {
@@ -117,7 +135,10 @@ export class AiToolsService {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Título curto da tarefa' },
-          description: { type: 'string', description: 'Detalhes adicionais, se houver' },
+          description: {
+            type: 'string',
+            description: 'Detalhes adicionais, se houver',
+          },
         },
         required: ['title'],
       },
@@ -142,11 +163,19 @@ export class AiToolsService {
       parametersSchema: {
         type: 'object',
         properties: {
-          queueKey: { type: 'string', description: 'Chave da fila mais apropriada pra este assunto, se houver uma' },
-          reason: { type: 'string', description: 'Motivo curto da transferência' },
+          queueKey: {
+            type: 'string',
+            description:
+              'Chave da fila mais apropriada pra este assunto, se houver uma',
+          },
+          reason: {
+            type: 'string',
+            description: 'Motivo curto da transferência',
+          },
           summary: {
             type: 'string',
-            description: 'Resumo do que o cliente precisa, pra quem for atender não perder contexto',
+            description:
+              'Resumo do que o cliente precisa, pra quem for atender não perder contexto',
           },
           collectedData: {
             type: 'object',
@@ -167,7 +196,9 @@ export class AiToolsService {
         // Barreira de coleta: se a empresa exige dados e eles não estão
         // gravados, a transferência não acontece. Devolver a lista do que
         // falta (em vez de só recusar) faz a IA voltar e perguntar.
-        const missing = await this.collection.missingRequired(ctx.conversationId);
+        const missing = await this.collection.missingRequired(
+          ctx.conversationId,
+        );
         if (missing.length > 0) {
           return {
             status: 'blocked',
@@ -190,7 +221,9 @@ export class AiToolsService {
 
         const queueKeyArg = args.queueKey ? String(args.queueKey).trim() : null;
         const fallbackQueue =
-          !routed && queueKeyArg ? await this.queues.findByKey(queueKeyArg) : null;
+          !routed && queueKeyArg
+            ? await this.queues.findByKey(queueKeyArg)
+            : null;
 
         const queue = routed
           ? routed.queueId
@@ -270,7 +303,11 @@ export class AiToolsService {
           include: conversationInclude,
         });
 
-        this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.updated', conversation);
+        this.realtime.emitToTenant(
+          this.prisma.tenantId,
+          'conversation.updated',
+          conversation,
+        );
 
         return {
           status: 'transferred',
@@ -297,7 +334,8 @@ export class AiToolsService {
         required: ['reason'],
       },
       execute: async (args, ctx) => {
-        const reason = String(args.reason ?? '').trim() || 'Atendimento concluído.';
+        const reason =
+          String(args.reason ?? '').trim() || 'Atendimento concluído.';
 
         // Conversa que espera atendente não se encerra por aqui. É o caso
         // de a IA ter transferido e, no mesmo fôlego, se despedir: o
@@ -454,13 +492,31 @@ export class AiToolsService {
     }));
   }
 
-  async setConfig(key: string, data: { enabled?: boolean; permission?: AiToolPermission }): Promise<ConfiguredTool> {
+  async setConfig(
+    key: string,
+    data: { enabled?: boolean; permission?: AiToolPermission },
+  ): Promise<ConfiguredTool> {
     const tool = this.findInRegistry(key);
     const tenantId = this.prisma.tenantId;
 
+    // O padrão da COLUNA no banco é o oposto do padrão que a tela promete
+    // (`enabled: false`/`REQUIRES_APPROVAL` na migração, contra "ligada e em
+    // Permitir" de `listConfigured`) — de propósito, porque uma ferramenta
+    // nova e perigosa deve nascer travada até alguém decidir. O efeito
+    // colateral: sem preencher os dois campos aqui, `PATCH` só a permissão
+    // de uma ferramenta que ninguém tinha tocado ainda criava a linha com
+    // `enabled: false` por baixo — desligava a ferramenta de verdade, sem
+    // que o clique tivesse pedido isso. Preencher os dois no `create`,
+    // usando o que veio no PATCH e caindo pro padrão da TELA (não da
+    // coluna) pro campo que não veio, fecha essa lacuna.
     const updated = await this.prisma.db.aiTool.upsert({
       where: { tenantId_key: { tenantId, key } },
-      create: { tenantId, key, ...data },
+      create: {
+        tenantId,
+        key,
+        enabled: data.enabled ?? true,
+        permission: data.permission ?? 'ALLOW',
+      },
       update: data,
     });
 
@@ -509,7 +565,9 @@ export class AiToolsService {
       enabledKeys.delete('rememberCustomerInfo');
     }
 
-    const enabledTools = this.registry.filter((tool) => enabledKeys.has(tool.key));
+    const enabledTools = this.registry.filter((tool) =>
+      enabledKeys.has(tool.key),
+    );
     const escalates = enabledKeys.has('transferToQueue');
     const [queues, rules, collectionFields] = await Promise.all([
       escalates ? this.prisma.db.queue.findMany() : Promise.resolve([]),
@@ -535,27 +593,53 @@ export class AiToolsService {
 
       if (tool.key === 'collectCustomerData') {
         if (collectionFields.length === 0) {
-          return { name: tool.key, description: tool.description, parametersSchema: tool.parametersSchema };
+          return {
+            name: tool.key,
+            description: tool.description,
+            parametersSchema: tool.parametersSchema,
+          };
         }
         const schema = JSON.parse(JSON.stringify(tool.parametersSchema)) as {
-          properties: { values: { description: string; properties?: Record<string, unknown> } };
+          properties: {
+            values: {
+              description: string;
+              properties?: Record<string, unknown>;
+            };
+          };
         };
         // Cada campo vira uma propriedade nomeada, então a IA usa a chave
         // certa em vez de inventar ("cpf" vs "CPF" vs "documento").
         schema.properties.values.properties = Object.fromEntries(
           collectionFields.map((field) => [
             field.key,
-            { type: 'string', description: `${field.label}${field.hint ? ` (${field.hint})` : ''}` },
+            {
+              type: 'string',
+              description: `${field.label}${field.hint ? ` (${field.hint})` : ''}`,
+            },
           ]),
         );
         schema.properties.values.description = `Dados a coletar: ${collectionFields
-          .map((field) => `${field.key} = ${field.label}${field.required ? ' (obrigatório)' : ''}`)
+          .map(
+            (field) =>
+              `${field.key} = ${field.label}${field.required ? ' (obrigatório)' : ''}`,
+          )
           .join(' | ')}`;
-        return { name: tool.key, description: tool.description, parametersSchema: schema };
+        return {
+          name: tool.key,
+          description: tool.description,
+          parametersSchema: schema,
+        };
       }
 
-      if (tool.key !== 'transferToQueue' || (queues.length === 0 && rules.length === 0)) {
-        return { name: tool.key, description: tool.description, parametersSchema: tool.parametersSchema };
+      if (
+        tool.key !== 'transferToQueue' ||
+        (queues.length === 0 && rules.length === 0)
+      ) {
+        return {
+          name: tool.key,
+          description: tool.description,
+          parametersSchema: tool.parametersSchema,
+        };
       }
 
       const schema = JSON.parse(JSON.stringify(tool.parametersSchema)) as {
@@ -581,7 +665,11 @@ export class AiToolsService {
         };
       }
 
-      return { name: tool.key, description: tool.description, parametersSchema: schema };
+      return {
+        name: tool.key,
+        description: tool.description,
+        parametersSchema: schema,
+      };
     });
   }
 
@@ -590,7 +678,11 @@ export class AiToolsService {
    * ferramenta usar; isto aqui decide SE ela tem permissão — a IA nunca
    * pula essa checagem.
    */
-  async execute(key: string, args: Record<string, unknown>, conversationId: string): Promise<AiToolCallResult> {
+  async execute(
+    key: string,
+    args: Record<string, unknown>,
+    conversationId: string,
+  ): Promise<AiToolCallResult> {
     const tool = this.registry.find((item) => item.key === key);
     if (!tool) {
       return { error: `Ferramenta "${key}" desconhecida.` };
@@ -632,8 +724,13 @@ export class AiToolsService {
     // Segunda barreira do modo de memória: mesmo que a ferramenta escape na
     // declaração (config antiga em cache do provedor, por exemplo), com
     // NONE nada é gravado.
-    if (key === 'rememberCustomerInfo' && (await this.memoryMode()) === 'NONE') {
-      return { error: 'Guardar dados do cliente está desativado nesta empresa.' };
+    if (
+      key === 'rememberCustomerInfo' &&
+      (await this.memoryMode()) === 'NONE'
+    ) {
+      return {
+        error: 'Guardar dados do cliente está desativado nesta empresa.',
+      };
     }
 
     if (permission === 'REQUIRES_APPROVAL') {
@@ -651,7 +748,8 @@ export class AiToolsService {
         },
       });
       return {
-        error: 'Esta ação exige aprovação de um humano antes de acontecer. Um responsável da equipe vai revisar.',
+        error:
+          'Esta ação exige aprovação de um humano antes de acontecer. Um responsável da equipe vai revisar.',
       };
     }
 
@@ -659,7 +757,12 @@ export class AiToolsService {
       const output = await tool.execute(args, { conversationId });
       return { output };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : 'Falha ao executar a ferramenta.' };
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Falha ao executar a ferramenta.',
+      };
     }
   }
 }
