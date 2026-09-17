@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Plus, X } from "lucide-react";
+import { CalendarClock, CopyPlus, Plus, Sun, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,6 +76,53 @@ export function BusinessHoursCard({
     });
   }
 
+  /**
+   * O horário de segunda vira o da semana inteira.
+   *
+   * Poupa preencher sete linhas iguais uma por uma — o caso mais comum de
+   * longe é a empresa abrir do mesmo jeito de segunda a sexta (ou até
+   * sábado). Repete o horário literal, incluindo "não atende": se segunda
+   * está desligada, a semana toda desliga junto — é isso que "igual
+   * segunda" quer dizer.
+   */
+  function repetirSegundaParaTodos() {
+    const faixasDeSegunda = semana?.["1"] ?? [];
+    setSemana((atual) => {
+      const proxima = { ...(atual ?? {}) };
+      for (const { chave } of DIAS) {
+        if (chave === "1") continue;
+        if (faixasDeSegunda.length === 0) delete proxima[chave];
+        else proxima[chave] = faixasDeSegunda.map((faixa) => [...faixa] as Faixa);
+      }
+      return proxima;
+    });
+  }
+
+  /**
+   * Tira o intervalo de almoço de todo mundo de uma vez.
+   *
+   * Cada dia com duas faixas vira uma só, da abertura da primeira ao
+   * fechamento da última — sem exigir remover o intervalo dia por dia
+   * numa semana inteira. Não é um interruptor permanente: é uma ação que
+   * reescreve o horário atual, então dá pra abrir um intervalo de novo
+   * depois se precisar.
+   */
+  function ignorarHorarioDeAlmoco() {
+    setSemana((atual) => {
+      if (!atual) return atual;
+      const proxima: Semana = {};
+      for (const [dia, faixas] of Object.entries(atual)) {
+        proxima[dia] =
+          faixas.length > 1
+            ? [[faixas[0][0], faixas[faixas.length - 1][1]]]
+            : faixas;
+      }
+      return proxima;
+    });
+  }
+
+  const temIntervaloDeAlmoco = Object.values(semana ?? {}).some((faixas) => faixas.length > 1);
+
   return (
     <Card>
       <CardHeader>
@@ -106,6 +153,33 @@ export function BusinessHoursCard({
 
         {ligado ? (
           <div className="flex flex-col gap-1.5">
+            {/* Duas ações que evitam repetir o mesmo ajuste sete vezes:
+                copiar o horário de segunda pra semana toda, e tirar o
+                intervalo de almoço de todo mundo de uma vez. */}
+            <div className="flex flex-wrap items-center gap-2 pb-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={repetirSegundaParaTodos}
+              >
+                <CopyPlus className="size-3.5" />
+                Repetir segunda em todos os dias
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                disabled={!temIntervaloDeAlmoco}
+                onClick={ignorarHorarioDeAlmoco}
+              >
+                <Sun className="size-3.5" />
+                Ignorar horário de almoço
+              </Button>
+            </div>
+
             {DIAS.map(({ chave, nome }) => {
               const faixas = semana[chave] ?? [];
               const atende = faixas.length > 0;
