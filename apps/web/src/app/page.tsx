@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   BookOpenText,
+  Check,
   ChevronDown,
   Clock,
   MessageCircle,
@@ -78,7 +79,7 @@ const PERGUNTAS = [
   {
     pergunta: "Preciso trocar o número de WhatsApp da minha empresa?",
     resposta:
-      "Não. O número que você já usa é conectado em um clique pelo próprio botão da Meta, e o histórico do celular é importado. Durante a coexistência dá pra continuar respondendo pelo aparelho: o que for digitado lá aparece no painel também.",
+      "Não. O número que você já usa continua sendo o mesmo — a conexão é por QR code, como vincular um WhatsApp Web, e o histórico do aparelho é importado. Não é o caminho oficial da Meta, então vale saber: o número pode cair e precisar ler o QR code de novo, e em casos raros a Meta pode bloqueá-lo. É a troca que permite conectar em minutos, sem aprovação de conta comercial.",
   },
   {
     pergunta: "Quanto custa?",
@@ -102,11 +103,29 @@ const PERGUNTAS = [
   },
 ];
 
+/**
+ * O que o plano único inclui, dito sem inventar um preço.
+ *
+ * A tela de criar conta não cobra nada na hora — a assinatura é um passo
+ * separado, depois de configurar (ver /dashboard/settings/account). Então
+ * o preço em si não é fixado aqui: quem decide o valor final é o Checkout
+ * do Stripe, e um número desatualizado nesta página seria pior do que
+ * nenhum. O que dá pra afirmar com certeza é o que o plano inclui — e
+ * isso sim vem de uma constante real do sistema (ver AiUsageService).
+ */
+const PLANO_INCLUI = [
+  "IA para atender automaticamente, sem cadastrar chave de provedor nenhuma",
+  "Até 3.000 respostas automáticas por mês inclusas",
+  "Conexão do WhatsApp por QR code, sem taxa de instalação",
+  "Time completo, filas por setor e permissões por papel",
+  "Anexos guardados sem prazo de expiração",
+];
+
 const PASSOS = [
   {
     titulo: "Conecte o número",
     texto:
-      "O WhatsApp da empresa é conectado em um clique, pelo próprio botão da Meta. Não precisa trocar de número nem perder as conversas que já existem.",
+      "Leia um QR code com o celular que já atende, como vincular um WhatsApp Web. Dois minutos, sem trocar de número nem perder as conversas que já existem.",
   },
   {
     titulo: "Ensine o que ela precisa saber",
@@ -204,6 +223,12 @@ export default async function Home() {
             <span className="text-base font-semibold tracking-tight">{SITE_NAME}</span>
           </span>
           <nav className="flex items-center gap-2">
+            <Link
+              href="#precos"
+              className="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
+            >
+              Preços
+            </Link>
             <Link
               href="/login"
               className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -314,6 +339,39 @@ export default async function Home() {
                 </p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section id="precos" className="border-t scroll-mt-16">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-5 py-16">
+            <div className="flex flex-col gap-3">
+              <h2 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+                Um plano só, tudo incluso
+              </h2>
+              <p className="max-w-2xl text-muted-foreground text-pretty">
+                Assinatura mensal, sem taxa de instalação e sem contrato de fidelidade. A conta é
+                gratuita pra criar e configurar — a assinatura só é pedida quando você decidir
+                colocar a IA pra atender de verdade.
+              </p>
+            </div>
+
+            <div className="grid gap-6 rounded-xl border bg-card p-6 sm:grid-cols-[1fr_auto] sm:items-center sm:p-8">
+              <ul className="flex flex-col gap-3">
+                {PLANO_INCLUI.map((item) => (
+                  <li key={item} className="flex items-start gap-2.5 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <span className="text-pretty">{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/register"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Criar conta grátis
+                <ArrowRight className="size-4" />
+              </Link>
+            </div>
           </div>
         </section>
 
