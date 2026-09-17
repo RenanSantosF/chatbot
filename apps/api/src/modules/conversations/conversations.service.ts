@@ -29,10 +29,7 @@ import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RoutingService } from '../routing/routing.service';
 import { TagsService } from '../tags/tags.service';
-import {
-  converterParaOggOpus,
-  jaEhOggOpus,
-} from '../whatsapp/audio-container';
+import { converterParaOggOpus, jaEhOggOpus } from '../whatsapp/audio-container';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { CanalService } from '../whatsapp/canal/canal.service';
 import { idDaMensagem } from '../whatsapp/canal/evolution/evolution-id';
@@ -510,8 +507,12 @@ export class ConversationsService {
    *   mundo, ficaria sem atendimento);
    * - tudo, pra dono e admin: sem isso não dá pra chefiar.
    */
-  private async recorteDeVisibilidade(viewer?: { userId: string; role: UserRole }) {
-    if (!viewer || viewer.role === 'OWNER' || viewer.role === 'ADMIN') return {};
+  private async recorteDeVisibilidade(viewer?: {
+    userId: string;
+    role: UserRole;
+  }) {
+    if (!viewer || viewer.role === 'OWNER' || viewer.role === 'ADMIN')
+      return {};
 
     const settings = await this.inboxSettings.get();
     if (settings.queueVisibility === 'ALL') return {};
@@ -549,7 +550,9 @@ export class ConversationsService {
    * quantas vou ver?". Por isso a própria faceta sai do filtro antes de
    * contar (ver `montarWhere`).
    */
-  async counts(filtro: FiltroDoInbox & { viewer: { userId: string; role: UserRole } }) {
+  async counts(
+    filtro: FiltroDoInbox & { viewer: { userId: string; role: UserRole } },
+  ) {
     const recorte = await this.recorteDeVisibilidade(filtro.viewer);
     const onde = (
       exceto: Faceta[],
@@ -591,7 +594,9 @@ export class ConversationsService {
       byPriority,
     ] = await Promise.all([
       this.prisma.db.conversation.count(semSituacao()),
-      this.prisma.db.conversation.count(onde(['unread'], { unreadCount: { gt: 0 } })),
+      this.prisma.db.conversation.count(
+        onde(['unread'], { unreadCount: { gt: 0 } }),
+      ),
       this.prisma.db.conversation.count(
         onde(['mine'], { assignedUserId: filtro.viewer.userId }),
       ),
@@ -623,7 +628,9 @@ export class ConversationsService {
       ),
       // A quinta aba. Sem situação nenhuma de propósito: grupo não fica
       // "pendente" nem "aguardando" — ele só tem conversa nova ou não.
-      this.prisma.db.conversation.count(onde(['situacao'], {}, { grupos: true })),
+      this.prisma.db.conversation.count(
+        onde(['situacao'], {}, { grupos: true }),
+      ),
       this.prisma.db.conversation.count(
         onde(['comIa'], { aiMode: 'AI_ACTIVE' }),
       ),
@@ -730,9 +737,9 @@ export class ConversationsService {
    * cliente, do sistema) — uma chave estrangeira ali obrigaria a coluna a
    * ser sempre um usuário válido, que é justamente o que ela não é.
    */
-  private async comNomeDeQuemEnviou<T extends { senderType: string; senderId: string | null }>(
-    mensagens: T[],
-  ): Promise<(T & { senderName: string | null })[]> {
+  private async comNomeDeQuemEnviou<
+    T extends { senderType: string; senderId: string | null },
+  >(mensagens: T[]): Promise<(T & { senderName: string | null })[]> {
     const ids = [
       ...new Set(
         mensagens
@@ -889,7 +896,11 @@ export class ConversationsService {
     if (!settings.sendReadReceipts) return;
 
     const lastInbound = await this.prisma.db.message.findFirst({
-      where: { conversationId, senderType: 'CUSTOMER', externalId: { not: null } },
+      where: {
+        conversationId,
+        senderType: 'CUSTOMER',
+        externalId: { not: null },
+      },
       orderBy: { createdAt: 'desc' },
       select: { externalId: true },
     });
@@ -981,7 +992,12 @@ export class ConversationsService {
   ) {
     // `automatica` sai do espalhamento junto com `jaEntregue`: são
     // decisões de fluxo, não colunas da tabela de mensagens.
-    const { jaEntregue = false, automatica = false, grupo = false, ...dadosDaMensagem } = data;
+    const {
+      jaEntregue = false,
+      automatica = false,
+      grupo = false,
+      ...dadosDaMensagem
+    } = data;
     const before = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
       select: { status: true, aiMode: true, waitingSince: true },
@@ -1404,7 +1420,9 @@ export class ConversationsService {
     const atualizada = await this.prisma.db.conversation.update({
       where: { id: conversationId },
       data: {
-        ...(semDono ? { assignedUserId: agentId, assignmentAccepted: true } : {}),
+        ...(semDono
+          ? { assignedUserId: agentId, assignmentAccepted: true }
+          : {}),
         ...(iaAtiva ? { aiMode: 'HUMAN_ACTIVE' as const } : {}),
       },
       include: conversationInclude,
@@ -1464,7 +1482,11 @@ export class ConversationsService {
 
     await this.prisma.db.conversation.update({
       where: { id: conversationId },
-      data: { status: 'OPEN', assignedUserId: agentId, assignmentAccepted: true },
+      data: {
+        status: 'OPEN',
+        assignedUserId: agentId,
+        assignmentAccepted: true,
+      },
     });
     await this.registrarNota(
       conversationId,
@@ -1488,7 +1510,9 @@ export class ConversationsService {
     if (!message) return;
 
     const current =
-      message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions)
+      message.reactions &&
+      typeof message.reactions === 'object' &&
+      !Array.isArray(message.reactions)
         ? ({ ...message.reactions } as Record<string, string[]>)
         : {};
 
@@ -1515,7 +1539,11 @@ export class ConversationsService {
   }
 
   /** Reação enviada por um atendente pelo painel. */
-  async reactToMessage(conversationId: string, messageId: string, emoji: string) {
+  async reactToMessage(
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+  ) {
     const conversation = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
       include: { customer: true },
@@ -1539,7 +1567,11 @@ export class ConversationsService {
     return this.applyReactionLocal(messageId, emoji, 'agent');
   }
 
-  private async applyReactionLocal(messageId: string, emoji: string, who: string) {
+  private async applyReactionLocal(
+    messageId: string,
+    emoji: string,
+    who: string,
+  ) {
     const message = await this.prisma.db.message.findFirst({
       where: { id: messageId },
       select: { id: true, conversationId: true, reactions: true },
@@ -1549,7 +1581,9 @@ export class ConversationsService {
     }
 
     const current =
-      message.reactions && typeof message.reactions === 'object' && !Array.isArray(message.reactions)
+      message.reactions &&
+      typeof message.reactions === 'object' &&
+      !Array.isArray(message.reactions)
         ? ({ ...message.reactions } as Record<string, string[]>)
         : {};
     for (const key of Object.keys(current)) {
@@ -1831,7 +1865,12 @@ export class ConversationsService {
   async sendAttachment(
     conversationId: string,
     agentId: string,
-    file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    },
     caption?: string,
   ) {
     const conversation = await this.requireConversation(conversationId);
@@ -1919,7 +1958,10 @@ export class ConversationsService {
           // quem está atendendo e não tem acesso ao Railway.
           ...(externalId
             ? {}
-            : { falha: this.whatsapp.motivoDaUltimaFalha ?? 'a Meta recusou o envio' }),
+            : {
+                falha:
+                  this.whatsapp.motivoDaUltimaFalha ?? 'a Meta recusou o envio',
+              }),
         } as Prisma.InputJsonValue,
       },
     });
@@ -2087,7 +2129,9 @@ export class ConversationsService {
       return await this.whatsapp.listarModelos();
     } catch (error) {
       throw new BadRequestException(
-        error instanceof Error ? error.message : 'Não deu pra listar os templates.',
+        error instanceof Error
+          ? error.message
+          : 'Não deu pra listar os templates.',
       );
     }
   }
@@ -2264,7 +2308,9 @@ export class ConversationsService {
       });
     } catch (error) {
       throw new BadRequestException(
-        error instanceof Error ? error.message : 'Não deu pra enviar o template.',
+        error instanceof Error
+          ? error.message
+          : 'Não deu pra enviar o template.',
       );
     }
 
@@ -2304,7 +2350,8 @@ export class ConversationsService {
         conversationId: conversation.id,
         senderType: 'AGENT',
         senderId: agentId,
-        content: `[${input.templateName}] ${(input.bodyParams ?? []).join(' · ')}`.trim(),
+        content:
+          `[${input.templateName}] ${(input.bodyParams ?? []).join(' · ')}`.trim(),
         messageType: 'TEXT',
         externalId,
       },
@@ -2597,7 +2644,11 @@ export class ConversationsService {
    * conversa fica sem dono e em WAITING_AGENT, que é exatamente o estado de
    * "alguém do setor precisa pegar isto".
    */
-  async transferToQueue(conversationId: string, queueId: string, byUserId: string) {
+  async transferToQueue(
+    conversationId: string,
+    queueId: string,
+    byUserId: string,
+  ) {
     await this.requireConversation(conversationId);
 
     const setor = await this.prisma.db.queue.findFirst({
@@ -2668,7 +2719,9 @@ export class ConversationsService {
   async acceptAssignment(conversationId: string, userId: string) {
     const atual = await this.requireConversation(conversationId);
     if (atual.assignedUserId !== userId) {
-      throw new BadRequestException('Esta conversa foi indicada a outra pessoa.');
+      throw new BadRequestException(
+        'Esta conversa foi indicada a outra pessoa.',
+      );
     }
     return this.assign(conversationId, userId);
   }
@@ -2678,7 +2731,11 @@ export class ConversationsService {
    * pendurada em quem não pode atender — indicação recusada que continua
    * atribuída é pior que nenhuma indicação.
    */
-  async declineAssignment(conversationId: string, userId: string, motivo?: string) {
+  async declineAssignment(
+    conversationId: string,
+    userId: string,
+    motivo?: string,
+  ) {
     const atual = await this.requireConversation(conversationId);
 
     // Já sem dono: a recusa aconteceu (dois cliques, duas abas, ou a tela
@@ -2690,7 +2747,9 @@ export class ConversationsService {
       return atual;
     }
     if (atual.assignedUserId !== userId) {
-      throw new BadRequestException('Esta conversa foi indicada a outra pessoa.');
+      throw new BadRequestException(
+        'Esta conversa foi indicada a outra pessoa.',
+      );
     }
 
     const conversation = await this.prisma.db.conversation.update({
@@ -2806,10 +2865,15 @@ export class ConversationsService {
       // sendo atendido por ela.
       const { pode, motivo } = await this.aiEngine.diagnostico();
       if (!pode) {
+        const mensagens: Record<string, string> = {
+          desligada:
+            'A IA está desligada nas configurações. Ligue-a em Configurações > IA antes de reativar numa conversa.',
+          'limite-mensal':
+            'O limite de respostas automáticas deste mês foi atingido. A IA volta a responder sozinha no início do próximo mês.',
+        };
         throw new BadRequestException(
-          motivo === 'desligada'
-            ? 'A IA está desligada nas configurações. Ligue-a em Configurações > IA antes de reativar numa conversa.'
-            : 'A IA da plataforma está temporariamente indisponível (problema nosso, não desta empresa). Tente de novo em instantes.',
+          mensagens[motivo ?? ''] ??
+            'A IA da plataforma está temporariamente indisponível (problema nosso, não desta empresa). Tente de novo em instantes.',
         );
       }
     }
@@ -2909,7 +2973,10 @@ export class ConversationsService {
     // uma nova. Quem decide é a configuração de agrupamento — ver
     // reabrirParaAgrupamento.
     if (!conversation) {
-      conversation = await this.reabrirParaAgrupamento(customer.id, input.grupo);
+      conversation = await this.reabrirParaAgrupamento(
+        customer.id,
+        input.grupo,
+      );
     }
 
     // Guardado ANTES de gravar a mensagem: é a única janela em que dá pra
@@ -2974,7 +3041,10 @@ export class ConversationsService {
          * um caso que é minoria sairia caro em disco e em índice.
          */
         metadata: input.participante
-          ? { ...((input.metadata as object) ?? {}), participante: input.participante }
+          ? {
+              ...(input.metadata ?? {}),
+              participante: input.participante,
+            }
           : input.metadata,
         externalId: input.externalId,
         replyToId: replyTo?.id,
@@ -3058,7 +3128,10 @@ export class ConversationsService {
     // a mensagem e a marca do cadastro. Depender só da primeira deixaria a
     // trava de fora em qualquer chamador que esquecesse de passá-la — que
     // é a forma exata como este defeito nasceu.
-    if ((input.grupo || customer.isGroup) && conversation.aiMode === 'AI_ACTIVE') {
+    if (
+      (input.grupo || customer.isGroup) &&
+      conversation.aiMode === 'AI_ACTIVE'
+    ) {
       this.logger.warn(
         `Conversa de grupo ${conversation.id} estava com a IA ligada; desligando. ` +
           'A IA nunca responde em grupo.',
@@ -3070,7 +3143,10 @@ export class ConversationsService {
       conversation = { ...conversation, aiMode: 'HUMAN_ACTIVE' };
     }
 
-    if (conversation.aiMode === 'AI_ACTIVE' && !(await this.chegouOutraDepois(inbound.message))) {
+    if (
+      conversation.aiMode === 'AI_ACTIVE' &&
+      !(await this.chegouOutraDepois(inbound.message))
+    ) {
       const resultado = await this.aiEngine.generateReply(conversation.id);
 
       /*
@@ -3364,7 +3440,11 @@ export class ConversationsService {
    * repetido reescreveria o histórico inteiro.
    */
   private async completarEnderecoDaMidia(
-    gravadas: { id: string; externalId: string | null; metadata: Prisma.JsonValue }[],
+    gravadas: {
+      id: string;
+      externalId: string | null;
+      metadata: Prisma.JsonValue;
+    }[],
     chegando: { externalId?: string; metadata?: Prisma.InputJsonValue }[],
   ) {
     const comEndereco = new Map<string, Record<string, unknown>>();
@@ -3430,7 +3510,10 @@ export class ConversationsService {
       entrada.mensagens[0].createdAt,
     );
 
-    const conversation = await this.conversaDoHistorico(customer.id, maisRecente);
+    const conversation = await this.conversaDoHistorico(
+      customer.id,
+      maisRecente,
+    );
 
     // Idempotência em lote: a Meta reenvia pedaços do histórico, e sem isto
     // uma reentrega duplicaria conversas inteiras.
@@ -3458,7 +3541,8 @@ export class ConversationsService {
     const noLote = new Set<string>();
     const novas = entrada.mensagens.filter((m) => {
       if (!m.externalId) return true;
-      if (jaGravadas.has(m.externalId) || noLote.has(m.externalId)) return false;
+      if (jaGravadas.has(m.externalId) || noLote.has(m.externalId))
+        return false;
       noLote.add(m.externalId);
       return true;
     });

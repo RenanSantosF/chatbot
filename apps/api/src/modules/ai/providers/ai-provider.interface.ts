@@ -22,7 +22,10 @@ export interface AiToolCallResult {
  * execução do código nativo ou chamada HTTP customizada é tudo
  * responsabilidade de quem fornece esse executor (AiEngineService).
  */
-export type AiToolExecutor = (name: string, args: Record<string, unknown>) => Promise<AiToolCallResult>;
+export type AiToolExecutor = (
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<AiToolCallResult>;
 
 export interface AiGenerateInput {
   systemPrompt: string;
@@ -36,6 +39,13 @@ export interface AiGenerateInput {
 
 export interface AiGenerateResult {
   content: string;
+  /**
+   * Quanto esta resposta custou, em tokens — somado ao longo de todas as
+   * idas-e-voltas de ferramenta (ver GeminiProvider). Ausente só quando o
+   * provedor não souber informar; quem consome trata a ausência como zero,
+   * nunca como erro (ver AiUsageService.registrar).
+   */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 /**

@@ -1258,6 +1258,25 @@ model BillingAccount {
   /// Rótulo do plano vigente, só pra exibição ("Grátis", "5 GB"...).
   planLabel            String  @default("Grátis")
 
+  /// Quantas respostas automáticas o plano inclui por mês. Não é limite de
+  /// mensagem recebida nem de atendimento humano — só do que a IA GERA,
+  /// que é o único lado que tem custo de provedor (ver AiUsageService, que
+  /// calcula esse número a partir do preço real do modelo). Um valor por
+  /// conta, e não uma constante fixa no código, porque planos diferentes
+  /// (quando o Stripe entrar) vão incluir quantidades diferentes.
+  aiMonthlyMessageLimit Int @default(3000)
+  /// Respostas da IA já contadas no período corrente.
+  aiRepliesUsed         Int @default(0)
+  /// Somados só pra visibilidade/depuração de custo — a trava usa
+  /// `aiRepliesUsed`, não os tokens.
+  aiInputTokensUsed     BigInt @default(0)
+  aiOutputTokensUsed    BigInt @default(0)
+  /// Início do período corrente. Comparado com "agora" a cada leitura —
+  /// virou o mês, os contadores acima zeram sozinhos na próxima mensagem,
+  /// sem rotina agendada nenhuma (mesma ideia de `historicoIniciadoEm` no
+  /// canal do WhatsApp).
+  aiUsagePeriodStart    DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

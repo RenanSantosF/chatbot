@@ -7,6 +7,7 @@ import { MemoryCard } from "@/components/ai-settings/memory-card";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { Simulator } from "@/components/ai-settings/simulator";
 import { ToolsManager } from "@/components/ai-settings/tools-manager";
+import { UsageCard } from "@/components/ai-settings/usage-card";
 import { apiFetch } from "@/lib/api-client";
 import type { AiSettings, ConfiguredTool } from "@/lib/types";
 
@@ -40,6 +41,7 @@ export default function AiSettingsPage() {
         <PageSkeleton rows={3} />
       ) : (
         <>
+          <UsageCard />
           <IdentityForm settings={settings} onUpdated={setSettings} />
           <MemoryCard settings={settings} onUpdated={setSettings} />
           <ToolsManager tools={tools} onChange={setTools} />

@@ -118,6 +118,25 @@ function toGeminiRole(role: AiMessage['role']): 'user' | 'model' {
   return role === 'assistant' ? 'model' : 'user';
 }
 
+/**
+ * O consumo interno vira o formato que o resto do sistema entende.
+ *
+ * Raciocínio soma em cima da saída porque é assim que o Google cobra —
+ * ele não tem preço próprio, é billado como token de saída comum. Com
+ * `ORCAMENTO_DE_RACIOCINIO = 0` ele fica sempre zero hoje, mas o cálculo
+ * já vem certo pro dia em que isso mudar.
+ */
+function usoAcumulado(consumo: {
+  entrada: number;
+  saida: number;
+  raciocinio: number;
+}) {
+  return {
+    inputTokens: consumo.entrada,
+    outputTokens: consumo.saida + consumo.raciocinio,
+  };
+}
+
 @Injectable()
 export class GeminiProvider
   implements AiProvider, AiEmbeddingProvider, AiTranscriptionProvider
@@ -207,7 +226,7 @@ export class GeminiProvider
                 `A IA usou ferramenta e não escreveu resposta (${resolvedModel}). ` +
                   'Quem chamou decide o que dizer ao cliente.',
               );
-              return { content: '' };
+              return { content: '', usage: usoAcumulado(consumo) };
             }
             throw new Error('A IA retornou uma resposta vazia.');
           }
@@ -219,11 +238,13 @@ export class GeminiProvider
             `Resposta gerada (${resolvedModel}): ${consumo.entrada} tokens de entrada, ` +
               `${consumo.saida} de saída, ${consumo.raciocinio} de raciocínio.`,
           );
-          return { content: text };
+          return { content: text, usage: usoAcumulado(consumo) };
         }
 
         if (!executeTool) {
-          throw new Error('A IA tentou usar uma ferramenta, mas nenhum executor foi configurado.');
+          throw new Error(
+            'A IA tentou usar uma ferramenta, mas nenhum executor foi configurado.',
+          );
         }
 
         // Preserva o turno exato do modelo (com a chamada de função) antes
@@ -245,7 +266,9 @@ export class GeminiProvider
                 functionResponse: {
                   name,
                   id: call.id,
-                  response: result.error ? { error: result.error } : { output: result.output ?? null },
+                  response: result.error
+                    ? { error: result.error }
+                    : { output: result.output ?? null },
                 },
               },
             ],
@@ -253,7 +276,9 @@ export class GeminiProvider
         }
       }
 
-      throw new Error('A IA excedeu o limite de chamadas de ferramenta nesta resposta.');
+      throw new Error(
+        'A IA excedeu o limite de chamadas de ferramenta nesta resposta.',
+      );
     } catch (error) {
       this.logger.error(
         `Falha ao chamar o Gemini (${resolvedModel})`,

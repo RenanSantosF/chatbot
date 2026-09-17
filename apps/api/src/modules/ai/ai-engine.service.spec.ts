@@ -2,6 +2,21 @@ import { AiEngineService, executouDeVerdade } from './ai-engine.service';
 import type { AiToolExecutor } from './providers/ai-provider.interface';
 
 /**
+ * O limite mensal sempre folgado, pros testes daqui não serem sobre ELE —
+ * o teste dedicado à cota vive em ai-usage.service.spec.ts. Uma função, e
+ * não um objeto de módulo, pra cada motor ter os próprios `jest.fn()` e um
+ * teste não contaminar a contagem de chamadas do outro.
+ */
+function usageMockOk() {
+  return {
+    limite: jest
+      .fn()
+      .mockResolvedValue({ podeResponder: true, usadas: 0, limite: 3000 }),
+    registrar: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+/**
  * O motor decide DUAS coisas que quebram o atendimento quando erram: se a
  * IA responde, e se o que ela fez confere com o que ela disse.
  *
@@ -90,6 +105,7 @@ function motorCom(resultadoDaFerramenta: { output?: unknown; error?: string }) {
     contextBuilder as never,
     credentials as never,
     tools as never,
+    usageMockOk() as never,
     provider,
   );
 
@@ -181,6 +197,7 @@ describe('AiEngineService.generateReply — quando a IA não responde', () => {
         contextBuilder as never,
         credentials as never,
         tools as never,
+        usageMockOk() as never,
         provider,
       ),
       provider,
@@ -247,6 +264,7 @@ function motorQueResponde(conteudo: string, prompt: string) {
         .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
     } as never,
     { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+    usageMockOk() as never,
     { generateReply: jest.fn().mockResolvedValue({ content: conteudo }) },
   );
   return service;
@@ -280,7 +298,9 @@ describe('AiEngineService.generateReply — dado inventado não sai', () => {
 
     expect(resultado.tipo).toBe('respondeu');
     if (resultado.tipo !== 'respondeu') return;
-    expect(resultado.resposta.content).toBe('Ficamos na Avenida Paulista, 1000.');
+    expect(resultado.resposta.content).toBe(
+      'Ficamos na Avenida Paulista, 1000.',
+    );
   });
 
   it('o histórico conta como fonte: repetir o dado do cliente é permitido', async () => {
@@ -295,11 +315,13 @@ describe('AiEngineService.generateReply — dado inventado não sai', () => {
         }),
       } as never,
       {
-        resolve: jest
-          .fn()
-          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+        resolve: jest.fn().mockResolvedValue({
+          active: true,
+          credentials: { apiKey: 'chave' },
+        }),
       } as never,
       { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      usageMockOk() as never,
       {
         generateReply: jest
           .fn()
@@ -331,9 +353,10 @@ describe('a IA agiu e não escreveu nada', () => {
         }),
       } as never,
       {
-        resolve: jest
-          .fn()
-          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+        resolve: jest.fn().mockResolvedValue({
+          active: true,
+          credentials: { apiKey: 'chave' },
+        }),
       } as never,
       {
         getEnabledDeclarations: jest
@@ -343,6 +366,7 @@ describe('a IA agiu e não escreveu nada', () => {
           ]),
         execute: jest.fn().mockResolvedValue({ output: { status: 'ok' } }),
       } as never,
+      usageMockOk() as never,
       {
         generateReply: jest.fn(
           async (input: { executeTool?: AiToolExecutor }) => {
@@ -355,9 +379,8 @@ describe('a IA agiu e não escreveu nada', () => {
   }
 
   it('avisa o cliente de que alguém assume, quando transferiu', async () => {
-    const resultado = await motorSemTexto('transferToQueue').generateReply(
-      'conversa-1',
-    );
+    const resultado =
+      await motorSemTexto('transferToQueue').generateReply('conversa-1');
 
     expect(resultado.tipo).toBe('respondeu');
     if (resultado.tipo !== 'respondeu') return;
@@ -385,11 +408,13 @@ describe('a IA agiu e não escreveu nada', () => {
         }),
       } as never,
       {
-        resolve: jest
-          .fn()
-          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+        resolve: jest.fn().mockResolvedValue({
+          active: true,
+          credentials: { apiKey: 'chave' },
+        }),
       } as never,
       { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      usageMockOk() as never,
       { generateReply: jest.fn().mockResolvedValue({ content: '  ' }) },
     );
 
@@ -404,16 +429,19 @@ describe('resposta meio certa não é jogada fora', () => {
     const service = new AiEngineService(
       {
         build: jest.fn().mockResolvedValue({
-          systemPrompt: '[Instruções] Horário: segunda a sexta, das 08h às 17h.',
+          systemPrompt:
+            '[Instruções] Horário: segunda a sexta, das 08h às 17h.',
           history: [{ role: 'user', content: 'Qual horário vocês atendem?' }],
         }),
       } as never,
       {
-        resolve: jest
-          .fn()
-          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+        resolve: jest.fn().mockResolvedValue({
+          active: true,
+          credentials: { apiKey: 'chave' },
+        }),
       } as never,
       { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      usageMockOk() as never,
       {
         generateReply: jest.fn().mockResolvedValue({
           content:
@@ -456,9 +484,10 @@ describe('o provedor falha DEPOIS de a ferramenta ter rodado', () => {
         }),
       } as never,
       {
-        resolve: jest
-          .fn()
-          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+        resolve: jest.fn().mockResolvedValue({
+          active: true,
+          credentials: { apiKey: 'chave' },
+        }),
       } as never,
       {
         getEnabledDeclarations: jest
@@ -468,6 +497,7 @@ describe('o provedor falha DEPOIS de a ferramenta ter rodado', () => {
           ]),
         execute: jest.fn().mockResolvedValue({ output: { status: 'ok' } }),
       } as never,
+      usageMockOk() as never,
       {
         generateReply: jest.fn(
           async (input: { executeTool?: AiToolExecutor }) => {
@@ -483,9 +513,9 @@ describe('o provedor falha DEPOIS de a ferramenta ter rodado', () => {
 
   it('o cliente é avisado, em vez de ficar no silêncio', async () => {
     const resultado =
-      await motorQueEstouraDepoisDaFerramenta(
-        'transferToQueue',
-      ).generateReply('conversa-1');
+      await motorQueEstouraDepoisDaFerramenta('transferToQueue').generateReply(
+        'conversa-1',
+      );
 
     expect(resultado.tipo).toBe('respondeu');
     if (resultado.tipo !== 'respondeu') return;
@@ -496,9 +526,9 @@ describe('o provedor falha DEPOIS de a ferramenta ter rodado', () => {
     // O segundo escalonamento é que produzia a nota falsa e mandava a
     // conversa pelas regras de direcionamento outra vez.
     const resultado =
-      await motorQueEstouraDepoisDaFerramenta(
-        'transferToQueue',
-      ).generateReply('conversa-1');
+      await motorQueEstouraDepoisDaFerramenta('transferToQueue').generateReply(
+        'conversa-1',
+      );
 
     expect(resultado.tipo).toBe('respondeu');
     if (resultado.tipo !== 'respondeu') return;
@@ -514,11 +544,13 @@ describe('o provedor falha DEPOIS de a ferramenta ter rodado', () => {
         }),
       } as never,
       {
-        resolve: jest
-          .fn()
-          .mockResolvedValue({ active: true, credentials: { apiKey: 'chave' } }),
+        resolve: jest.fn().mockResolvedValue({
+          active: true,
+          credentials: { apiKey: 'chave' },
+        }),
       } as never,
       { getEnabledDeclarations: jest.fn().mockResolvedValue([]) } as never,
+      usageMockOk() as never,
       {
         generateReply: jest
           .fn()

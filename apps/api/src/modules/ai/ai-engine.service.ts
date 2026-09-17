@@ -10,6 +10,7 @@ import {
 import { verificarResposta, type VerificacaoDaResposta } from './ai-guardrails';
 import { porQueAIaNaoRespondeu } from './ai-indisponivel';
 import { AiToolsService } from './tools/ai-tools.service';
+import { AiUsageService } from './ai-usage.service';
 
 export interface AiReply {
   content: string;
@@ -93,6 +94,7 @@ export class AiEngineService {
     private readonly contextBuilder: AiContextBuilder,
     private readonly credentials: AiCredentialsResolver,
     private readonly tools: AiToolsService,
+    private readonly usage: AiUsageService,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
   ) {}
 
@@ -129,11 +131,14 @@ export class AiEngineService {
    */
   async diagnostico(): Promise<{
     pode: boolean;
-    motivo?: 'desligada' | 'sem-chave';
+    motivo?: 'desligada' | 'sem-chave' | 'limite-mensal';
   }> {
     const { active, credentials } = await this.credentials.resolve();
     if (!active) return { pode: false, motivo: 'desligada' };
     if (!credentials) return { pode: false, motivo: 'sem-chave' };
+    if (!(await this.usage.limite()).podeResponder) {
+      return { pode: false, motivo: 'limite-mensal' };
+    }
     return { pode: true };
   }
 
@@ -158,17 +163,36 @@ export class AiEngineService {
         // resposta — e, numa demonstração pra cliente, deprecia o produto
         // sem necessidade. O detalhe técnico continua no log, que é onde
         // ele serve pra alguma coisa.
-        motivo: 'O atendimento automático está desligado e o cliente está esperando.',
+        motivo:
+          'O atendimento automático está desligado e o cliente está esperando.',
       };
     }
     if (!credentials) {
       // Isto é um problema da PLATAFORMA (variável de ambiente ausente),
       // nunca da empresa — desde que a chave deixou de ser cadastrada por
       // tenant, não há nada que o dono da empresa possa configurar aqui.
-      this.logger.error('GEMINI_API_KEY não configurada no ambiente da plataforma.');
+      this.logger.error(
+        'GEMINI_API_KEY não configurada no ambiente da plataforma.',
+      );
       return {
         tipo: 'indisponivel',
-        motivo: 'O atendimento automático está temporariamente indisponível e o cliente está esperando.',
+        motivo:
+          'O atendimento automático está temporariamente indisponível e o cliente está esperando.',
+      };
+    }
+
+    const cota = await this.usage.limite();
+    if (!cota.podeResponder) {
+      // Estourar a cota não é "erro" — é o plano fazendo exatamente o que
+      // prometeu. O cliente é atendido por uma pessoa normalmente; só a
+      // resposta AUTOMÁTICA para até o mês virar (ver AiUsageService).
+      this.logger.warn(
+        `Limite mensal de respostas da IA atingido (${cota.usadas}/${cota.limite}) — não respondendo a conversa ${conversationId}.`,
+      );
+      return {
+        tipo: 'indisponivel',
+        motivo:
+          'O atendimento automático atingiu o limite de respostas deste mês e o cliente está esperando.',
       };
     }
 
@@ -226,6 +250,21 @@ export class AiEngineService {
       });
       this.logger.log(`IA respondeu a conversa ${conversationId}.`);
 
+      // Registrado mesmo quando a resposta final fica vazia (linha 262
+      // abaixo): a chamada ao provedor aconteceu e custou, o texto vazio
+      // é sobre o QUE o modelo disse, não sobre se a plataforma pagou.
+      // Uma falha aqui é só contabilidade — nunca pode derrubar a
+      // resposta que o cliente já vai receber.
+      if (result.usage) {
+        await this.usage.registrar(result.usage).catch((erro: unknown) => {
+          this.logger.warn(
+            `Não deu pra registrar o uso da IA na conversa ${conversationId}: ${
+              erro instanceof Error ? erro.message : String(erro)
+            }`,
+          );
+        });
+      }
+
       /*
        * A IA agiu e não falou. Alguém precisa falar.
        *
@@ -252,7 +291,8 @@ export class AiEngineService {
       }
 
       const ultimaDoCliente =
-        [...context.history].reverse().find((m) => m.role === 'user')?.content ?? '';
+        [...context.history].reverse().find((m) => m.role === 'user')
+          ?.content ?? '';
 
       /*
        * Tudo que o modelo teve à disposição, num texto só.
@@ -329,7 +369,10 @@ export class AiEngineService {
       if (cortesia) {
         return {
           tipo: 'respondeu',
-          resposta: { content: cortesia, verificacao: { precisaHandoff: false } },
+          resposta: {
+            content: cortesia,
+            verificacao: { precisaHandoff: false },
+          },
         };
       }
 
@@ -360,11 +403,28 @@ export class AiEngineService {
       );
     }
 
+    // O simulador chama o MESMO provedor pago — sem esta conferência, ele
+    // seria uma porta sem limite nenhum pra gerar custo de IA, driblando
+    // por completo a cota que generateReply respeita.
+    const cota = await this.usage.limite();
+    if (!cota.podeResponder) {
+      throw new Error(
+        `O limite de respostas da IA deste mês foi atingido (${cota.usadas}/${cota.limite}). Volta a valer no início do próximo mês.`,
+      );
+    }
+
     const context = await this.contextBuilder.buildStandalone(message);
     const result = await this.provider.generateReply({
       ...context,
       ...credentials,
     });
+    if (result.usage) {
+      await this.usage.registrar(result.usage).catch((erro: unknown) => {
+        this.logger.warn(
+          `Não deu pra registrar o uso da IA no simulador: ${erro instanceof Error ? erro.message : String(erro)}`,
+        );
+      });
+    }
     return result.content;
   }
 }

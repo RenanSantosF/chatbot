@@ -8,6 +8,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AiContextBuilder } from './ai-context-builder.service';
 import { AiEngineService } from './ai-engine.service';
+import { AiUsageService } from './ai-usage.service';
 import { TranscricaoService } from './transcricao.service';
 import { AiInstructionsController } from './ai-instructions.controller';
 import { AiInstructionsService } from './ai-instructions.service';
@@ -19,16 +20,31 @@ import { AiToolsController } from './tools/ai-tools.controller';
 import { AiToolsService } from './tools/ai-tools.service';
 
 @Module({
-  imports: [AiProviderModule, KnowledgeModule, RealtimeModule, WhatsappModule, QueuesModule, RoutingModule, CollectionModule, InboxSettingsModule],
-  controllers: [AiSettingsController, AiInstructionsController, AiTestController, AiToolsController],
+  imports: [
+    AiProviderModule,
+    KnowledgeModule,
+    RealtimeModule,
+    WhatsappModule,
+    QueuesModule,
+    RoutingModule,
+    CollectionModule,
+    InboxSettingsModule,
+  ],
+  controllers: [
+    AiSettingsController,
+    AiInstructionsController,
+    AiTestController,
+    AiToolsController,
+  ],
   providers: [
     AiContextBuilder,
     AiEngineService,
+    AiUsageService,
     TranscricaoService,
     AiSettingsService,
     AiInstructionsService,
     AiToolsService,
   ],
-  exports: [AiEngineService, TranscricaoService],
+  exports: [AiEngineService, AiUsageService, TranscricaoService],
 })
 export class AiModule {}
