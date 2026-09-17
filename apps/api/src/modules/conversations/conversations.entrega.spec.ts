@@ -58,7 +58,7 @@ function montar(
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    { get: jest.fn().mockResolvedValue({ queueVisibility: 'ALL' }) } as never,
     {} as never,
     {} as never,
     {} as never,
@@ -295,13 +295,11 @@ describe('a chave que chega diferente da que foi gravada', () => {
               const sufixo = (alvo as { endsWith?: string })?.endsWith;
               return sufixo ? (porExterno[sufixo] ?? null) : null;
             }),
-          update: jest
-            .fn()
-            .mockImplementation((args: { data: unknown }) => ({
-              id: 'msg-1',
-              conversationId: 'conversa-1',
-              ...(args.data as object),
-            })),
+          update: jest.fn().mockImplementation((args: { data: unknown }) => ({
+            id: 'msg-1',
+            conversationId: 'conversa-1',
+            ...(args.data as object),
+          })),
         },
       },
     };
@@ -326,7 +324,11 @@ describe('a chave que chega diferente da que foi gravada', () => {
   }
 
   const GRAVADO = '5527999998888@s.whatsapp.net|1|3EB0ABC';
-  const MENSAGEM = { id: 'msg-1', status: 'SENT', conversationId: 'conversa-1' };
+  const MENSAGEM = {
+    id: 'msg-1',
+    status: 'SENT',
+    conversationId: 'conversa-1',
+  };
 
   it('acha pela busca exata quando as duas formas batem', async () => {
     const { service, consultas } = montarComBusca({ [GRAVADO]: MENSAGEM });

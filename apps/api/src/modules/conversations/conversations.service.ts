@@ -36,6 +36,20 @@ import { idDaMensagem } from '../whatsapp/canal/evolution/evolution-id';
 import { AVISO_DE_INDISPONIBILIDADE } from '../ai/ai-indisponivel';
 
 /**
+ * Quem está pedindo — o suficiente pra saber o que essa pessoa pode ver.
+ *
+ * Presente = ação de painel, veio de um `@CurrentUser()` de controller.
+ * Ausente = contexto de sistema (IA, webhook) — nenhum desses chama os
+ * métodos abaixo hoje (só o controller chama), mas o parâmetro continua
+ * opcional pra deixar essa intenção explícita no tipo, e não só na
+ * convenção.
+ */
+export interface ConversationViewer {
+  userId: string;
+  role: UserRole;
+}
+
+/**
  * Os três estados que importam pra quem atende, montados a partir dos cinco
  * status internos.
  *
@@ -583,10 +597,7 @@ export class ConversationsService {
    *   mundo, ficaria sem atendimento);
    * - tudo, pra dono e admin: sem isso não dá pra chefiar.
    */
-  private async recorteDeVisibilidade(viewer?: {
-    userId: string;
-    role: UserRole;
-  }) {
+  private async recorteDeVisibilidade(viewer?: ConversationViewer) {
     if (!viewer || viewer.role === 'OWNER' || viewer.role === 'ADMIN')
       return {};
 
@@ -750,8 +761,9 @@ export class ConversationsService {
   async listMessages(
     conversationId: string,
     options: { cursor?: string; limit?: number } = {},
+    viewer?: ConversationViewer,
   ) {
-    await this.requireConversationExists(conversationId);
+    await this.requireConversationExists(conversationId, viewer);
     return this.paginarMensagens(conversationId, options);
   }
 
@@ -895,15 +907,39 @@ export class ConversationsService {
     });
   }
 
-  private async requireConversationExists(id: string) {
+  /**
+   * `NotFoundException`, nunca `ForbiddenException`, quando o viewer não
+   * pode ver a conversa.
+   *
+   * De propósito: dizer "sem permissão" pra um ID que veio de fora
+   * confirmaria que aquele ID existe em algum lugar da empresa, mesmo que
+   * o viewer nunca vá conseguir abri-lo. "Não encontrada" é a mesma
+   * resposta de um ID inventado — não dá pra distinguir os dois casos de
+   * fora, e é assim que tem que ser.
+   */
+  private async requireConversationExists(
+    id: string,
+    viewer?: ConversationViewer,
+  ) {
+    const recorte = await this.recorteDeVisibilidade(viewer);
     const exists = await this.prisma.db.conversation.findFirst({
-      where: { id },
+      where: { id, ...recorte },
       select: { id: true },
     });
     if (!exists) {
       throw new NotFoundException('Conversa não encontrada.');
     }
     return exists;
+  }
+
+  /**
+   * Versão pública de `requireConversationExists`, pra serviços que não
+   * podem injetar `ConversationsService` (como `TranscricaoService`, que
+   * já é dependência DELE — injetar de volta criaria ciclo) mas ainda
+   * assim expõem uma rota que lê pelo id da conversa.
+   */
+  async garantirConversaVisivel(id: string, viewer?: ConversationViewer) {
+    await this.requireConversationExists(id, viewer);
   }
 
   /**
@@ -919,10 +955,19 @@ export class ConversationsService {
    *
    * Quem precisa das mensagens usa `getById`, que já pagina — e é a
    * paginação que a tela consome ao rolar pra cima.
+   *
+   * `viewer` aplica o MESMO recorte de setor da listagem (ver
+   * `recorteDeVisibilidade`) — sem ele, a barra lateral escondia uma
+   * conversa de outro setor, mas qualquer operação sobre ela (mudar
+   * prioridade, atribuir, encerrar, etiquetar, anexar) continuava
+   * funcionando pra quem soubesse ou adivinhasse o ID. A listagem sempre
+   * foi só a vitrine; sem o recorte aqui, ela nunca foi o controle de
+   * acesso de verdade.
    */
-  private async requireConversation(id: string) {
+  private async requireConversation(id: string, viewer?: ConversationViewer) {
+    const recorte = await this.recorteDeVisibilidade(viewer);
     const conversation = await this.prisma.db.conversation.findFirst({
-      where: { id },
+      where: { id, ...recorte },
       include: conversationInclude,
     });
     if (!conversation) {
@@ -944,9 +989,10 @@ export class ConversationsService {
    * da conversa aparece de verdade na área visível. O contador vem intacto
    * daqui justamente pra ela conseguir desenhar o marcador antes disso.
    */
-  async getById(id: string) {
+  async getById(id: string, viewer?: ConversationViewer) {
+    const recorte = await this.recorteDeVisibilidade(viewer);
     const conversation = await this.prisma.db.conversation.findFirst({
-      where: { id },
+      where: { id, ...recorte },
       include: conversationInclude,
     });
     if (!conversation) {
@@ -975,9 +1021,10 @@ export class ConversationsService {
    * cada rolagem que chega no fim, e o caso comum é o contador já estar
    * zerado.
    */
-  async marcarComoLida(id: string) {
+  async marcarComoLida(id: string, viewer?: ConversationViewer) {
+    const recorte = await this.recorteDeVisibilidade(viewer);
     const conversation = await this.prisma.db.conversation.findFirst({
-      where: { id },
+      where: { id, ...recorte },
       select: { unreadCount: true },
     });
     if (!conversation) {
@@ -1026,8 +1073,12 @@ export class ConversationsService {
     }
   }
 
-  async setPriority(conversationId: string, priority: ConversationPriority) {
-    await this.requireConversation(conversationId);
+  async setPriority(
+    conversationId: string,
+    priority: ConversationPriority,
+    viewer?: ConversationViewer,
+  ) {
+    await this.requireConversation(conversationId, viewer);
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
       data: { priority },
@@ -1470,8 +1521,9 @@ export class ConversationsService {
     agentId: string,
     content: string,
     replyToId?: string,
+    viewer?: ConversationViewer,
   ) {
-    await this.requireConversationExists(conversationId);
+    await this.requireConversationExists(conversationId, viewer);
     await this.reabrirSePreciso(conversationId, agentId);
     await this.assumirAoResponder(conversationId, agentId);
 
@@ -1660,9 +1712,11 @@ export class ConversationsService {
     conversationId: string,
     messageId: string,
     emoji: string,
+    viewer?: ConversationViewer,
   ) {
+    const recorte = await this.recorteDeVisibilidade(viewer);
     const conversation = await this.prisma.db.conversation.findFirst({
-      where: { id: conversationId },
+      where: { id: conversationId, ...recorte },
       include: { customer: true },
     });
     if (!conversation) {
@@ -1791,7 +1845,7 @@ export class ConversationsService {
     messageId: string,
     quem: { userId: string; role: UserRole; name?: string },
   ) {
-    await this.requireConversationExists(conversationId);
+    await this.requireConversationExists(conversationId, quem);
 
     const mensagem = await this.prisma.db.message.findFirst({
       where: { id: messageId, conversationId },
@@ -1880,6 +1934,7 @@ export class ConversationsService {
     messageId: string,
     toConversationId: string,
     agentId: string,
+    viewer?: ConversationViewer,
   ) {
     const source = await this.prisma.db.message.findFirst({
       where: { id: messageId },
@@ -1887,6 +1942,13 @@ export class ConversationsService {
     if (!source) {
       throw new NotFoundException('Mensagem não encontrada.');
     }
+    // A conversa DE ONDE a mensagem sai também passa pelo recorte de
+    // visibilidade, e não só a de destino. Sem isto, encaminhar era uma
+    // porta lateral pra ler o conteúdo de uma conversa de outro setor:
+    // bastava adivinhar ou obter um id de mensagem de lá e mandar pra uma
+    // conversa própria — o texto chegava inteiro, sem passar por
+    // `requireConversation` nenhuma vez.
+    await this.requireConversationExists(source.conversationId, viewer);
     // Apagar e continuar podendo encaminhar não é apagar: o conteúdo já
     // não aparece no painel, mas sairia inteiro pro cliente de outra
     // conversa.
@@ -1896,7 +1958,7 @@ export class ConversationsService {
       );
     }
 
-    const target = await this.requireConversation(toConversationId);
+    const target = await this.requireConversation(toConversationId, viewer);
 
     if (source.messageType === 'TEXT') {
       return this.sendAgentMessage(toConversationId, agentId, source.content);
@@ -1989,8 +2051,9 @@ export class ConversationsService {
       size: number;
     },
     caption?: string,
+    viewer?: ConversationViewer,
   ) {
-    const conversation = await this.requireConversation(conversationId);
+    const conversation = await this.requireConversation(conversationId, viewer);
     await this.reabrirSePreciso(conversationId, agentId);
     await this.assumirAoResponder(conversationId, agentId);
 
@@ -2116,14 +2179,22 @@ export class ConversationsService {
    * etiqueta aparece na LISTA, e duas pessoas olhando o mesmo Inbox
    * precisam ver a mesma classificação sem recarregar a página.
    */
-  async marcarEtiqueta(conversationId: string, tagId: string) {
-    await this.requireConversationExists(conversationId);
+  async marcarEtiqueta(
+    conversationId: string,
+    tagId: string,
+    viewer?: ConversationViewer,
+  ) {
+    await this.requireConversationExists(conversationId, viewer);
     await this.tags.marcar(conversationId, tagId);
     return this.emitirConversaAtualizada(conversationId);
   }
 
-  async desmarcarEtiqueta(conversationId: string, tagId: string) {
-    await this.requireConversationExists(conversationId);
+  async desmarcarEtiqueta(
+    conversationId: string,
+    tagId: string,
+    viewer?: ConversationViewer,
+  ) {
+    await this.requireConversationExists(conversationId, viewer);
     await this.tags.desmarcar(conversationId, tagId);
     return this.emitirConversaAtualizada(conversationId);
   }
@@ -2157,8 +2228,9 @@ export class ConversationsService {
     conversationId: string,
     userId: string,
     quemPede?: { role: UserRole; force?: boolean },
+    viewer?: ConversationViewer,
   ) {
-    const antes = await this.requireConversation(conversationId);
+    const antes = await this.requireConversation(conversationId, viewer);
 
     // Tomar pra si uma conversa que já tem dono não é proibido, mas também
     // não pode ser acidental: duas pessoas respondendo o mesmo cliente é o
@@ -2705,8 +2777,13 @@ export class ConversationsService {
    * quanto pra passar um caso adiante — em nenhum dos dois o sistema deve
    * decidir sozinho pela agenda de outra pessoa.
    */
-  async transferTo(conversationId: string, toUserId: string, byUserId: string) {
-    await this.requireConversation(conversationId);
+  async transferTo(
+    conversationId: string,
+    toUserId: string,
+    byUserId: string,
+    viewer?: ConversationViewer,
+  ) {
+    await this.requireConversation(conversationId, viewer);
 
     const destino = await this.prisma.db.user.findFirst({
       where: { id: toUserId, status: 'ACTIVE' },
@@ -2716,7 +2793,7 @@ export class ConversationsService {
       throw new NotFoundException('Colaborador não encontrado.');
     }
     if (toUserId === byUserId) {
-      return this.assign(conversationId, byUserId);
+      return this.assign(conversationId, byUserId, undefined, viewer);
     }
 
     const conversation = await this.prisma.db.conversation.update({
@@ -2765,8 +2842,9 @@ export class ConversationsService {
     conversationId: string,
     queueId: string,
     byUserId: string,
+    viewer?: ConversationViewer,
   ) {
-    await this.requireConversation(conversationId);
+    await this.requireConversation(conversationId, viewer);
 
     const setor = await this.prisma.db.queue.findFirst({
       where: { id: queueId },
@@ -2833,14 +2911,18 @@ export class ConversationsService {
   }
 
   /** Quem foi indicado confirma que vai atender. */
-  async acceptAssignment(conversationId: string, userId: string) {
-    const atual = await this.requireConversation(conversationId);
+  async acceptAssignment(
+    conversationId: string,
+    userId: string,
+    viewer?: ConversationViewer,
+  ) {
+    const atual = await this.requireConversation(conversationId, viewer);
     if (atual.assignedUserId !== userId) {
       throw new BadRequestException(
         'Esta conversa foi indicada a outra pessoa.',
       );
     }
-    return this.assign(conversationId, userId);
+    return this.assign(conversationId, userId, undefined, viewer);
   }
 
   /**
@@ -2852,8 +2934,9 @@ export class ConversationsService {
     conversationId: string,
     userId: string,
     motivo?: string,
+    viewer?: ConversationViewer,
   ) {
-    const atual = await this.requireConversation(conversationId);
+    const atual = await this.requireConversation(conversationId, viewer);
 
     // Já sem dono: a recusa aconteceu (dois cliques, duas abas, ou a tela
     // pintou do cache antes de reconciliar). Devolver o estado atual em vez
@@ -2899,9 +2982,10 @@ export class ConversationsService {
     return conversation;
   }
 
-  async reopen(conversationId: string) {
+  async reopen(conversationId: string, viewer?: ConversationViewer) {
+    const recorte = await this.recorteDeVisibilidade(viewer);
     const before = await this.prisma.db.conversation.findFirst({
-      where: { id: conversationId },
+      where: { id: conversationId, ...recorte },
       select: { status: true },
     });
     if (!before) {
@@ -2925,8 +3009,8 @@ export class ConversationsService {
     return conversation;
   }
 
-  async resolve(conversationId: string) {
-    await this.requireConversationExists(conversationId);
+  async resolve(conversationId: string, viewer?: ConversationViewer) {
+    await this.requireConversationExists(conversationId, viewer);
 
     const settings = await this.inboxSettings.get();
     if (settings.notifyOnResolve && settings.resolveMessage.trim()) {
@@ -2966,8 +3050,12 @@ export class ConversationsService {
     return conversation;
   }
 
-  async setAiMode(conversationId: string, aiMode: AiMode) {
-    await this.requireConversation(conversationId);
+  async setAiMode(
+    conversationId: string,
+    aiMode: AiMode,
+    viewer?: ConversationViewer,
+  ) {
+    await this.requireConversation(conversationId, viewer);
 
     // Religar a IA numa conversa não pode contrariar a chave geral. Dava
     // pra "reativar a IA" no chat com ela desligada nas configurações: o

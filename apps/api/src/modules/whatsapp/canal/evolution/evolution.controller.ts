@@ -13,7 +13,21 @@ import { EvolutionService } from './evolution.service';
 export class EvolutionController {
   constructor(private readonly evolution: EvolutionService) {}
 
+  /**
+   * `@RequiresPermission('whatsapp.manage')` aqui não é redundante com o
+   * comentário da classe — faltava de verdade. `status()` devolve o QR
+   * code e o pairingCode brutos (ver EvolutionService.status), que são
+   * material de pareamento: quem tiver essa dupla consegue parear um
+   * WhatsApp como se fosse o dono da conta. Sem a trava, qualquer papel
+   * autenticado da empresa (inclusive atendente) lia isso batendo direto
+   * na API, mesmo sem a tela de Configurações — que já é restrita —
+   * aparecer pra ele. O estado "conectado/desconectado" que todo mundo
+   * PRECISA ver (a faixa vermelha do painel) vem de outro lugar,
+   * `EstadoDoCanalService` via `/auth/me`, que não expõe pareamento
+   * nenhum.
+   */
   @Get()
+  @RequiresPermission('whatsapp.manage')
   status() {
     return this.evolution.status();
   }

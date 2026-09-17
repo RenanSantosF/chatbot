@@ -67,7 +67,9 @@ export class ConversationsController {
   }
 
   /** O nome que a linha do registro vai mostrar meses depois. */
-  private nomeDoCliente(conversa: { customer?: { name?: string | null } | null }) {
+  private nomeDoCliente(conversa: {
+    customer?: { name?: string | null } | null;
+  }) {
     return conversa.customer?.name ?? 'cliente sem nome';
   }
 
@@ -164,10 +166,7 @@ export class ConversationsController {
 
   @Post('start')
   @RequiresPermission('conversations.send')
-  start(
-    @Body() dto: StartConversationDto,
-    @CurrentUser() user: RequestUser,
-  ) {
+  start(@Body() dto: StartConversationDto, @CurrentUser() user: RequestUser) {
     return this.conversationsService.startConversation(dto, user.userId);
   }
 
@@ -199,21 +198,29 @@ export class ConversationsController {
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) {
-    return this.conversationsService.getById(id);
+  getById(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.conversationsService.getById(id, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   /** Páginas anteriores do histórico — usado pela rolagem infinita pra cima. */
   @Get(':id/messages')
   listMessages(
     @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.conversationsService.listMessages(id, {
-      cursor,
-      limit: limit ? Number(limit) : undefined,
-    });
+    return this.conversationsService.listMessages(
+      id,
+      {
+        cursor,
+        limit: limit ? Number(limit) : undefined,
+      },
+      { userId: user.userId, role: user.role },
+    );
   }
 
   @Post(':id/messages/:messageId/reaction')
@@ -221,8 +228,17 @@ export class ConversationsController {
     @Param('id') id: string,
     @Param('messageId') messageId: string,
     @Body('emoji') emoji: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.conversationsService.reactToMessage(id, messageId, emoji ?? '');
+    return this.conversationsService.reactToMessage(
+      id,
+      messageId,
+      emoji ?? '',
+      {
+        userId: user.userId,
+        role: user.role,
+      },
+    );
   }
 
   /**
@@ -234,10 +250,15 @@ export class ConversationsController {
    */
   @Post(':id/messages/:messageId/transcrever')
   @RequiresPermission('conversations.send')
-  transcrever(
+  async transcrever(
     @Param('id') id: string,
     @Param('messageId') messageId: string,
+    @CurrentUser() user: RequestUser,
   ) {
+    await this.conversationsService.garantirConversaVisivel(id, {
+      userId: user.userId,
+      role: user.role,
+    });
     return this.transcricao.transcreverAPedido(id, messageId);
   }
 
@@ -272,6 +293,7 @@ export class ConversationsController {
       messageId,
       toConversationId,
       user.userId,
+      { userId: user.userId, role: user.role },
     );
   }
 
@@ -287,6 +309,7 @@ export class ConversationsController {
       user.userId,
       dto.content,
       dto.replyToId,
+      { userId: user.userId, role: user.role },
     );
   }
 
@@ -302,10 +325,15 @@ export class ConversationsController {
     @CurrentUser() user: RequestUser,
     @Body('force') force?: boolean,
   ) {
-    const conversa = await this.conversationsService.assign(id, user.userId, {
-      role: user.role,
-      force: Boolean(force),
-    });
+    const conversa = await this.conversationsService.assign(
+      id,
+      user.userId,
+      {
+        role: user.role,
+        force: Boolean(force),
+      },
+      { userId: user.userId, role: user.role },
+    );
     await this.registrar(
       user,
       'CONVERSA_ATRIBUIDA',
@@ -326,6 +354,7 @@ export class ConversationsController {
       id,
       toUserId,
       user.userId,
+      { userId: user.userId, role: user.role },
     );
     await this.registrar(
       user,
@@ -344,7 +373,10 @@ export class ConversationsController {
     @Body('queueId') queueId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.conversationsService.transferToQueue(id, queueId, user.userId);
+    return this.conversationsService.transferToQueue(id, queueId, user.userId, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   /**
@@ -357,19 +389,36 @@ export class ConversationsController {
    */
   @Post(':id/tags/:tagId')
   @RequiresPermission('conversations.send')
-  marcar(@Param('id') id: string, @Param('tagId') tagId: string) {
-    return this.conversationsService.marcarEtiqueta(id, tagId);
+  marcar(
+    @Param('id') id: string,
+    @Param('tagId') tagId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.marcarEtiqueta(id, tagId, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   @Delete(':id/tags/:tagId')
   @RequiresPermission('conversations.send')
-  desmarcar(@Param('id') id: string, @Param('tagId') tagId: string) {
-    return this.conversationsService.desmarcarEtiqueta(id, tagId);
+  desmarcar(
+    @Param('id') id: string,
+    @Param('tagId') tagId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.desmarcarEtiqueta(id, tagId, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   @Post(':id/accept')
   accept(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.conversationsService.acceptAssignment(id, user.userId);
+    return this.conversationsService.acceptAssignment(id, user.userId, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   @Post(':id/decline')
@@ -378,7 +427,12 @@ export class ConversationsController {
     @Body('reason') reason: string | undefined,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.conversationsService.declineAssignment(id, user.userId, reason);
+    return this.conversationsService.declineAssignment(
+      id,
+      user.userId,
+      reason,
+      { userId: user.userId, role: user.role },
+    );
   }
 
   /**
@@ -388,14 +442,20 @@ export class ConversationsController {
    */
   @Post(':id/read')
   @HttpCode(HttpStatus.OK)
-  markRead(@Param('id') id: string) {
-    return this.conversationsService.marcarComoLida(id);
+  markRead(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.conversationsService.marcarComoLida(id, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   @Post(':id/reopen')
   @RequiresPermission('conversations.resolve')
   async reopen(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    const conversa = await this.conversationsService.reopen(id);
+    const conversa = await this.conversationsService.reopen(id, {
+      userId: user.userId,
+      role: user.role,
+    });
     await this.registrar(
       user,
       'CONVERSA_REABERTA',
@@ -408,7 +468,10 @@ export class ConversationsController {
   @Post(':id/resolve')
   @RequiresPermission('conversations.resolve')
   async resolve(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    const conversa = await this.conversationsService.resolve(id);
+    const conversa = await this.conversationsService.resolve(id, {
+      userId: user.userId,
+      role: user.role,
+    });
     await this.registrar(
       user,
       'CONVERSA_RESOLVIDA',
@@ -442,18 +505,29 @@ export class ConversationsController {
       user.userId,
       file,
       caption,
+      { userId: user.userId, role: user.role },
     );
   }
 
   @Post(':id/priority')
   @RequiresPermission('conversations.priority')
-  setPriority(@Param('id') id: string, @Body() dto: SetPriorityDto) {
-    return this.conversationsService.setPriority(id, dto.priority);
+  setPriority(
+    @Param('id') id: string,
+    @Body() dto: SetPriorityDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.setPriority(id, dto.priority, {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   @Post(':id/reactivate-ai')
-  reactivateAi(@Param('id') id: string) {
-    return this.conversationsService.setAiMode(id, 'AI_ACTIVE');
+  reactivateAi(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.conversationsService.setAiMode(id, 'AI_ACTIVE', {
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
   /** Ferramenta de teste: simula uma mensagem chegando de um cliente, sem precisar de um WhatsApp real. */
