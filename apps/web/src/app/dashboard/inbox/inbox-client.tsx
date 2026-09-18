@@ -151,7 +151,11 @@ function mostraResolvidas(filtros: InboxFilters): boolean {
 export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null }) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useSession();
+  const { user, tenant } = useSession();
+  // Identifica de quem é o cache: troca de usuário/empresa na mesma aba
+  // (SPA, sem recarregar) não reinicia esta variável de módulo sozinha —
+  // ver `conversationCache`, que descarta tudo quando esta chave muda.
+  const chaveDaSessao = `${tenant.id}:${user.id}:${user.role}`;
   const [conversations, setConversations] = useState<ConversationSummary[]>(
     inicial?.conversas.items ?? [],
   );
@@ -393,21 +397,46 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       const conversation = await apiFetch<
         ConversationDetail & { messagesCursor: string | null }
       >(`/conversations/${id}`);
-      conversationCache.set(id, {
+      conversationCache.set(chaveDaSessao, id, {
         detail: conversation,
         messagesCursor: conversation.messagesCursor,
       });
       // Só aplica se a pessoa ainda está nessa conversa: numa troca rápida
       // a resposta antiga chegaria depois e sobrescreveria a nova.
       if (selectedIdRef.current === id) {
-        setDetail(conversation);
+        setDetail((prev) => {
+          // Sem detalhe anterior desta MESMA conversa pra reconciliar —
+          // troca de conversa, primeira abertura — a resposta do servidor
+          // já é o estado inteiro.
+          if (!prev || prev.id !== id) return conversation;
+
+          // A mensagem `message.created` do socket pode ter chegado
+          // ENQUANTO este GET estava no ar — o servidor tirou a foto antes
+          // dela existir. Sem isto, a resposta do GET (que "venceu" só por
+          // ter chegado depois) apagava da tela uma mensagem que o socket
+          // já tinha entregue.
+          const ultimaDoServidor = conversation.messages.at(-1)?.createdAt;
+          const chegaramDepoisPeloSocket = ultimaDoServidor
+            ? prev.messages.filter(
+                (m) =>
+                  !m.id.startsWith(ID_OTIMISTA) &&
+                  m.createdAt > ultimaDoServidor &&
+                  !conversation.messages.some((sm) => sm.id === m.id),
+              )
+            : [];
+
+          return {
+            ...conversation,
+            messages: [...conversation.messages, ...chegaramDepoisPeloSocket],
+          };
+        });
         setMessagesCursor(conversation.messagesCursor);
       }
       // Abrir não zera mais nada: quem zera é `marcarLida`, quando o fim da
       // conversa aparece na tela. O contador segue intacto até lá porque é
       // dele que sai a tarja de "N mensagens não lidas".
     },
-    [],
+    [chaveDaSessao],
   );
 
   /**
@@ -521,11 +550,11 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // mantinha a conversa ANTERIOR na tela durante o quadro em que a nova
     // ainda não chegou — dava a impressão de a conversa errada abrir e só
     // depois trocar. Melhor um instante vazio que a conversa errada.
-    const cached = conversationCache.get(selectedId);
+    const cached = conversationCache.get(chaveDaSessao, selectedId);
     setDetail(cached ? cached.detail : null);
     setMessagesCursor(cached ? cached.messagesCursor : null);
     loadDetail(selectedId).catch(() => toast.error("Não deu pra carregar essa conversa."));
-  }, [selectedId, loadDetail]);
+  }, [selectedId, loadDetail, chaveDaSessao]);
 
   useEffect(() => {
     if (!socket) return;
@@ -609,7 +638,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
               )
             : [...prev.messages, message];
 
-        conversationCache.patchMessages(conversationId, messages);
+        conversationCache.patchMessages(chaveDaSessao, conversationId, messages);
         return { ...prev, messages };
       });
     };
@@ -691,7 +720,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // Sem `filters` nas dependências: os ouvintes leem o recorte atual
     // pelo ref, e assim o efeito é montado uma vez só em vez de desligar e
     // religar cinco ouvintes a cada clique na barra de filtros.
-  }, [socket, loadConversations, loadDetail, agendarContagem]);
+  }, [socket, loadConversations, loadDetail, agendarContagem, chaveDaSessao]);
 
   /** Mesma classificação que o servidor faz, só que antes da viagem. */
   function tipoDoArquivo(file: File): ConversationMessage["messageType"] {

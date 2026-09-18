@@ -37,6 +37,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
+import { conversationCache } from "@/lib/conversation-cache";
 import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import type {
@@ -340,6 +341,10 @@ function Shell({
 
   async function handleLogout() {
     await apiFetch("/auth/logout", { method: "POST" });
+    // A troca pra `/login` é navegação de SPA — não recarrega o processo,
+    // então o que ficou em memória (o cache de conversas) sobreviveria
+    // sozinho até a próxima pessoa logar nesta mesma aba.
+    conversationCache.clear();
     router.push("/login");
     router.refresh();
   }
