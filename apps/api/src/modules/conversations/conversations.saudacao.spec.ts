@@ -8,14 +8,16 @@ import { ConversationsService } from './conversations.service';
  * Também é o recurso mais fácil de transformar em robô chato: mandado na
  * hora errada, ele responde a mesma coisa três vezes seguidas.
  */
-function montar(estado: {
-  greetingEnabled?: boolean;
-  greetingMessage?: string;
-  aiMode?: string;
-  conversaAberta?: Record<string, unknown> | null;
-  /** A IA da empresa está ligada E com chave? */
-  iaPodeAtender?: boolean;
-} = {}) {
+function montar(
+  estado: {
+    greetingEnabled?: boolean;
+    greetingMessage?: string;
+    aiMode?: string;
+    conversaAberta?: Record<string, unknown> | null;
+    /** A IA da empresa está ligada E com chave? */
+    iaPodeAtender?: boolean;
+  } = {},
+) {
   const conversa = {
     id: 'conversa-1',
     channel: 'WHATSAPP',
@@ -33,30 +35,46 @@ function montar(estado: {
     tenantId: 'tenant-teste',
     db: {
       conversation: {
-        findFirst: jest.fn().mockImplementation((args: { select?: Record<string, unknown> }) => {
-          if (args?.select && 'status' in args.select) {
-            return { status: 'OPEN', aiMode: conversa.aiMode };
-          }
-          if (args?.select && 'assignedUserId' in args.select) {
-            return { assignedUserId: 'user-1', assignmentAccepted: true, aiMode: 'HUMAN_ACTIVE' };
-          }
-          return estado.conversaAberta !== undefined ? estado.conversaAberta : null;
-        }),
-        create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
-          conversasCriadas.push(args.data);
-          // Reflete o modo escolhido na criação, como o banco faria.
-          return { ...conversa, aiMode: args.data.aiMode ?? conversa.aiMode };
-        }),
+        findFirst: jest
+          .fn()
+          .mockImplementation((args: { select?: Record<string, unknown> }) => {
+            if (args?.select && 'status' in args.select) {
+              return { status: 'OPEN', aiMode: conversa.aiMode };
+            }
+            if (args?.select && 'assignedUserId' in args.select) {
+              return {
+                assignedUserId: 'user-1',
+                assignmentAccepted: true,
+                aiMode: 'HUMAN_ACTIVE',
+              };
+            }
+            return estado.conversaAberta !== undefined
+              ? estado.conversaAberta
+              : null;
+          }),
+        create: jest
+          .fn()
+          .mockImplementation((args: { data: Record<string, unknown> }) => {
+            conversasCriadas.push(args.data);
+            // Reflete o modo escolhido na criação, como o banco faria.
+            return { ...conversa, aiMode: args.data.aiMode ?? conversa.aiMode };
+          }),
         update: jest.fn().mockImplementation((args: { data: unknown }) => {
           atualizacoes.push(args.data as Record<string, unknown>);
           return { ...conversa, ...(args.data as object) };
         }),
       },
       message: {
-        create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
-          criadas.push(args.data);
-          return { id: `msg-${criadas.length}`, createdAt: new Date(), ...args.data };
-        }),
+        create: jest
+          .fn()
+          .mockImplementation((args: { data: Record<string, unknown> }) => {
+            criadas.push(args.data);
+            return {
+              id: `msg-${criadas.length}`,
+              createdAt: new Date(),
+              ...args.data,
+            };
+          }),
         update: jest.fn().mockImplementation((args: { data: unknown }) => ({
           id: 'msg-1',
           ...(args.data as object),
@@ -85,8 +103,10 @@ function montar(estado: {
 
   const service = new ConversationsService(
     prisma as never,
-    { findOrCreateByPhone: jest.fn().mockResolvedValue({ id: 'cliente-1' }) } as never,
-    { emitToTenant: jest.fn() } as never,
+    {
+      findOrCreateByPhone: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+    } as never,
+    { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
     // Devolve algo com forma de resultado: o teste da IA ativa só quer
     // saber que a saudação NÃO saiu, mas o fluxo segue lendo a resposta.
     {

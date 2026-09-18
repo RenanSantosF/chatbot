@@ -19,10 +19,14 @@ function montar(
   } = {},
 ) {
   const update = jest.fn().mockResolvedValue({});
-  const transcribe = jest.fn().mockResolvedValue(
-    opcoes.texto === undefined ? 'bom dia, queria saber o horário' : opcoes.texto,
-  );
-  const emitToTenant = jest.fn();
+  const transcribe = jest
+    .fn()
+    .mockResolvedValue(
+      opcoes.texto === undefined
+        ? 'bom dia, queria saber o horário'
+        : opcoes.texto,
+    );
+  const emitToUsers = jest.fn();
   const download = opcoes.downloadFalha
     ? jest.fn().mockRejectedValue(new Error('404'))
     : jest.fn().mockResolvedValue({
@@ -34,35 +38,61 @@ function montar(
     tenantId: 'tenant-teste',
     db: {
       message: {
-        findFirst: jest.fn().mockImplementation((args: { where: { conversationId?: string } }) => {
-          const mensagem =
-            opcoes.mensagem === undefined
-              ? {
-                  id: 'msg-1',
-                  conversationId: 'conversa-1',
-                  messageType: 'AUDIO',
-                  mediaId: 'midia-1',
-                  transcricao: null,
-                  deletedAt: null,
-                  metadata: {},
-                }
-              : opcoes.mensagem;
-          // A conferência de dono da conversa usa o mesmo findFirst.
-          if (args.where.conversationId && mensagem) {
-            return mensagem.conversationId === args.where.conversationId
-              ? mensagem
-              : null;
-          }
-          return mensagem;
-        }),
+        findFirst: jest
+          .fn()
+          .mockImplementation(
+            (args: { where: { conversationId?: string } }) => {
+              const mensagem =
+                opcoes.mensagem === undefined
+                  ? {
+                      id: 'msg-1',
+                      conversationId: 'conversa-1',
+                      messageType: 'AUDIO',
+                      mediaId: 'midia-1',
+                      transcricao: null,
+                      deletedAt: null,
+                      metadata: {},
+                    }
+                  : opcoes.mensagem;
+              // A conferência de dono da conversa usa o mesmo findFirst.
+              if (args.where.conversationId && mensagem) {
+                return mensagem.conversationId === args.where.conversationId
+                  ? mensagem
+                  : null;
+              }
+              return mensagem;
+            },
+          ),
         update,
+      },
+      conversation: {
+        // Sem setor: todo mundo ativo é destinatário, o que basta pros
+        // testes daqui — quem cobre o recorte por setor de verdade é
+        // `conversations.recorte.spec.ts`.
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ queueId: null, assignedUserId: null }),
+      },
+      user: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'user-1', role: 'AGENT' }]),
+      },
+      queueMember: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       inboxSettings: {
         findFirst: jest.fn().mockResolvedValue({
           transcricaoDeAudio: opcoes.configuracao ?? 'SOB_DEMANDA',
+          queueVisibility: 'ALL',
         }),
+        create: jest.fn(),
       },
     },
+  };
+
+  const inboxSettings = {
+    get: jest.fn().mockResolvedValue({ queueVisibility: 'ALL' }),
   };
 
   const service = new TranscricaoService(
@@ -73,16 +103,17 @@ function montar(
       }),
     } as never,
     { download } as never,
-    { emitToTenant } as never,
-    { transcribe } as never,
+    { emitToUsers } as never,
+    inboxSettings as never,
+    { transcribe },
   );
 
-  return { service, transcribe, update, emitToTenant, download };
+  return { service, transcribe, update, emitToUsers, download };
 }
 
 describe('transcrição de áudio', () => {
   it('transcreve, guarda e avisa a tela', async () => {
-    const { service, update, emitToTenant } = montar();
+    const { service, update, emitToUsers } = montar();
 
     const texto = await service.transcrever('msg-1');
 
@@ -91,7 +122,7 @@ describe('transcrição de áudio', () => {
       where: { id: 'msg-1' },
       data: { transcricao: 'bom dia, queria saber o horário' },
     });
-    expect(emitToTenant).toHaveBeenCalledWith('tenant-teste', 'message.transcrita', {
+    expect(emitToUsers).toHaveBeenCalledWith(['user-1'], 'message.transcrita', {
       conversationId: 'conversa-1',
       messageId: 'msg-1',
       transcricao: 'bom dia, queria saber o horário',
@@ -111,7 +142,9 @@ describe('transcrição de áudio', () => {
       },
     });
 
-    await expect(service.transcrever('msg-1')).resolves.toBe('já transcrito antes');
+    await expect(service.transcrever('msg-1')).resolves.toBe(
+      'já transcrito antes',
+    );
     expect(transcribe).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });
@@ -148,11 +181,11 @@ describe('transcrição de áudio', () => {
   });
 
   it('não grava nem avisa quando o modelo não devolve texto', async () => {
-    const { service, update, emitToTenant } = montar({ texto: null });
+    const { service, update, emitToUsers } = montar({ texto: null });
 
     await expect(service.transcrever('msg-1')).resolves.toBeNull();
     expect(update).not.toHaveBeenCalled();
-    expect(emitToTenant).not.toHaveBeenCalled();
+    expect(emitToUsers).not.toHaveBeenCalled();
   });
 });
 

@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { destinatariosDaConversa } from '../conversations/destinatarios-da-conversa';
+import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { AiCredentialsResolver } from './providers/ai-credentials.resolver';
@@ -42,6 +44,7 @@ export class TranscricaoService {
     private readonly credenciais: AiCredentialsResolver,
     private readonly media: WhatsappMediaService,
     private readonly realtime: RealtimeGateway,
+    private readonly inboxSettings: InboxSettingsService,
     @Inject(AI_PROVIDER) private readonly provider: AiTranscriptionProvider,
   ) {}
 
@@ -107,12 +110,25 @@ export class TranscricaoService {
     });
 
     // A tela precisa saber AGORA: no automático, o balão está aberto na
-    // frente de alguém enquanto isto roda.
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.transcrita', {
-      conversationId: mensagem.conversationId,
-      messageId: mensagem.id,
-      transcricao: texto,
+    // frente de alguém enquanto isto roda. Só quem pode ver a conversa,
+    // pelo mesmo motivo de `ConversationsService.emitirParaConversa`.
+    const conversation = await this.prisma.db.conversation.findFirst({
+      where: { id: mensagem.conversationId },
+      select: { queueId: true, assignedUserId: true },
     });
+    if (conversation) {
+      const settings = await this.inboxSettings.get();
+      const destinatarios = await destinatariosDaConversa(
+        this.prisma,
+        conversation,
+        settings.queueVisibility,
+      );
+      this.realtime.emitToUsers(destinatarios, 'message.transcrita', {
+        conversationId: mensagem.conversationId,
+        messageId: mensagem.id,
+        transcricao: texto,
+      });
+    }
 
     return texto;
   }

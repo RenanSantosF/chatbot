@@ -19,7 +19,11 @@ function montar() {
     customerId: 'cliente-1',
     status: 'OPEN',
     aiMode: 'HUMAN_ACTIVE',
-    customer: { id: 'cliente-1', name: 'Fornecedores', phone: '120363000@g.us' },
+    customer: {
+      id: 'cliente-1',
+      name: 'Fornecedores',
+      phone: '120363000@g.us',
+    },
     messages: [],
   };
 
@@ -28,21 +32,27 @@ function montar() {
     db: {
       conversation: {
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
-          criadas.push(args.data);
-          return { ...conversa, ...args.data };
-        }),
-        update: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
-          atualizacoes.push(args.data);
-          return conversa;
-        }),
+        create: jest
+          .fn()
+          .mockImplementation((args: { data: Record<string, unknown> }) => {
+            criadas.push(args.data);
+            return { ...conversa, ...args.data };
+          }),
+        update: jest
+          .fn()
+          .mockImplementation((args: { data: Record<string, unknown> }) => {
+            atualizacoes.push(args.data);
+            return conversa;
+          }),
         count: jest.fn().mockResolvedValue(0),
       },
       message: {
-        create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
-          mensagens.push(args.data);
-          return { id: 'msg-1', createdAt: new Date(), ...args.data };
-        }),
+        create: jest
+          .fn()
+          .mockImplementation((args: { data: Record<string, unknown> }) => {
+            mensagens.push(args.data);
+            return { id: 'msg-1', createdAt: new Date(), ...args.data };
+          }),
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn(),
@@ -72,7 +82,7 @@ function montar() {
   const service = new ConversationsService(
     prisma as never,
     customers as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
     aiEngine as never,
     { enviarTexto: jest.fn(), marcarComoLida: jest.fn() } as never,
     {} as never,
@@ -167,8 +177,7 @@ describe('conversa de grupo', () => {
     await service.receiveInbound({ ...doGrupo });
 
     const doCliente = mensagens.find((m) => m.senderType === 'CUSTOMER') as
-      | { metadata?: { participante?: string } }
-      | undefined;
+      { metadata?: { participante?: string } } | undefined;
     expect(doCliente?.metadata?.participante).toBe('Ana');
   });
 });
@@ -191,16 +200,22 @@ describe('a trava de grupo vale mesmo com a IA ligada na conversa', () => {
     const contexto = montar();
     // A conversa JÁ existe e está com a IA no comando — o estado errado
     // que ficou no banco de quem foi atingido pelo defeito.
-    (contexto.service as never as {
-      prisma: { db: { conversation: { findFirst: jest.Mock } } };
-    }).prisma.db.conversation.findFirst.mockResolvedValue({
+    (
+      contexto.service as never as {
+        prisma: { db: { conversation: { findFirst: jest.Mock } } };
+      }
+    ).prisma.db.conversation.findFirst.mockResolvedValue({
       id: 'conversa-1',
       tenantId: 'tenant-teste',
       customerId: 'cliente-1',
       status: 'OPEN',
       aiMode: 'AI_ACTIVE',
       priority: 'NORMAL',
-      customer: { id: 'cliente-1', name: 'Fornecedores', phone: '120363000@g.us' },
+      customer: {
+        id: 'cliente-1',
+        name: 'Fornecedores',
+        phone: '120363000@g.us',
+      },
       messages: [],
     });
     return contexto;

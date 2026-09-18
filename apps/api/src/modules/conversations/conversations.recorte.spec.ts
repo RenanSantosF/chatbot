@@ -131,7 +131,7 @@ function montar() {
   const service = new ConversationsService(
     prisma as never,
     {} as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
     { diagnostico: jest.fn().mockResolvedValue({ pode: true }) } as never,
     {} as never,
     {} as never,

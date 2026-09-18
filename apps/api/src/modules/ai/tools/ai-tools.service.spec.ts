@@ -54,7 +54,7 @@ function servicoCom(configuracoes: Record<string, unknown>[] = []) {
 
   const service = new AiToolsService(
     prisma as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToUsers: jest.fn() } as never,
     {
       findByKey: jest.fn().mockResolvedValue(null),
       findById: jest.fn(),
@@ -67,6 +67,7 @@ function servicoCom(configuracoes: Record<string, unknown>[] = []) {
       missingRequired: jest.fn().mockResolvedValue([]),
       describeForAi: jest.fn().mockResolvedValue([]),
     } as never,
+    { get: jest.fn().mockResolvedValue({ queueVisibility: 'ALL' }) } as never,
   );
 
   return { service, prisma };

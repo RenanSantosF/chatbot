@@ -24,10 +24,12 @@ function servicoCom(conversaAtual: Record<string, unknown>) {
         update: jest.fn().mockResolvedValue(atualizada),
       },
       message: { create: jest.fn().mockResolvedValue({}) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      queueMember: { findMany: jest.fn().mockResolvedValue([]) },
     },
   };
 
-  const realtime = { emitToTenant: jest.fn() };
+  const realtime = { emitToTenant: jest.fn(), emitToUsers: jest.fn() };
 
   const service = new ConversationsService(
     prisma as never,
@@ -36,7 +38,7 @@ function servicoCom(conversaAtual: Record<string, unknown>) {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    { get: jest.fn().mockResolvedValue({ queueVisibility: 'ALL' }) } as never,
     {} as never,
     {} as never,
     {} as never,
@@ -169,14 +171,12 @@ describe('assumir conversa', () => {
  * o Lucas tivesse aberto a tela. Se outra pessoa responde nesse meio-tempo,
  * é ELA que está atendendo, e a indicação virou passado.
  */
-function servicoDeResposta(
-  antes: {
-    assignedUserId: string | null;
-    assignmentAccepted?: boolean;
-    aiMode?: string;
-    status?: string;
-  },
-) {
+function servicoDeResposta(antes: {
+  assignedUserId: string | null;
+  assignmentAccepted?: boolean;
+  aiMode?: string;
+  status?: string;
+}) {
   const escritas: Record<string, unknown>[] = [];
   const notas: string[] = [];
 
@@ -226,9 +226,9 @@ function servicoDeResposta(
       },
       user: {
         findFirst: jest.fn().mockResolvedValue({ name: 'Renan' }),
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'user-renan', name: 'Renan Ferreira' },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'user-renan', name: 'Renan Ferreira' }]),
       },
     },
   };
@@ -236,11 +236,13 @@ function servicoDeResposta(
   const service = new ConversationsService(
     prisma as never,
     {} as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
     {} as never,
     {} as never,
     {} as never,
-    { get: jest.fn().mockResolvedValue({ allowSendWhenResolved: true }) } as never,
+    {
+      get: jest.fn().mockResolvedValue({ allowSendWhenResolved: true }),
+    } as never,
     {} as never,
     {} as never,
     {} as never,

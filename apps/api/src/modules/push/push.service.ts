@@ -111,27 +111,34 @@ export class PushService {
 
   /** Tira este aparelho da lista. Não falha se ele já não estava. */
   async desinscrever(endpoint: string) {
-    await this.prisma.client.pushSubscription.deleteMany({ where: { endpoint } });
+    await this.prisma.client.pushSubscription.deleteMany({
+      where: { endpoint },
+    });
   }
 
   /**
    * Avisa a equipe da empresa sobre uma mensagem que chegou.
    *
-   * Vai pra TODOS os inscritos da empresa, que é o mesmo recorte da
-   * notificação antiga — quem estiver com a conversa aberta não é
-   * incomodado porque o próprio service worker cala quando há janela em
-   * primeiro plano (ver public/sw.js). Decidir aqui quem "merece" o aviso
-   * exigiria saber o que cada aparelho está olhando, coisa que o servidor
-   * não sabe.
+   * Só quem PODE VER a conversa — o mesmo recorte por setor de
+   * `ConversationsService.destinatariosDaConversa`, e não mais todo mundo
+   * da empresa. Sem isto, o aviso furava o recorte que a lista e a
+   * abertura pelo id já respeitavam: quem tem acesso restrito recebia no
+   * celular o título e a prévia de uma conversa que nunca conseguiria
+   * abrir.
+   *
+   * Ainda assim é largo dentro de quem PODE ver: quem estiver com a
+   * conversa aberta não é incomodado porque o próprio service worker cala
+   * quando há janela em primeiro plano (ver public/sw.js).
    */
   async avisarEquipe(
     tenantId: string,
     aviso: { titulo: string; corpo: string; conversationId: string },
+    destinatarios: string[],
   ): Promise<void> {
-    if (!this.ligado) return;
+    if (!this.ligado || destinatarios.length === 0) return;
 
     const inscricoes = await this.prisma.client.pushSubscription.findMany({
-      where: { tenantId },
+      where: { tenantId, userId: { in: destinatarios } },
     });
     if (inscricoes.length === 0) return;
 

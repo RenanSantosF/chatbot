@@ -26,18 +26,23 @@ function montar(conversaAberta: Record<string, unknown> | null = null) {
       conversation: {
         findFirst: jest
           .fn()
-          .mockImplementation((args: { select?: unknown; include?: unknown }) => {
-            // Com `include` é o detalhe montado no fim (getById); com
-            // `select` é uma conferência interna; sem os dois é a busca
-            // por conversa já aberta deste cliente.
-            if (args?.include) return conversa;
-            if (args?.select) return { status: 'OPEN', aiMode: 'HUMAN_ACTIVE' };
-            return conversaAberta;
+          .mockImplementation(
+            (args: { select?: unknown; include?: unknown }) => {
+              // Com `include` é o detalhe montado no fim (getById); com
+              // `select` é uma conferência interna; sem os dois é a busca
+              // por conversa já aberta deste cliente.
+              if (args?.include) return conversa;
+              if (args?.select)
+                return { status: 'OPEN', aiMode: 'HUMAN_ACTIVE' };
+              return conversaAberta;
+            },
+          ),
+        create: jest
+          .fn()
+          .mockImplementation((args: { data: Record<string, unknown> }) => {
+            criadas.push(args.data);
+            return { ...conversa, ...args.data };
           }),
-        create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
-          criadas.push(args.data);
-          return { ...conversa, ...args.data };
-        }),
         update: jest.fn().mockResolvedValue(conversa),
         // O teto diário de primeiras abordagens (ver protegerContraBloqueio).
         count: jest.fn().mockResolvedValue(0),
@@ -81,7 +86,7 @@ function montar(conversaAberta: Record<string, unknown> | null = null) {
   const service = new ConversationsService(
     prisma as never,
     customers as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
     {
       generateReply: jest.fn(),
       podeAtender: jest.fn().mockResolvedValue(false),
@@ -171,7 +176,10 @@ describe('iniciar conversa escrevendo', () => {
     const { service, customers } = montar();
 
     await expect(
-      service.iniciarConversa({ phone: '5527999998888', content: '   ' }, 'user-1'),
+      service.iniciarConversa(
+        { phone: '5527999998888', content: '   ' },
+        'user-1',
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(customers.findOrCreateByPhone).not.toHaveBeenCalled();
   });
@@ -193,7 +201,10 @@ describe('proteção contra bloqueio do número', () => {
     whatsapp.numeroExiste.mockResolvedValue(false);
 
     await expect(
-      service.iniciarConversa({ phone: '5527999998888', content: 'oi' }, 'user-1'),
+      service.iniciarConversa(
+        { phone: '5527999998888', content: 'oi' },
+        'user-1',
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
@@ -217,10 +228,13 @@ describe('proteção contra bloqueio do número', () => {
 
   it('o teto diário de primeiras abordagens barra a próxima', async () => {
     const { service, prisma, whatsapp } = montar();
-    (prisma.db.conversation.count as jest.Mock).mockResolvedValue(30);
+    prisma.db.conversation.count.mockResolvedValue(30);
 
     await expect(
-      service.iniciarConversa({ phone: '5527999998888', content: 'oi' }, 'user-1'),
+      service.iniciarConversa(
+        { phone: '5527999998888', content: 'oi' },
+        'user-1',
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(whatsapp.enviarTexto).not.toHaveBeenCalled();

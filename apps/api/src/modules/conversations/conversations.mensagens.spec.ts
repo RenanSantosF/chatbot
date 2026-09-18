@@ -110,7 +110,10 @@ function montar(estado: Estado = {}) {
         update: jest
           .fn()
           .mockImplementation(
-            (args: { where: { id: string }; data: Record<string, unknown> }) => {
+            (args: {
+              where: { id: string };
+              data: Record<string, unknown>;
+            }) => {
               atualizacoesDeMensagem.push(args.data);
               // Devolve a linha ATUALIZADA, como o Prisma faz. Importa
               // porque o serviço passou a devolver o resultado do update
@@ -152,7 +155,7 @@ function montar(estado: Estado = {}) {
     marcarComoLida: jest.fn(),
     motivoDaUltimaFalha: estado.falhaNoEnvio ?? null,
   };
-  const realtime = { emitToTenant: jest.fn() };
+  const realtime = { emitToTenant: jest.fn(), emitToUsers: jest.fn() };
   const inboxSettings = {
     get: jest.fn().mockResolvedValue({ showAgentName: false }),
   };
@@ -731,10 +734,12 @@ describe('envio que falha', () => {
 
     await service.sendAgentMessage('conversa-1', 'user-1', 'Bom dia!');
 
-    const eventos = realtime.emitToTenant.mock.calls.map(
+    const eventos = realtime.emitToUsers.mock.calls.map(
       (chamada: unknown[]) => chamada[1],
     );
-    expect(eventos.filter((e: unknown) => e === 'message.created')).toHaveLength(2);
+    expect(
+      eventos.filter((e: unknown) => e === 'message.created'),
+    ).toHaveLength(2);
   });
 
   it('quando o envio dá certo, grava o id da Meta e não marca falha', async () => {
@@ -742,7 +747,9 @@ describe('envio que falha', () => {
 
     await service.sendAgentMessage('conversa-1', 'user-1', 'Bom dia!');
 
-    expect(atualizacoesDeMensagem[0]).toMatchObject({ externalId: 'wamid.NOVO' });
+    expect(atualizacoesDeMensagem[0]).toMatchObject({
+      externalId: 'wamid.NOVO',
+    });
     expect(atualizacoesDeMensagem[0]).not.toHaveProperty('status');
   });
 });
@@ -954,7 +961,11 @@ describe('o que o painel recebe quando o envio falha', () => {
       falhaNoEnvio: 'o WhatsApp desta empresa está desconectado',
     });
 
-    const mensagem = await service.sendAgentMessage('conversa-1', 'user-1', 'Oi');
+    const mensagem = await service.sendAgentMessage(
+      'conversa-1',
+      'user-1',
+      'Oi',
+    );
 
     expect(mensagem.status).toBe('FAILED');
   });
@@ -964,7 +975,11 @@ describe('o que o painel recebe quando o envio falha', () => {
       falhaNoEnvio: 'o WhatsApp desta empresa está desconectado',
     });
 
-    const mensagem = await service.sendAgentMessage('conversa-1', 'user-1', 'Oi');
+    const mensagem = await service.sendAgentMessage(
+      'conversa-1',
+      'user-1',
+      'Oi',
+    );
 
     expect((mensagem.metadata as { falha?: string })?.falha).toContain(
       'desconectado',
@@ -974,7 +989,11 @@ describe('o que o painel recebe quando o envio falha', () => {
   it('envio que deu certo continua devolvendo o id externo', async () => {
     const { service } = montar();
 
-    const mensagem = await service.sendAgentMessage('conversa-1', 'user-1', 'Oi');
+    const mensagem = await service.sendAgentMessage(
+      'conversa-1',
+      'user-1',
+      'Oi',
+    );
 
     expect(mensagem.status).not.toBe('FAILED');
     expect(mensagem.externalId).toBe('wamid.NOVO');

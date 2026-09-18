@@ -6,6 +6,8 @@ import type {
   Prisma,
 } from '../../../../generated/prisma/client';
 import { TenantPrismaService } from '../../../common/prisma/tenant-prisma.service';
+import { destinatariosDaConversa } from '../../conversations/destinatarios-da-conversa';
+import { InboxSettingsService } from '../../inbox-settings/inbox-settings.service';
 import { QueuesService } from '../../queues/queues.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { CollectionService } from '../../collection/collection.service';
@@ -87,7 +89,23 @@ export class AiToolsService {
     private readonly queues: QueuesService,
     private readonly routing: RoutingService,
     private readonly collection: CollectionService,
+    private readonly inboxSettings: InboxSettingsService,
   ) {}
+
+  /** `emitToTenant`, mas só pra quem pode ver ESTA conversa (ver ConversationsService.emitirParaConversa). */
+  private async emitirParaConversa(
+    conversation: { queueId: string | null; assignedUserId: string | null },
+    event: string,
+    payload: unknown,
+  ) {
+    const settings = await this.inboxSettings.get();
+    const destinatarios = await destinatariosDaConversa(
+      this.prisma,
+      conversation,
+      settings.queueVisibility,
+    );
+    this.realtime.emitToUsers(destinatarios, event, payload);
+  }
 
   private readonly registry: BuiltInTool[] = [
     {
@@ -303,8 +321,8 @@ export class AiToolsService {
           include: conversationInclude,
         });
 
-        this.realtime.emitToTenant(
-          this.prisma.tenantId,
+        await this.emitirParaConversa(
+          conversation,
           'conversation.updated',
           conversation,
         );
@@ -368,8 +386,8 @@ export class AiToolsService {
           include: conversationInclude,
         });
 
-        this.realtime.emitToTenant(
-          this.prisma.tenantId,
+        await this.emitirParaConversa(
+          conversation,
           'conversation.updated',
           conversation,
         );

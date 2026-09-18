@@ -47,17 +47,18 @@ function montar(
           return { id: 'msg-1', createdAt: new Date() };
         }),
       },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
     },
   };
 
   const service = new ConversationsService(
     prisma as never,
     {} as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    { get: jest.fn().mockResolvedValue({ queueVisibility: 'ALL' }) } as never,
     {} as never,
     {} as never,
     {} as never,
@@ -147,18 +148,23 @@ describe('o botão Resolver, de quem atende', () => {
             return { id: 'conversa-1', messages: [] };
           }),
         },
+        user: { findMany: jest.fn().mockResolvedValue([]) },
       },
     };
 
     const service = new ConversationsService(
       prisma as never,
       {} as never,
-      { emitToTenant: jest.fn() } as never,
+      { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
       {} as never,
       {} as never,
       {} as never,
       // Sem aviso ao cliente: este teste é sobre o estado da conversa.
-      { get: jest.fn().mockResolvedValue({ notifyOnResolve: false, resolveMessage: '' }) } as never,
+      {
+        get: jest
+          .fn()
+          .mockResolvedValue({ notifyOnResolve: false, resolveMessage: '' }),
+      } as never,
       {} as never,
       {} as never,
       {} as never,

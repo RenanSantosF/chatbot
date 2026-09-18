@@ -25,6 +25,7 @@ import { PushService } from '../push/push.service';
 import type { VerificacaoDaResposta } from '../ai/ai-guardrails';
 import { CollectionService } from '../collection/collection.service';
 import { CustomersService } from '../customers/customers.service';
+import { destinatariosDaConversa as calcularDestinatariosDaConversa } from './destinatarios-da-conversa';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RoutingService } from '../routing/routing.service';
@@ -619,6 +620,58 @@ export class ConversationsService {
   }
 
   /**
+   * A mesma regra de `recorteDeVisibilidade`, só que devolvendo QUEM em vez
+   * de um filtro pro Prisma.
+   *
+   * A lista e a abertura por id pedem ao banco "me dê as conversas onde
+   * WHERE bate"; tempo real e push são o oposto — o servidor já decidiu O
+   * QUE aconteceu, e agora precisa saber EM QUEM entregar. Sem isto,
+   * `emitToTenant`/`avisarEquipe` mandavam pra empresa inteira, e quem
+   * tinha acesso restrito recebia no soquete e no celular o conteúdo de
+   * uma conversa que a lista e a abertura por id já escondiam dele — a
+   * tela calada não impedia o aviso de aparecer.
+   */
+  private async destinatariosDaConversa(conversation: {
+    queueId: string | null;
+    assignedUserId: string | null;
+  }): Promise<string[]> {
+    const settings = await this.inboxSettings.get();
+    return calcularDestinatariosDaConversa(
+      this.prisma,
+      conversation,
+      settings.queueVisibility,
+    );
+  }
+
+  /** `emitToTenant`, mas só pra quem pode ver ESTA conversa. */
+  private async emitirParaConversa(
+    conversation: { queueId: string | null; assignedUserId: string | null },
+    event: string,
+    payload: unknown,
+  ) {
+    const destinatarios = await this.destinatariosDaConversa(conversation);
+    this.realtime.emitToUsers(destinatarios, event, payload);
+  }
+
+  /**
+   * Igual a `emitirParaConversa`, pra quando só se tem o id — os
+   * `queueId`/`assignedUserId` custam uma consulta rápida (`select`, sem
+   * `include`) porque quem chama não tinha a conversa inteira em mãos.
+   */
+  private async emitirParaConversaId(
+    conversationId: string,
+    event: string,
+    payload: unknown,
+  ) {
+    const conversation = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { queueId: true, assignedUserId: true },
+    });
+    if (!conversation) return;
+    await this.emitirParaConversa(conversation, event, payload);
+  }
+
+  /**
    * Contadores da barra de filtros.
    *
    * Duas regras, e as duas vieram de a tela se contradizer na frente de
@@ -901,7 +954,7 @@ export class ConversationsService {
     mensagem: { senderType: string; senderId: string | null },
   ) {
     const [comNome] = await this.comNomeDeQuemEnviou([mensagem]);
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+    await this.emitirParaConversaId(conversationId, 'message.created', {
       conversationId,
       message: comNome,
     });
@@ -1037,8 +1090,8 @@ export class ConversationsService {
       data: { unreadCount: 0 },
       include: conversationInclude,
     });
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      updated,
       'conversation.updated',
       toSummary(updated),
     );
@@ -1084,8 +1137,8 @@ export class ConversationsService {
       data: { priority },
       include: conversationInclude,
     });
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -1271,12 +1324,16 @@ export class ConversationsService {
      * quando ele chega em zero, o que não é o caso de uma mensagem de
      * cliente entrando.
      */
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    // Uma lista só, reaproveitada nos três avisos abaixo (tempo real x2 e
+    // push) — ela não muda entre eles, e cada um é uma pessoa a menos ou a
+    // mais do que "a empresa inteira" recebendo notícia de uma conversa.
+    const destinatarios = await this.destinatariosDaConversa(conversation);
+    this.realtime.emitToUsers(
+      destinatarios,
       'conversation.updated',
       toSummary(conversation),
     );
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.created', {
+    this.realtime.emitToUsers(destinatarios, 'message.created', {
       conversationId,
       message: comNome,
     });
@@ -1299,11 +1356,15 @@ export class ConversationsService {
      */
     if (fromCustomer && !isSystemNote) {
       void this.push
-        .avisarEquipe(this.prisma.tenantId, {
-          titulo: conversation.customer?.name || 'Nova mensagem',
-          corpo: resumoParaAviso(message.content, message.messageType),
-          conversationId,
-        })
+        .avisarEquipe(
+          this.prisma.tenantId,
+          {
+            titulo: conversation.customer?.name || 'Nova mensagem',
+            corpo: resumoParaAviso(message.content, message.messageType),
+            conversationId,
+          },
+          destinatarios,
+        )
         .catch(() => undefined);
     }
 
@@ -1509,7 +1570,7 @@ export class ConversationsService {
       data: { status },
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.status', {
+    await this.emitirParaConversaId(updated.conversationId, 'message.status', {
       conversationId: updated.conversationId,
       messageId: updated.id,
       status: updated.status,
@@ -1607,8 +1668,8 @@ export class ConversationsService {
       );
     }
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      atualizada,
       'conversation.updated',
       toSummary(atualizada),
     );
@@ -1701,7 +1762,7 @@ export class ConversationsService {
       include: messageInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
+    await this.emitirParaConversaId(message.conversationId, 'message.updated', {
       conversationId: message.conversationId,
       message: updated,
     });
@@ -1769,7 +1830,7 @@ export class ConversationsService {
       include: messageInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
+    await this.emitirParaConversaId(message.conversationId, 'message.updated', {
       conversationId: message.conversationId,
       message: updated,
     });
@@ -1917,7 +1978,7 @@ export class ConversationsService {
       },
     );
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
+    await this.emitirParaConversaId(conversationId, 'message.updated', {
       conversationId,
       message: this.esconderApagada(atualizada),
     });
@@ -2032,8 +2093,8 @@ export class ConversationsService {
     });
 
     await this.emitirMensagemCriada(toConversationId, message);
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      updated,
       'conversation.updated',
       toSummary(updated),
     );
@@ -2163,8 +2224,8 @@ export class ConversationsService {
     });
 
     await this.emitirMensagemCriada(conversationId, message);
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      updated,
       'conversation.updated',
       toSummary(updated),
     );
@@ -2205,11 +2266,7 @@ export class ConversationsService {
       include: conversationInclude,
     });
     const resumo = toSummary(conversation);
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
-      'conversation.updated',
-      resumo,
-    );
+    await this.emitirParaConversa(conversation, 'conversation.updated', resumo);
     return resumo;
   }
 
@@ -2277,8 +2334,8 @@ export class ConversationsService {
       );
     }
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -2557,8 +2614,8 @@ export class ConversationsService {
     });
 
     await this.emitirMensagemCriada(conversation.id, message);
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      updated,
       'conversation.updated',
       toSummary(updated),
     );
@@ -2614,8 +2671,8 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -2728,8 +2785,8 @@ export class ConversationsService {
       });
     }
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -2817,8 +2874,8 @@ export class ConversationsService {
       },
     });
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -2878,8 +2935,8 @@ export class ConversationsService {
         : `Conversa encaminhada para o setor ${setor.name}.`,
     );
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -2974,8 +3031,8 @@ export class ConversationsService {
       },
     });
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -3001,8 +3058,8 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -3042,8 +3099,8 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -3089,8 +3146,8 @@ export class ConversationsService {
       include: conversationInclude,
     });
 
-    this.realtime.emitToTenant(
-      this.prisma.tenantId,
+    await this.emitirParaConversa(
+      conversation,
       'conversation.updated',
       toSummary(conversation),
     );
@@ -3888,10 +3945,14 @@ export class ConversationsService {
       include: messageInclude,
     });
 
-    this.realtime.emitToTenant(this.prisma.tenantId, 'message.updated', {
-      conversationId: mensagem.conversationId,
-      message: this.esconderApagada(atualizada),
-    });
+    await this.emitirParaConversaId(
+      mensagem.conversationId,
+      'message.updated',
+      {
+        conversationId: mensagem.conversationId,
+        message: this.esconderApagada(atualizada),
+      },
+    );
 
     return atualizada;
   }
@@ -3953,8 +4014,8 @@ export class ConversationsService {
         data: { aiMode: 'HUMAN_ACTIVE' },
         include: conversationInclude,
       });
-      this.realtime.emitToTenant(
-        this.prisma.tenantId,
+      await this.emitirParaConversa(
+        atualizada,
         'conversation.updated',
         toSummary(atualizada),
       );

@@ -57,6 +57,7 @@ function servicoCom(
       aiSettings: {
         findFirst: jest.fn().mockResolvedValue({ memoryMode: 'NONE' }),
       },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
     },
   };
 
@@ -74,10 +75,11 @@ function servicoCom(
 
   const service = new AiToolsService(
     prisma as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToUsers: jest.fn() } as never,
     queues as never,
     routing as never,
     collection as never,
+    { get: jest.fn().mockResolvedValue({ queueVisibility: 'ALL' }) } as never,
   );
 
   return { service, escritas, notas, queues };

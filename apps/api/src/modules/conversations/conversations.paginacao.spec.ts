@@ -21,19 +21,25 @@ function montar() {
     tenantId: 'tenant-teste',
     db: {
       conversation: {
-        findFirst: jest.fn().mockImplementation((args: Record<string, unknown>) => {
-          consultas.push({ modelo: 'conversation', args });
-          return { ...conversa, messages: [], tags: [] };
-        }),
+        findFirst: jest
+          .fn()
+          .mockImplementation((args: Record<string, unknown>) => {
+            consultas.push({ modelo: 'conversation', args });
+            return { ...conversa, messages: [], tags: [] };
+          }),
         // `toSummary` lê a prévia, então a linha devolvida precisa ter a
         // forma de uma conversa de verdade.
-        update: jest.fn().mockResolvedValue({ ...conversa, messages: [], tags: [] }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ ...conversa, messages: [], tags: [] }),
       },
       message: {
-        findMany: jest.fn().mockImplementation((args: Record<string, unknown>) => {
-          consultas.push({ modelo: 'message', args });
-          return [];
-        }),
+        findMany: jest
+          .fn()
+          .mockImplementation((args: Record<string, unknown>) => {
+            consultas.push({ modelo: 'message', args });
+            return [];
+          }),
       },
       user: { findMany: jest.fn().mockResolvedValue([]) },
     },
@@ -42,7 +48,7 @@ function montar() {
   const service = new ConversationsService(
     prisma as never,
     {} as never,
-    { emitToTenant: jest.fn() } as never,
+    { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
     {} as never,
     {} as never,
     {} as never,
@@ -77,7 +83,9 @@ describe('abrir a conversa', () => {
     await service.getById('conversa-1');
 
     const daConversa = consultas.find((c) => c.modelo === 'conversation');
-    const include = daConversa?.args.include as { messages?: { take?: number } };
+    const include = daConversa?.args.include as {
+      messages?: { take?: number };
+    };
     expect(include?.messages?.take).toBe(1);
   });
 });
@@ -91,10 +99,11 @@ describe('operações que não leem mensagem', () => {
 
     await service.setPriority('conversa-1', 'HIGH');
 
-    for (const consulta of consultas.filter((c) => c.modelo === 'conversation')) {
+    for (const consulta of consultas.filter(
+      (c) => c.modelo === 'conversation',
+    )) {
       const include = consulta.args.include as
-        | { messages?: { take?: number } }
-        | undefined;
+        { messages?: { take?: number } } | undefined;
       // Ou não pede mensagem, ou pede a prévia — nunca o histórico solto.
       if (include?.messages) expect(include.messages.take).toBe(1);
     }

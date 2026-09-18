@@ -49,7 +49,7 @@ function montar(
     },
   };
 
-  const realtime = { emitToTenant: jest.fn() };
+  const realtime = { emitToTenant: jest.fn(), emitToUsers: jest.fn() };
 
   const service = new ConversationsService(
     prisma as never,
@@ -102,7 +102,7 @@ describe('status de entrega vindo do webhook', () => {
 
     await service.applyDeliveryStatus('wamid.1', 'DELIVERED');
 
-    expect(realtime.emitToTenant).not.toHaveBeenCalled();
+    expect(realtime.emitToUsers).not.toHaveBeenCalled();
   });
 
   it('falha é terminal: nada volta a marcar como entregue depois dela', async () => {
@@ -133,7 +133,7 @@ describe('status de entrega vindo do webhook', () => {
     await expect(
       service.applyDeliveryStatus('wamid.desconhecido', 'READ'),
     ).resolves.toBeUndefined();
-    expect(realtime.emitToTenant).not.toHaveBeenCalled();
+    expect(realtime.emitToUsers).not.toHaveBeenCalled();
   });
 
   it('avisa o painel quando o status realmente mudou', async () => {
@@ -141,8 +141,8 @@ describe('status de entrega vindo do webhook', () => {
 
     await service.applyDeliveryStatus('wamid.1', 'READ');
 
-    expect(realtime.emitToTenant).toHaveBeenCalledWith(
-      'tenant-teste',
+    expect(realtime.emitToUsers).toHaveBeenCalledWith(
+      [],
       'message.status',
       expect.objectContaining({ messageId: 'msg-1', status: 'READ' }),
     );
@@ -233,8 +233,8 @@ describe('apagar mensagem do painel', () => {
 
     await service.apagarMensagem('conversa-1', 'msg-1', dono);
 
-    const [, , payload] = realtime.emitToTenant.mock.calls[0] as [
-      string,
+    const [, , payload] = realtime.emitToUsers.mock.calls[0] as [
+      string[],
       string,
       { message: { content: string; metadata: unknown } },
     ];
@@ -301,13 +301,17 @@ describe('a chave que chega diferente da que foi gravada', () => {
             ...(args.data as object),
           })),
         },
+        // `null`: o teste não olha pra quem recebe o aviso, só pra qual
+        // mensagem o `externalId` bateu — sem conversa achada,
+        // `emitirParaConversaId` desiste cedo sem precisar de `user`.
+        conversation: { findFirst: jest.fn().mockResolvedValue(null) },
       },
     };
 
     const service = new ConversationsService(
       prisma as never,
       {} as never,
-      { emitToTenant: jest.fn() } as never,
+      { emitToTenant: jest.fn(), emitToUsers: jest.fn() } as never,
       {} as never,
       {} as never,
       {} as never,
