@@ -252,10 +252,12 @@ export class WhatsappWebhookController {
           })
           .filter((m): m is NonNullable<typeof m> => m !== null);
 
-        importadas += await this.conversationsService.importarHistorico({
-          customerPhone: thread.id,
-          mensagens,
-        });
+        importadas += (
+          await this.conversationsService.importarHistorico({
+            customerPhone: thread.id,
+            mensagens,
+          })
+        ).importadas;
       }
 
       const progresso = lote.metadata?.progress ?? 0;

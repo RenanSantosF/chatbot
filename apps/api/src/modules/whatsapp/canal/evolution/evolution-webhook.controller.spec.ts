@@ -13,7 +13,9 @@ function montar() {
     applyDeliveryStatus: jest.fn().mockResolvedValue({}),
     applyReaction: jest.fn().mockResolvedValue({}),
     aplicarApagadaExterna: jest.fn().mockResolvedValue({}),
-    importarHistorico: jest.fn().mockResolvedValue(2),
+    importarHistorico: jest
+      .fn()
+      .mockResolvedValue({ importadas: 2, conversationId: 'conversa-mock' }),
   };
 
   const config = {
@@ -878,7 +880,7 @@ describe('as conversas que já estavam no aparelho', () => {
     const { controller, conversations, req } = montar();
     conversations.importarHistorico
       .mockRejectedValueOnce(new Error('telefone impossível'))
-      .mockResolvedValueOnce(1);
+      .mockResolvedValueOnce({ importadas: 1, conversationId: 'conversa-2' });
 
     await expect(
       controller.receber(
@@ -892,6 +894,51 @@ describe('as conversas que já estavam no aparelho', () => {
     ).resolves.toEqual({ ok: true });
 
     expect(conversations.importarHistorico).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * O Inbox reconcilia por id em vez de recarregar a página inteira a
+   * cada lote de histórico (ver F02) — e só consegue fazer isso se o
+   * evento disser QUAIS conversas mudaram, não só quantas mensagens.
+   */
+  it('avisa quais conversas o lote afetou, sem repetir id', async () => {
+    const { controller, conversations, realtime, req } = montar();
+    conversations.importarHistorico
+      .mockResolvedValueOnce({ importadas: 1, conversationId: 'conversa-a' })
+      .mockResolvedValueOnce({ importadas: 1, conversationId: 'conversa-b' });
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([
+        doHistorico('5511999999999', 'primeiro'),
+        doHistorico('5527888888888', 'segundo'),
+      ]),
+    );
+
+    const aviso = realtime.emitToTenant.mock.calls.find(
+      (chamada: unknown[]) => chamada[1] === 'canal.historico',
+    )?.[2] as { conversationIds?: string[] };
+    expect(aviso.conversationIds?.sort()).toEqual(['conversa-a', 'conversa-b']);
+  });
+
+  it('lote sem mensagem nova (só duplicatas) não aponta conversa nenhuma pra reconciliar', async () => {
+    const { controller, conversations, realtime, req } = montar();
+    conversations.importarHistorico.mockResolvedValueOnce({
+      importadas: 0,
+      conversationId: null,
+    });
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([doHistorico('5511999999999', 'já visto antes')]),
+    );
+
+    const aviso = realtime.emitToTenant.mock.calls.find(
+      (chamada: unknown[]) => chamada[1] === 'canal.historico',
+    )?.[2] as { conversationIds?: string[] };
+    expect(aviso.conversationIds).toEqual([]);
   });
 
   it('o último lote encerra a importação', async () => {

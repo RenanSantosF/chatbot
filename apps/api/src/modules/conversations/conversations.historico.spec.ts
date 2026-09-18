@@ -94,7 +94,7 @@ describe('importação do histórico', () => {
     });
 
     expect(criadas[0].data).toHaveLength(2);
-    expect(gravadas).toBe(2);
+    expect(gravadas.importadas).toBe(2);
   });
 
   it('não regrava o que o lote anterior já trouxe', async () => {
@@ -215,6 +215,6 @@ describe('importação do histórico', () => {
       mensagens: [linha('chave-a'), linha('chave-b')],
     });
 
-    expect(gravadas).toBe(1);
+    expect(gravadas.importadas).toBe(1);
   });
 });

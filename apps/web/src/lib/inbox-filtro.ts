@@ -1,5 +1,5 @@
 import type { StatusGroup, InboxFilters } from "@/components/inbox/inbox-filters";
-import type { ConversationStatus, ConversationUpdate } from "@/lib/types";
+import type { AiMode, ConversationPriority, ConversationStatus } from "@/lib/types";
 
 /** Espelha `STATUS_GROUPS`, no backend (ver `conversations.service.ts`). */
 export const STATUS_GROUPS: Record<StatusGroup, ConversationStatus[]> = {
@@ -7,6 +7,23 @@ export const STATUS_GROUPS: Record<StatusGroup, ConversationStatus[]> = {
   WAITING: ["WAITING_CUSTOMER"],
   DONE: ["RESOLVED", "CLOSED"],
 };
+
+/**
+ * O mínimo que `pertenceAoFiltro` precisa — não `ConversationUpdate`
+ * inteiro — porque também recebe itens da LISTA (`ConversationSummary`,
+ * na reconciliação do F02), que não tem `escalationReason` e companhia.
+ * As duas formas batem estruturalmente com isto.
+ */
+export interface ConversaParaFiltro {
+  status: ConversationStatus;
+  aiMode: AiMode;
+  priority: ConversationPriority;
+  unreadCount: number;
+  waitingSince?: string | null;
+  assignedUser: { id: string } | null;
+  tags?: { id: string }[];
+  customer: { name: string; phone: string; isGroup?: boolean };
+}
 
 /**
  * A mesma regra de pertencimento que `montarWhere`, no backend, só que
@@ -26,7 +43,7 @@ export const STATUS_GROUPS: Record<StatusGroup, ConversationStatus[]> = {
  * saída (invalidar e reconsultar), não desta função.
  */
 export function pertenceAoFiltro(
-  conversa: ConversationUpdate,
+  conversa: ConversaParaFiltro,
   filtros: InboxFilters,
   userId: string,
 ): boolean {

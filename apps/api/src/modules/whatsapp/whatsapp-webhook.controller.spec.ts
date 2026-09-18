@@ -33,7 +33,9 @@ function montar(
     applyDeliveryStatus: jest.fn().mockResolvedValue(undefined),
     applyReaction: jest.fn().mockResolvedValue(undefined),
     recordOutboundEcho: jest.fn().mockResolvedValue(null),
-    importarHistorico: jest.fn().mockResolvedValue(0),
+    importarHistorico: jest
+      .fn()
+      .mockResolvedValue({ importadas: 0, conversationId: null }),
   };
   const customers = { upsertFromAddressBook: jest.fn().mockResolvedValue({}) };
   const media = { arquivar: jest.fn().mockResolvedValue(undefined) };

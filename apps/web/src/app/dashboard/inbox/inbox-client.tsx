@@ -21,6 +21,7 @@ import { useSession } from "@/components/session-provider";
 import type { Relogio } from "@/lib/espera";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
+import { criarAgrupadorDeRajada } from "@/lib/agrupar-rajada";
 import { conversationCache } from "@/lib/conversation-cache";
 import { pertenceAoFiltro } from "@/lib/inbox-filtro";
 import { usePersistedState } from "@/lib/use-persisted-state";
@@ -147,6 +148,30 @@ function mostraResolvidas(filtros: InboxFilters): boolean {
     return filtros.status === "RESOLVED" || filtros.status === "CLOSED";
   }
   return filtros.grupo === "ALL" || filtros.grupo === "DONE";
+}
+
+/**
+ * A mesma ordem que o servidor devolve, aplicada de novo no navegador.
+ *
+ * Existe porque dois lugares precisam reordenar sem pedir a lista inteira
+ * de volta: um evento de conversa chegando (`onConversationUpdated`) e a
+ * reconciliação de histórico importado (ver F02). Repetir o comparador em
+ * vez de compartilhar já causou os dois discordarem por um instante.
+ */
+function ordenarConversas(
+  items: ConversationSummary[],
+  ordem: InboxFilters["ordem"],
+): ConversationSummary[] {
+  if (ordem === "ESPERA") {
+    return [...items].sort((a, b) => {
+      const esperaA = a.waitingSince ? new Date(a.waitingSince).getTime() : Infinity;
+      const esperaB = b.waitingSince ? new Date(b.waitingSince).getTime() : Infinity;
+      return esperaA - esperaB;
+    });
+  }
+  return [...items].sort(
+    (a, b) => new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
+  );
 }
 
 export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null }) {
@@ -393,6 +418,34 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     }
   }, [cursor, loadingMore, filters]);
 
+  /**
+   * O histórico importado pode ter tocado conversas que a lista ainda não
+   * mostra — e a tela não pode ficar esperando um F5 pra elas aparecerem
+   * (ver F02). Busca só a PRIMEIRA página do recorte atual e mescla no
+   * que já está na tela: atualiza quem já tinha aparecido, insere quem
+   * passou a bater com o filtro, tira quem deixou de bater. Nunca toca no
+   * `cursor` — é o que preserva as páginas que a pessoa já rolou pra
+   * baixo, em vez de descartá-las como uma busca nova faria.
+   */
+  const reconciliarHistorico = useCallback(async () => {
+    const meu = pedidoDaLista.current;
+    try {
+      const page = await apiFetch<Page<ConversationSummary>>(buildQuery(filtersRef.current));
+      if (meu !== pedidoDaLista.current) return;
+      setConversations((prev) => {
+        const porId = new Map(prev.map((item) => [item.id, item] as const));
+        for (const item of page.items) porId.set(item.id, item);
+        const mesclado = [...porId.values()].filter((item) =>
+          pertenceAoFiltro(item, filtersRef.current, user.id),
+        );
+        return ordenarConversas(mesclado, filtersRef.current.ordem);
+      });
+    } catch {
+      // Silencioso de propósito: é reconciliação em segundo plano — o
+      // próximo lote (ou o próximo `agendarContagem`) tenta de novo.
+    }
+  }, [user.id]);
+
   const loadDetail = useCallback(
     async (id: string) => {
       const conversation = await apiFetch<
@@ -439,6 +492,36 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     },
     [chaveDaSessao],
   );
+
+  /**
+   * Agrupa os lotes de histórico antes de reconciliar — sem isto, uma
+   * importação de 50 mil mensagens dispara uma busca da lista a cada
+   * webhook, dezenas por segundo. A janela e o prazo máximo em si vivem
+   * em `criarAgrupadorDeRajada` (testado à parte); aqui só entra o que é
+   * específico do Inbox — quais ids acumular e o que fazer quando a
+   * rajada assenta.
+   *
+   * O agrupador em si é criado dentro do efeito do socket, não aqui: ele
+   * guarda esta função numa closure pra chamar DEPOIS, e só um efeito é
+   * "fora da renderização" o bastante pra isso — criá-lo num `useMemo`
+   * ou num `useState` preguiçoso soa igual, mas os dois ainda rodam
+   * durante o render.
+   */
+  const idsAfetadosRef = useRef<Set<string>>(new Set());
+
+  const flusharReconciliacaoDeHistorico = useCallback(() => {
+    const ids = idsAfetadosRef.current;
+    idsAfetadosRef.current = new Set();
+
+    void reconciliarHistorico();
+    agendarContagem();
+    // A conversa aberta também pode ter ganhado mensagem nova do lote —
+    // sem isto, quem está lendo uma conversa antiga vê a lista atualizar
+    // e o painel aberto continuar do jeito que estava até reabrir.
+    if (selectedIdRef.current && ids.has(selectedIdRef.current)) {
+      void loadDetail(selectedIdRef.current);
+    }
+  }, [reconciliarHistorico, agendarContagem, loadDetail]);
 
   /**
    * O fim da conversa apareceu pra quem está olhando. Só então ela conta
@@ -560,9 +643,37 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
   useEffect(() => {
     if (!socket) return;
 
+    // Vive só enquanto este efeito viver: a limpeza no fim cancela
+    // qualquer reconciliação agendada, junto com os `socket.off` abaixo.
+    const agrupadorDeHistorico = criarAgrupadorDeRajada(
+      flusharReconciliacaoDeHistorico,
+      { janela: 600, prazoMaximo: 3000 },
+    );
+
     const onConnect = () => {
       loadConversations(filtersRef.current).catch(() => {});
       if (selectedIdRef.current) loadDetail(selectedIdRef.current).catch(() => {});
+    };
+
+    /**
+     * Lotes do histórico importado — ver F02.
+     *
+     * `RealtimeProvider` já escuta este mesmo evento pro giro de
+     * progresso; este segundo ouvinte é o que faz a LISTA reagir, sem
+     * esperar um F5. Os dois convivem: Socket.IO entrega o evento a
+     * quantos `.on` quiserem escutar.
+     */
+    const onCanalHistorico = (evento: {
+      estado: string;
+      conversationIds?: string[];
+    }) => {
+      for (const id of evento.conversationIds ?? []) idsAfetadosRef.current.add(id);
+      // Lote final: garante a atualização de vez, sem esperar as janelas.
+      if (evento.estado !== "IMPORTANDO") {
+        agrupadorDeHistorico.forcar();
+      } else {
+        agrupadorDeHistorico.disparar();
+      }
     };
 
     const onConversationUpdated = (updated: ConversationUpdate) => {
@@ -583,21 +694,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         setConversations((prev) => {
           const rest = prev.filter((item) => item.id !== updated.id);
           if (!pertence) return rest;
-          // Na fila quem manda é o tempo de espera, e ele NÃO sobe com
-          // mensagem nova — pelo contrário: quem acabou de cobrar continua
-          // esperando desde a primeira vez. Reordenar por recência aqui
-          // desfaria a fila a cada evento.
-          if (filtersRef.current.ordem === "ESPERA") {
-            return [updated, ...rest].sort((a, b) => {
-              const esperaA = a.waitingSince ? new Date(a.waitingSince).getTime() : Infinity;
-              const esperaB = b.waitingSince ? new Date(b.waitingSince).getTime() : Infinity;
-              return esperaA - esperaB;
-            });
-          }
-          return [updated, ...rest].sort(
-            (a, b) =>
-              new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
-          );
+          return ordenarConversas([updated, ...rest], filtersRef.current.ordem);
         });
 
       if (typeof document.startViewTransition === "function") {
@@ -715,6 +812,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     };
 
     socket.on("connect", onConnect);
+    socket.on("canal.historico", onCanalHistorico);
     socket.on("conversation.updated", onConversationUpdated);
     socket.on("message.created", onMessageCreated);
     socket.on("message.updated", onMessageUpdated);
@@ -722,7 +820,9 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     socket.on("message.transcrita", onMessageTranscrita);
 
     return () => {
+      agrupadorDeHistorico.cancelar();
       socket.off("connect", onConnect);
+      socket.off("canal.historico", onCanalHistorico);
       socket.off("conversation.updated", onConversationUpdated);
       socket.off("message.created", onMessageCreated);
       socket.off("message.updated", onMessageUpdated);
@@ -732,7 +832,15 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // Sem `filters` nas dependências: os ouvintes leem o recorte atual
     // pelo ref, e assim o efeito é montado uma vez só em vez de desligar e
     // religar cinco ouvintes a cada clique na barra de filtros.
-  }, [socket, loadConversations, loadDetail, agendarContagem, chaveDaSessao, user.id]);
+  }, [
+    socket,
+    loadConversations,
+    loadDetail,
+    agendarContagem,
+    chaveDaSessao,
+    user.id,
+    flusharReconciliacaoDeHistorico,
+  ]);
 
   /** Mesma classificação que o servidor faz, só que antes da viagem. */
   function tipoDoArquivo(file: File): ConversationMessage["messageType"] {

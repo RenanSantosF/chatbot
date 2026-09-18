@@ -611,13 +611,19 @@ export class EvolutionWebhookController {
     }
 
     let importadas = 0;
+    // As conversas que este lote tocou de verdade — é o que deixa o Inbox
+    // reconciliar sem recarregar a página (ver F02). `Set` porque o mesmo
+    // contato pode aparecer mais de uma vez entre lotes que se sobrepõem.
+    const conversasAfetadas = new Set<string>();
     for (const [telefone, registro] of porContato) {
       try {
-        importadas += await this.conversations.importarHistorico({
+        const resultado = await this.conversations.importarHistorico({
           customerPhone: telefone,
           customerName: registro.nome ?? telefone,
           mensagens: registro.mensagens,
         });
+        importadas += resultado.importadas;
+        if (resultado.conversationId) conversasAfetadas.add(resultado.conversationId);
       } catch (erro) {
         // Um contato problemático não pode levar o lote inteiro junto: o
         // que já foi gravado continua valendo, e o resto segue.
@@ -673,6 +679,12 @@ export class EvolutionWebhookController {
       estado: settings.historicoEstado,
       mensagens: settings.historicoMensagens,
       progresso: settings.historicoProgresso,
+      // Teto de segurança: um lote gigante não pode virar um payload de
+      // milhares de ids. O Inbox trata a ausência/estouro como "alguma
+      // coisa mudou, sem saber o quê" e reconsulta a lista inteira — ainda
+      // corretamente, só sem o atalho de mesclar só o que mudou.
+      conversationIds:
+        conversasAfetadas.size <= 200 ? [...conversasAfetadas] : undefined,
     });
 
     this.logger.log(

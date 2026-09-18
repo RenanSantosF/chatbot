@@ -3761,8 +3761,14 @@ export class ConversationsService {
       externalId?: string;
       createdAt: Date;
     }[];
-  }) {
-    if (entrada.mensagens.length === 0) return 0;
+  }): Promise<{ importadas: number; conversationId: string | null }> {
+    // `conversationId` nulo é "nada mudou": quem chama usa isto pra saber
+    // quais conversas avisar em tempo real (ver F02) sem ter que comparar
+    // contagem antes/depois. Sem ele, o Inbox só descobria uma conversa
+    // nova/atualizada da importação recarregando a página inteira.
+    if (entrada.mensagens.length === 0) {
+      return { importadas: 0, conversationId: null };
+    }
 
     const customer = await this.customers.upsertFromAddressBook({
       phone: entrada.customerPhone,
@@ -3810,7 +3816,7 @@ export class ConversationsService {
       noLote.add(m.externalId);
       return true;
     });
-    if (novas.length === 0) return 0;
+    if (novas.length === 0) return { importadas: 0, conversationId: null };
 
     /*
      * `skipDuplicates` é a última linha de defesa, e a única que não é uma
@@ -3852,7 +3858,10 @@ export class ConversationsService {
     // O que o BANCO gravou, e não o que tentamos gravar: é este número que
     // vira a contagem de "trazidas até agora" na tela, e contar as puladas
     // fazia o painel anunciar milhares de mensagens que não existiam.
-    return gravadas?.count ?? novas.length;
+    return {
+      importadas: gravadas?.count ?? novas.length,
+      conversationId: conversation.id,
+    };
   }
 
   /**
