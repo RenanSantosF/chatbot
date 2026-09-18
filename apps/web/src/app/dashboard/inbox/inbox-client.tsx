@@ -22,6 +22,7 @@ import type { Relogio } from "@/lib/espera";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import { conversationCache } from "@/lib/conversation-cache";
+import { pertenceAoFiltro } from "@/lib/inbox-filtro";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
 import type {
@@ -565,6 +566,14 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     };
 
     const onConversationUpdated = (updated: ConversationUpdate) => {
+      // O evento chega pra QUALQUER conversa que esta pessoa pode ver —
+      // não só pra quem bate com o filtro aberto agora (ver
+      // `pertenceAoFiltro`). Uma conversa resolvida some da aba de
+      // Pendentes, um grupo nunca entra na caixa de clientes, a conversa
+      // de outro atendente não fura "Minhas" — em vez de entrar direto e
+      // esperar os contadores corrigirem depois.
+      const pertence = pertenceAoFiltro(updated, filtersRef.current, user.id);
+
       // Mais recente sempre em cima: a conversa que acabou de receber
       // mensagem sobe pro topo, igual a qualquer mensageiro. A troca de
       // posição vai numa view transition — sem ela a lista "pisca" e quem
@@ -573,6 +582,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       const reorder = () =>
         setConversations((prev) => {
           const rest = prev.filter((item) => item.id !== updated.id);
+          if (!pertence) return rest;
           // Na fila quem manda é o tempo de espera, e ele NÃO sobe com
           // mensagem nova — pelo contrário: quem acabou de cobrar continua
           // esperando desde a primeira vez. Reordenar por recência aqui
@@ -595,6 +605,8 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       } else {
         reorder();
       }
+      // O painel aberto atualiza mesmo quando a conversa sai do filtro —
+      // sumir da lista lateral não pode fechar o que a pessoa está lendo.
       if (selectedIdRef.current === updated.id) {
         setDetail((prev) => (prev ? { ...prev, ...updated } : prev));
       }
@@ -720,7 +732,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // Sem `filters` nas dependências: os ouvintes leem o recorte atual
     // pelo ref, e assim o efeito é montado uma vez só em vez de desligar e
     // religar cinco ouvintes a cada clique na barra de filtros.
-  }, [socket, loadConversations, loadDetail, agendarContagem, chaveDaSessao]);
+  }, [socket, loadConversations, loadDetail, agendarContagem, chaveDaSessao, user.id]);
 
   /** Mesma classificação que o servidor faz, só que antes da viagem. */
   function tipoDoArquivo(file: File): ConversationMessage["messageType"] {
