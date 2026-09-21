@@ -698,7 +698,18 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         });
 
       if (typeof document.startViewTransition === "function") {
-        document.startViewTransition(() => flushSync(reorder));
+        try {
+          const transicao = document.startViewTransition(() => flushSync(reorder));
+          // Trava de segurança: em rajada de eventos essa API tem bugs
+          // conhecidos (Chrome) em que a transição nunca termina, deixando
+          // a foto da tela ANTERIOR por cima de tudo — nenhum clique passa
+          // em lugar nenhum da página até recarregar. Forçar o fim depois
+          // de 1s garante que a tela nunca fique presa nisso.
+          const destravar = setTimeout(() => transicao.skipTransition(), 1000);
+          transicao.finished.finally(() => clearTimeout(destravar)).catch(() => {});
+        } catch {
+          reorder();
+        }
       } else {
         reorder();
       }
