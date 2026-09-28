@@ -13,6 +13,7 @@ import {
   Play,
 } from "lucide-react";
 import { useState } from "react";
+import { proporcaoDaMiniatura } from "@/lib/miniatura";
 import { cn } from "@/lib/utils";
 import { AudioMessage } from "./audio-message";
 import { ImageLightbox } from "./image-lightbox";
@@ -52,6 +53,7 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
+  const [proporcao, setProporcao] = useState<number | null>(null);
   const meta = message.metadata;
 
   if (message.messageType === "LOCATION" && meta?.latitude !== undefined) {
@@ -126,22 +128,37 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Abrir imagem"
-          // A imagem vem pelo nosso proxy, que ainda busca na Meta — pode
-          // demorar. Sem o esqueleto embaixo, o balão nascia com altura
-          // zero e a conversa dava um salto quando a foto chegava.
-          className="relative block min-h-24 w-full max-w-sm cursor-zoom-in overflow-hidden rounded-md"
+          /*
+           * No balão vai um RECORTE; a foto inteira fica pro visualizador.
+           *
+           * A miniatura era a foto completa com altura limitada, e a
+           * largura saía da proporção dela: um comprovante comprido virava
+           * uma tira fina e alta, com o balão todo em volta parecendo
+           * moldura. Agora a caixa tem largura fixa e altura dentro de uma
+           * faixa — como o WhatsApp faz —, e o que sobra da foto é cortado.
+           *
+           * O quadrado antes de carregar é o esqueleto: a imagem vem pelo
+           * nosso proxy, que ainda busca no WhatsApp, e sem altura o balão
+           * nascia vazio e a conversa dava um salto quando ela chegava.
+           */
+          style={{ aspectRatio: `1 / ${proporcao ?? 1}` }}
+          className="relative block w-72 max-w-full cursor-zoom-in overflow-hidden rounded-xl"
         >
           {loaded ? null : (
-            <span className="shimmer absolute inset-0 rounded-md bg-foreground/10" aria-hidden />
+            <span className="shimmer absolute inset-0 bg-foreground/10" aria-hidden />
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
             alt={message.content || "Imagem recebida"}
             onError={() => setFailed(true)}
-            onLoad={() => setLoaded(true)}
+            onLoad={(event) => {
+              const { naturalWidth, naturalHeight } = event.currentTarget;
+              setProporcao(proporcaoDaMiniatura(naturalWidth, naturalHeight));
+              setLoaded(true);
+            }}
             className={cn(
-              "max-h-64 w-full max-w-full object-cover transition-all duration-300 hover:scale-[1.02]",
+              "absolute inset-0 size-full object-cover transition-all duration-300 hover:scale-[1.02]",
               loaded ? "opacity-100" : "opacity-0",
             )}
           />

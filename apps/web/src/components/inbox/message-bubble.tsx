@@ -275,6 +275,15 @@ export function MessageBubble({
     message.messageType === "IMAGE" &&
     !message.deletedAt &&
     (message.metadata?.mimeType?.startsWith("image/webp") ?? false);
+  /*
+   * Foto vai quase encostada na borda do balão.
+   *
+   * Com o recuo normal de texto em volta, o verde fazia uma moldura
+   * grossa — mais grossa, proporcionalmente, quanto menor a foto. O resto
+   * do balão (nome, legenda, hora) ganha o recuo de volta em cada linha.
+   */
+  const foto = message.messageType === "IMAGE" && !message.deletedAt && !figurinha;
+  const recuo = foto ? "px-2" : undefined;
   const reactions = Object.entries(message.reactions ?? {}).filter(
     ([, who]) => Array.isArray(who) && who.length > 0,
   );
@@ -364,7 +373,8 @@ export function MessageBubble({
         figurinha
           ? "items-start"
           : cn(
-              "rounded-2xl px-3.5 py-2.5 shadow-[0_1px_1px_oklch(0_0_0/6%)]",
+              "rounded-2xl shadow-[0_1px_1px_oklch(0_0_0/6%)]",
+              foto ? "p-1 pb-1.5" : "px-3.5 py-2.5",
               fromCustomer
                 ? "rounded-bl-sm bg-bubble-in text-bubble-in-foreground"
                 : "rounded-br-sm bg-bubble-out text-bubble-out-foreground",
@@ -379,7 +389,7 @@ export function MessageBubble({
           passou por três pessoas o balão verde sozinho não conta a
           história: quem lê depois não sabe quem prometeu o quê. */}
       {message.senderName ? (
-        <span className="text-[13px] font-semibold text-bubble-out-foreground/80">
+        <span className={cn("text-[13px] font-semibold text-bubble-out-foreground/80", recuo)}>
           {message.senderName}
         </span>
       ) : null}
@@ -394,7 +404,7 @@ export function MessageBubble({
           Só nas recebidas: o que a empresa manda sai pelo painel e já tem o
           `senderName` acima dizendo qual atendente escreveu. */}
       {fromCustomer && message.metadata?.participante ? (
-        <span className="text-[13px] font-semibold text-primary">
+        <span className={cn("text-[13px] font-semibold text-primary", recuo)}>
           {message.metadata.participante}
         </span>
       ) : null}
@@ -403,6 +413,7 @@ export function MessageBubble({
         <div
           className={cn(
             "mb-1 rounded-md border-l-2 px-2 py-1 text-xs",
+            foto && "mb-0.5",
             fromCustomer
               ? "border-primary/60 bg-black/5 dark:bg-white/10"
               : "border-primary-foreground/60 bg-black/10",
@@ -428,13 +439,14 @@ export function MessageBubble({
           "Localização: -20.3620781, -40.4308282" — e o balão ficava com
           cara de log em vez de mensagem. */}
       {message.content && message.messageType !== "LOCATION" ? (
-        <span className="whitespace-pre-wrap break-words">
+        <span className={cn("whitespace-pre-wrap break-words", recuo, foto && "pt-0.5")}>
           <Highlighted text={message.content} term={highlight} />
         </span>
       ) : null}
       <span
         className={cn(
           "flex items-center justify-end gap-1 text-[11px] leading-none",
+          recuo,
           // Sem balão atrás, a hora precisa do próprio contraste contra o
           // papel de parede.
           figurinha
