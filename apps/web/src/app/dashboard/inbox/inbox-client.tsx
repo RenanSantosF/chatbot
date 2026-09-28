@@ -29,6 +29,7 @@ import { criarAgrupadorDeRajada } from "@/lib/agrupar-rajada";
 import { conversationCache } from "@/lib/conversation-cache";
 import { inboxListCache } from "@/lib/inbox-list-cache";
 import { ordenarConversas, pertenceAoFiltro } from "@/lib/inbox-filtro";
+import { buildQuery, gravarFiltrosNoCookie } from "@/lib/inbox-query";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
 import type {
@@ -65,6 +66,8 @@ export interface DadosIniciaisDoInbox {
   contadores: FilterCounts;
   /** A conversa pedida pela URL (`?c=`), com a primeira página de mensagens. */
   conversa: (ConversationDetail & { messagesCursor: string | null }) | null;
+  /** O recorte com que o servidor montou a página (vindo do cookie). */
+  filtros: InboxFilters;
 }
 
 /**
@@ -91,50 +94,6 @@ const EMPTY_COUNTS: FilterCounts = {
   priority: {},
 };
 
-/**
- * O MESMO recorte alimenta a lista e os contadores.
- *
- * Montar a consulta em dois lugares foi o que fez os números do cabeçalho
- * discordarem da lista embaixo: "Pendentes 1" com "Minhas 5". Uma função
- * só, dois destinos.
- */
-function buildQuery(
-  filters: InboxFilters,
-  cursor?: string | null,
-  caminho = "/conversations",
-): string {
-  const params = new URLSearchParams();
-  const buscando = Boolean(filters.search.trim());
-  // O eixo de grupos vem primeiro: ele decide QUAL caixa está aberta, e o
-  // resto dos filtros recorta dentro dela.
-  if (filters.grupos) params.set("grupos", "true");
-  // A aba (situação) some da busca: procurar alguém só pra descobrir que
-  // ele "não existe" porque a conversa está resolvida, numa aba diferente
-  // da que estava aberta, é o tipo de resultado que faz a pessoa desistir
-  // de confiar na busca. Sem esses dois, o servidor já devolve de toda
-  // situação — os contadores das abas não mudam, porque `counts` já ignora
-  // esta faceta por conta própria (ver `montarWhere`/`semSituacao`).
-  if (!buscando) {
-    if (filters.grupo !== "ALL") params.set("statusGroup", filters.grupo);
-    if (filters.status !== "ALL") params.set("status", filters.status);
-  }
-  if (filters.priority !== "ALL") params.set("priority", filters.priority);
-  // Interruptores independentes: dá pra pedir "minhas E não lidas", coisa
-  // que a versão anterior (opções exclusivas) não permitia.
-  if (filters.mine) params.set("mine", "true");
-  if (filters.unread) params.set("unread", "true");
-  if (filters.unassigned) params.set("unassigned", "true");
-  if (filters.comIa) params.set("comIa", "true");
-  if (filters.waiting) params.set("waiting", "true");
-  if (filters.ordem !== "RECENTE") params.set("ordem", filters.ordem);
-  // A etiqueta é recorte, não faceta: vai junto na contagem também, senão
-  // o cabeçalho contaria fora do que a lista está mostrando.
-  if (filters.tagId) params.set("tagId", filters.tagId);
-  if (filters.search.trim()) params.set("search", filters.search.trim());
-  if (cursor) params.set("cursor", cursor);
-  const query = params.toString();
-  return query ? `${caminho}?${query}` : caminho;
-}
 
 /**
  * O recorte guardado no navegador é o mesmo com que o servidor montou a
@@ -214,10 +173,17 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
 
   // Filtros sobrevivem a recarregar e a sair da tela — quem trabalha o dia
   // todo no Inbox não quer reconfigurar a cada volta.
+  // O recorte do servidor como ponto de partida: é o que a primeira página
+  // mostra, e a aba acesa já nasce certa, sem esperar o navegador ler o
+  // que tinha guardado.
   const [filters, setFilters, filtersReady] = usePersistedState<InboxFilters>(
     "inbox-filters",
-    DEFAULT_FILTERS,
+    inicial?.filtros ?? DEFAULT_FILTERS,
   );
+  // A cópia que viaja com o pedido da página (ver `lerFiltrosDoCookie`).
+  useEffect(() => {
+    if (filtersReady) gravarFiltrosNoCookie(filters);
+  }, [filters, filtersReady]);
 
   const selectedIdRef = useRef<string | null>(null);
   /** Vira falso na primeira passada do efeito de carga — ver `mesmoRecorte`. */
@@ -649,7 +615,16 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // que já estava certa.
     if (primeiraPaginaDoServidor.current) {
       primeiraPaginaDoServidor.current = false;
-      if (mesmoRecorte(filters, DEFAULT_FILTERS)) return;
+      if (inicial) {
+        // A primeira página também é uma aba: guardada, voltar a ela depois
+        // de visitar outra não busca de novo.
+        inboxListCache.set(chaveDaSessao, buildQuery(inicial.filtros), {
+          items: inicial.conversas.items,
+          nextCursor: inicial.conversas.nextCursor,
+          filtros: inicial.filtros,
+        });
+        if (mesmoRecorte(filters, inicial.filtros)) return;
+      }
     }
 
     // Aba já visitada nesta sessão: pinta da memória na hora — sem
@@ -689,7 +664,9 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       );
     }, filters.search ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [filters, filtersReady, loadConversations, loadCounts, chaveDaSessao]);
+    // `inicial` é a página que veio do servidor: não muda depois da
+    // montagem, e só é lida na primeira passada (ver acima).
+  }, [filters, filtersReady, loadConversations, loadCounts, chaveDaSessao, inicial]);
 
   useEffect(() => {
     // Atendente não tem permissão de LER as configurações de atendimento, e
@@ -841,31 +818,41 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
   const aquecer = useCallback(() => {
     if (esperaDoAquecimento.current) clearTimeout(esperaDoAquecimento.current);
     esperaDoAquecimento.current = setTimeout(async () => {
+      // As abas primeiro, e todas juntas: é o que a pessoa troca logo nos
+      // primeiros segundos. Uma de cada vez, a última só ficava pronta
+      // uns quatro segundos depois de abrir — tempo de sobra pra alguém
+      // tocar nela e ver o "carregando".
+      const atual = filtersRef.current;
+      if (!atual.search.trim()) {
+        await Promise.all(
+          ABAS.map(async (aba) => {
+            const filtros = filtrosDaAba(atual, aba);
+            const chave = buildQuery(filtros);
+            // A aba aberta já é cuidada pela tela (conferência da conexão,
+            // carga do filtro e tempo real) — buscar aqui seria em dobro.
+            if (chave === buildQuery(atual)) return;
+            if (inboxListCache.emDia(chaveDaSessao, chave)) return;
+            try {
+              const page = await apiFetch<Page<ConversationSummary>>(chave);
+              inboxListCache.set(chaveDaSessao, chave, {
+                items: page.items,
+                nextCursor: page.nextCursor,
+                filtros,
+              });
+            } catch {
+              // Aba que não veio agora vem no clique, como antes.
+            }
+          }),
+        );
+      }
+
       conversationsRef.current
         .filter((conversa) => conversa.unreadCount > 0)
         .slice(0, 6)
         .forEach((conversa, indice) => {
-          setTimeout(() => preCarregar(conversa.id), indice * 400);
+          setTimeout(() => preCarregar(conversa.id), indice * 300);
         });
-
-      const atual = filtersRef.current;
-      if (atual.search.trim()) return;
-      for (const aba of ABAS) {
-        const filtros = filtrosDaAba(atual, aba);
-        const chave = buildQuery(filtros);
-        if (inboxListCache.emDia(chaveDaSessao, chave)) continue;
-        try {
-          const page = await apiFetch<Page<ConversationSummary>>(chave);
-          inboxListCache.set(chaveDaSessao, chave, {
-            items: page.items,
-            nextCursor: page.nextCursor,
-            filtros,
-          });
-        } catch {
-          // Aba que não veio agora vem no clique, como antes.
-        }
-      }
-    }, 1500);
+    }, 250);
   }, [chaveDaSessao, preCarregar]);
 
   useEffect(
@@ -874,6 +861,16 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     },
     [],
   );
+
+  // Sem tempo real (rede que bloqueia websocket, servidor reiniciando), o
+  // aquecimento acontece do mesmo jeito: as abas não ficam "em dia", mas
+  // aparecem na hora e se conferem por baixo — melhor que o esqueleto.
+  useEffect(() => {
+    const espera = setTimeout(() => {
+      if (!socket?.connected) aquecer();
+    }, 3000);
+    return () => clearTimeout(espera);
+  }, [socket, aquecer]);
 
   useEffect(() => {
     if (!socket) return;
@@ -905,6 +902,14 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         const page = await apiFetch<Page<ConversationSummary>>(buildQuery(filtersRef.current));
         if (meu !== pedidoDaLista.current) return;
         const { mudou, mudaram } = conferirPrimeiraPagina(conversationsRef.current, page.items);
+        // Mudando ou não, esta é a aba em dia nesta conexão.
+        if (!filtersRef.current.search.trim()) {
+          inboxListCache.set(chaveDaSessao, buildQuery(filtersRef.current), {
+            items: page.items,
+            nextCursor: page.nextCursor,
+            filtros: filtersRef.current,
+          });
+        }
         if (!mudou) return;
         setConversations(page.items);
         setCursor(page.nextCursor);
@@ -1131,7 +1136,13 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       );
     };
 
+    const onDisconnect = () => {
+      conversationCache.perdeuConexao();
+      inboxListCache.perdeuConexao();
+    };
+
     socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
     socket.on("canal.historico", onCanalHistorico);
     socket.on("conversation.updated", onConversationUpdated);
     socket.on("message.created", onMessageCreated);
@@ -1142,6 +1153,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     return () => {
       agrupadorDeHistorico.cancelar();
       socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
       socket.off("canal.historico", onCanalHistorico);
       socket.off("conversation.updated", onConversationUpdated);
       socket.off("message.created", onMessageCreated);

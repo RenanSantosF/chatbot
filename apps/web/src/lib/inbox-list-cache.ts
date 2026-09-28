@@ -20,6 +20,7 @@ export interface CachedList {
 
 /** Mesma ideia do `conversationCache`: quantas vezes o socket (re)conectou. */
 let conexao = 0;
+let conectado = false;
 
 /**
  * Cache da PRIMEIRA página de cada aba/recorte do Inbox, no mesmo espírito
@@ -82,11 +83,17 @@ export const inboxListCache = {
   emDia(chaveDaSessao: string, chave: string): boolean {
     garantirSessao(chaveDaSessao);
     const entry = cache.get(chave);
-    return Boolean(entry?.filtros) && entry?.conexao === conexao;
+    return conectado && Boolean(entry?.filtros) && entry?.conexao === conexao;
   },
 
   novaConexao() {
     conexao += 1;
+    conectado = true;
+  },
+
+  /** A conexão caiu: até voltar, o que está guardado pode ficar pra trás. */
+  perdeuConexao() {
+    conectado = false;
   },
 
   /**

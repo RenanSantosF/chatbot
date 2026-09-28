@@ -48,6 +48,9 @@ const ids = (chave: string) => inboxListCache.get(SESSAO, chave)?.items.map((c) 
 beforeEach(() => {
   inboxListCache.clear();
   conversationCache.clear();
+  // Tempo real no ar: é a condição pra algo valer como "em dia".
+  inboxListCache.novaConexao();
+  conversationCache.novaConexao();
 });
 
 describe("abas em tempo real", () => {
@@ -114,6 +117,15 @@ describe("conversa em dia pelo tempo real", () => {
       "m2",
     ]);
     expect(conversationCache.emDia(SESSAO, "a")).toBe(true);
+  });
+
+  it("com a conexão caída, nada vale como em dia", () => {
+    conversationCache.set(SESSAO, "a", { detail: detalhe("a"), messagesCursor: null });
+    guardarAbas([], []);
+    conversationCache.perdeuConexao();
+    inboxListCache.perdeuConexao();
+    expect(conversationCache.emDia(SESSAO, "a")).toBe(false);
+    expect(inboxListCache.emDia(SESSAO, "pendentes")).toBe(false);
   });
 
   it("depois de a conexão cair e voltar, deixa de estar em dia", () => {

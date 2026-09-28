@@ -19,6 +19,8 @@ export interface CachedConversation {
  * pode ter perdido o que chegou durante a queda: o servidor não reenvia.
  */
 let conexao = 0;
+/** Sem conexão, nada é "em dia": o que chegar agora não chega aqui. */
+let conectado = false;
 
 /**
  * Cache de conversas abertas, no mesmo espírito do WhatsApp Web: voltar
@@ -101,12 +103,18 @@ export const conversationCache = {
    */
   emDia(chaveDaSessao: string, id: string): boolean {
     garantirSessao(chaveDaSessao);
-    return cache.get(id)?.conexao === conexao;
+    return conectado && cache.get(id)?.conexao === conexao;
   },
 
   /** O tempo real (re)conectou: o que foi guardado antes pode ter furos. */
   novaConexao() {
     conexao += 1;
+    conectado = true;
+  },
+
+  /** A conexão caiu: até voltar, o que está guardado pode ficar pra trás. */
+  perdeuConexao() {
+    conectado = false;
   },
 
   /**

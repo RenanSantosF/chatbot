@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_FILTERS } from "@/lib/inbox-query";
 import {
   ArrowDownWideNarrow,
   Clock3,
@@ -58,34 +59,9 @@ export interface InboxFilters {
   search: string;
 }
 
-/**
- * Abre em "Pendentes", ordenado pela fila de espera.
- *
- * A tela existe pra responder "o que eu preciso fazer agora". Abrir com
- * tudo misturado — inclusive o que já foi resolvido — obriga a pessoa a
- * filtrar antes de começar a trabalhar, todo dia.
- *
- * A ordem por espera é a resposta certa pra essa mesma pergunta. Por
- * recência, quem cobra sobe e quem escreveu uma vez e ficou quieto afunda:
- * o cliente educado é o último a ser atendido, e ninguém percebe porque a
- * lista parece cheia de movimento. Quem quiser a leitura de mensageiro
- * troca em um clique — o contrário (descobrir que existe uma fila) exigia
- * que a pessoa procurasse.
- */
-export const DEFAULT_FILTERS: InboxFilters = {
-  grupo: "PENDING",
-  grupos: false,
-  status: "ALL",
-  priority: "ALL",
-  mine: false,
-  unread: false,
-  unassigned: false,
-  comIa: false,
-  waiting: false,
-  ordem: "ESPERA",
-  tagId: "",
-  search: "",
-};
+// O padrão mora na biblioteca porque a página do servidor também precisa
+// dele (ver `lerFiltrosDoCookie`), e este arquivo é só de navegador.
+export { DEFAULT_FILTERS };
 
 /** Contagens vindas do servidor — refletem a base inteira, não a página. */
 export interface FilterCounts {
