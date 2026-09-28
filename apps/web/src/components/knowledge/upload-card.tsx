@@ -104,8 +104,9 @@ export function UploadCard({ onUploaded }: { onUploaded: (document: KnowledgeDoc
         </Button>
       </div>
       <p className="text-xs text-muted-foreground text-pretty">
-        PDF, DOCX, TXT, CSV ou XLSX, até 10 MB. O texto é dividido em trechos e
-        indexado — a IA consulta só o que for relevante em cada pergunta.
+        PDF, DOCX, TXT, CSV ou XLSX, até 10 MB e 20 documentos. O texto é dividido
+        em trechos e indexado — a IA consulta só o que for relevante em cada
+        pergunta.
       </p>
     </form>
   );

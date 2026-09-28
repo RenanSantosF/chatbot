@@ -6,17 +6,18 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { LIMITE_POR_REGRA } from '../ai-context';
 
 /**
- * Era 2000 caracteres. Uma regra bem escrita cabe fácil nisso — mas quem
- * cola um script de atendimento inteiro numa regra só (em vez de usar
- * "Instruções gerais", pensado pra isso) esbarrava no limite sem aviso
- * nenhum na tela, só ao tentar salvar, e a mensagem era o texto cru do
- * class-validator em inglês. Dobrado pra 4000 dá folga real, e a tela
- * agora mostra um contador ao vivo — a segunda parte do que resolve a
- * reclamação, porque um limite maior sem contador só adia a mesma surpresa.
+ * Uma regra é uma regra: "nunca dê desconto acima de 10%", "pergunte o
+ * número do pedido antes de tudo". Cabe em poucas linhas.
+ *
+ * Foi de 4000 pra 1000 porque as regras vão inteiras em TODA resposta da
+ * IA (ver ORCAMENTO_DAS_REGRAS). Texto longo — tabela de preços, script,
+ * política — é conteúdo de consulta, e vai como documento na base de
+ * conhecimento, de onde só sai o trecho que responde a pergunta.
  */
-const LIMITE_DO_CONTEUDO = 4000;
+const LIMITE_DO_CONTEUDO = LIMITE_POR_REGRA;
 
 export class CreateAiInstructionDto {
   @IsString()
@@ -27,7 +28,7 @@ export class CreateAiInstructionDto {
   @IsString()
   @MinLength(2, { message: 'Escreva o que a IA deve saber ou fazer.' })
   @MaxLength(LIMITE_DO_CONTEUDO, {
-    message: `Esta regra pode ter no máximo ${LIMITE_DO_CONTEUDO} caracteres. Pra um texto maior, use "Instruções gerais" em Configurações > IA.`,
+    message: `Esta regra pode ter no máximo ${LIMITE_DO_CONTEUDO} caracteres. Pra um texto maior, suba como documento na base de conhecimento.`,
   })
   content!: string;
 
@@ -47,7 +48,7 @@ export class UpdateAiInstructionDto {
   @IsString()
   @MinLength(2, { message: 'Escreva o que a IA deve saber ou fazer.' })
   @MaxLength(LIMITE_DO_CONTEUDO, {
-    message: `Esta regra pode ter no máximo ${LIMITE_DO_CONTEUDO} caracteres. Pra um texto maior, use "Instruções gerais" em Configurações > IA.`,
+    message: `Esta regra pode ter no máximo ${LIMITE_DO_CONTEUDO} caracteres. Pra um texto maior, suba como documento na base de conhecimento.`,
   })
   content?: string;
 

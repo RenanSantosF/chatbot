@@ -6,6 +6,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { LIMITE_DAS_INSTRUCOES_GERAIS } from '../ai-context';
 
 export enum AiToneDto {
   PROFESSIONAL = 'PROFESSIONAL',
@@ -39,18 +40,17 @@ export class UpdateAiSettingsDto {
   /**
    * O "treinamento geral" — a personalidade e as regras que valem sempre.
    *
-   * Era 4000 (~1000 tokens). Dobrado pra 8000 depois de um cliente relatar
-   * que um script de atendimento real, colado inteiro aqui, esbarrava no
-   * limite — e a mensagem que ele via era a do class-validator em inglês
-   * ("customInstructions must be shorter..."), sem dizer quantos caracteres
-   * sobravam nem por quê. As duas coisas mudam juntas: o limite sobe, e a
-   * mensagem passa a ser em português (ver a tela, que também mostra um
-   * contador ao vivo pra isso nunca mais ser descoberto só ao tentar salvar).
+   * Chegou a 8000, e desceu pra 3000: este texto vai inteiro em TODA
+   * resposta da IA, então cada caractere daqui é pago milhares de vezes
+   * por mês. Script longo, tabela e política vão como documento na base de
+   * conhecimento, de onde só sai o trecho que responde a pergunta. A tela
+   * mostra um contador ao vivo, e a mensagem de erro diz pra onde levar o
+   * excesso.
    */
   @IsOptional()
   @IsString()
-  @MaxLength(8000, {
-    message: 'As instruções gerais podem ter no máximo 8000 caracteres.',
+  @MaxLength(LIMITE_DAS_INSTRUCOES_GERAIS, {
+    message: `As instruções gerais podem ter no máximo ${LIMITE_DAS_INSTRUCOES_GERAIS} caracteres. Pra um texto maior, suba como documento na base de conhecimento.`,
   })
   customInstructions?: string;
 

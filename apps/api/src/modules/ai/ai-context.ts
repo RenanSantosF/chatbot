@@ -10,8 +10,15 @@ import type { MessageType } from '../../../generated/prisma/client';
  * comentário diz de onde veio.
  */
 
-/** Quantas mensagens do histórico entram no contexto. */
-export const LIMITE_DO_HISTORICO = 20;
+/**
+ * Quantas mensagens do histórico entram no contexto.
+ *
+ * Era 20. O histórico é a maior parte do custo de cada resposta — ele vai
+ * inteiro, de novo, em toda mensagem —, e um atendimento de WhatsApp raramente
+ * depende do que foi dito quinze mensagens atrás. Catorze mantêm o fio da
+ * conversa e cortam um terço do pior caso.
+ */
+export const LIMITE_DO_HISTORICO = 14;
 
 /**
  * Teto por mensagem do histórico.
@@ -21,7 +28,7 @@ export const LIMITE_DO_HISTORICO = 20;
  * perde o fio da conversa por causa de um anexo em texto. Cortada, ela
  * ainda dá o assunto, que é pra isso que ela está no histórico.
  */
-export const LIMITE_POR_MENSAGEM = 1200;
+export const LIMITE_POR_MENSAGEM = 900;
 
 /**
  * Teto somado dos trechos da base de conhecimento.
@@ -41,6 +48,65 @@ export const ORCAMENTO_DE_CONHECIMENTO = 4000;
  * as mais antigas, que é o oposto do que interessa.
  */
 export const LIMITE_DA_MEMORIA = 12;
+
+/*
+ * O que a EMPRESA escreve pra IA também tem teto.
+ *
+ * Instruções gerais e regras vão inteiras em TODA resposta — diferente
+ * dos documentos, de onde só sai o trecho que responde a pergunta. Sem
+ * limite, quem cadastrasse cinquenta regras de uma página cada pagaria (e
+ * faria a plataforma pagar) por cinquenta páginas num "bom dia".
+ *
+ * Os números cabem uma operação de atendimento real com folga: 3.000
+ * caracteres são uma página e meia de orientação geral, e 6.000 de regras
+ * são umas trinta regras de duas linhas. O que passar disso é conteúdo de
+ * consulta, e o lugar dele é um documento na base de conhecimento.
+ *
+ * Valem duas vezes: no cadastro (a pessoa sabe na hora — ver
+ * AiInstructionsService e o DTO de configurações) e aqui na montagem, pro
+ * que já estava salvo antes de os limites existirem.
+ */
+
+/** Teto das "Instruções gerais" (Configurações > IA). */
+export const LIMITE_DAS_INSTRUCOES_GERAIS = 3000;
+
+/** Teto de uma regra sozinha. */
+export const LIMITE_POR_REGRA = 1000;
+
+/** Quantas regras podem estar ativas ao mesmo tempo. */
+export const LIMITE_DE_REGRAS_ATIVAS = 30;
+
+/** Soma de assunto + texto de todas as regras ativas. */
+export const ORCAMENTO_DAS_REGRAS = 6000;
+
+/** Quanto uma regra pesa no orçamento: o que vai pro prompt. */
+export function pesoDaRegra(regra: { title: string; content: string }): number {
+  return regra.title.length + regra.content.length;
+}
+
+/**
+ * As regras que entram no prompt, na ordem de prioridade, até o orçamento.
+ *
+ * A que não cabe é pulada inteira, e não cortada no meio: meia regra
+ * ("nunca dê desconto acima de") ensina o contrário do que a empresa
+ * escreveu. As seguintes ainda entram se couberem — uma regra comprida no
+ * meio da lista não deve derrubar as curtas que vêm depois.
+ */
+export function regrasNoOrcamento<T extends { title: string; content: string }>(
+  regras: T[],
+  orcamento = ORCAMENTO_DAS_REGRAS,
+  limite = LIMITE_DE_REGRAS_ATIVAS,
+): { cabem: T[]; ficaramDeFora: number } {
+  const cabem: T[] = [];
+  let gasto = 0;
+  for (const regra of regras) {
+    const peso = pesoDaRegra(regra);
+    if (cabem.length >= limite || gasto + peso > orcamento) continue;
+    cabem.push(regra);
+    gasto += peso;
+  }
+  return { cabem, ficaramDeFora: regras.length - cabem.length };
+}
 
 /**
  * Mensagens que não merecem uma busca na base de conhecimento.

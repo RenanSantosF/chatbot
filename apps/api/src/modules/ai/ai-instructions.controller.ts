@@ -1,7 +1,18 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { RequiresPermission } from '../../common/auth/permission.decorator';
 import { AiInstructionsService } from './ai-instructions.service';
-import { CreateAiInstructionDto, UpdateAiInstructionDto } from './dto/ai-instruction.dto';
+import {
+  CreateAiInstructionDto,
+  UpdateAiInstructionDto,
+} from './dto/ai-instruction.dto';
 
 @Controller('ai/instructions')
 @RequiresPermission('ai.manage')

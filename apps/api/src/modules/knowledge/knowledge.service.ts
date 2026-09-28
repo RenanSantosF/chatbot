@@ -1,13 +1,39 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiCredentialsResolver } from '../ai/providers/ai-credentials.resolver';
-import { AI_EMBEDDING_PROVIDER, type AiEmbeddingProvider } from '../ai/providers/ai-provider.interface';
+import {
+  AI_EMBEDDING_PROVIDER,
+  type AiEmbeddingProvider,
+} from '../ai/providers/ai-provider.interface';
 import { chunkText } from './parsing/chunk-text';
 import { extractText } from './parsing/extract-text';
 
-/** Guarda-chuva contra um documento gigante travando o processamento síncrono. */
-const MAX_CHUNKS_PER_DOCUMENT = 500;
+/**
+ * Teto de trechos por documento: ~200 páginas de texto corrido.
+ *
+ * Era 500. Não é pelo custo da resposta — dela só sai o trecho que responde
+ * a pergunta, com orçamento próprio (ver ORCAMENTO_DE_CONHECIMENTO) — e sim
+ * pelo processamento síncrono do envio e pela qualidade da busca: um
+ * manual inteiro de fornecedor enterra as três páginas que importam.
+ */
+const MAX_CHUNKS_PER_DOCUMENT = 200;
+
+/**
+ * Quantos documentos uma empresa pode ter na base.
+ *
+ * Vinte cobrem a operação toda — tabela de preços, políticas, perguntas
+ * frequentes, catálogo — e mantêm a busca afiada. Documento a mais quase
+ * sempre é versão antiga do mesmo assunto, que faz a IA responder com o
+ * preço do ano passado.
+ */
+export const LIMITE_DE_DOCUMENTOS = 20;
 const SEARCH_RESULT_LIMIT = 5;
 
 interface UploadedFileInput {
@@ -32,15 +58,20 @@ export class KnowledgeService {
   constructor(
     private readonly prisma: TenantPrismaService,
     private readonly credentials: AiCredentialsResolver,
-    @Inject(AI_EMBEDDING_PROVIDER) private readonly embeddingProvider: AiEmbeddingProvider,
+    @Inject(AI_EMBEDDING_PROVIDER)
+    private readonly embeddingProvider: AiEmbeddingProvider,
   ) {}
 
   list() {
-    return this.prisma.db.knowledgeDocument.findMany({ orderBy: { createdAt: 'desc' } });
+    return this.prisma.db.knowledgeDocument.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   private async requireDocument(id: string) {
-    const document = await this.prisma.db.knowledgeDocument.findFirst({ where: { id } });
+    const document = await this.prisma.db.knowledgeDocument.findFirst({
+      where: { id },
+    });
     if (!document) {
       throw new NotFoundException('Documento não encontrado.');
     }
@@ -69,6 +100,13 @@ export class KnowledgeService {
       );
     }
 
+    const existentes = await this.prisma.db.knowledgeDocument.count();
+    if (existentes >= LIMITE_DE_DOCUMENTOS) {
+      throw new BadRequestException(
+        `A base já tem ${LIMITE_DE_DOCUMENTOS} documentos, o máximo. Apague um antigo (ou junte assuntos parecidos num só) antes de enviar outro.`,
+      );
+    }
+
     const document = await this.prisma.db.knowledgeDocument.create({
       data: {
         tenantId: this.prisma.tenantId,
@@ -86,7 +124,10 @@ export class KnowledgeService {
       if (chunks.length === 0) {
         return this.prisma.db.knowledgeDocument.update({
           where: { id: document.id },
-          data: { status: 'FAILED', errorMessage: 'Não encontramos texto legível neste arquivo.' },
+          data: {
+            status: 'FAILED',
+            errorMessage: 'Não encontramos texto legível neste arquivo.',
+          },
         });
       }
 
@@ -112,7 +153,10 @@ export class KnowledgeService {
         `Falha ao processar documento ${document.id}`,
         error instanceof Error ? error.stack : error,
       );
-      const message = error instanceof Error ? error.message : 'Falha ao processar o documento.';
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Falha ao processar o documento.';
       return this.prisma.db.knowledgeDocument.update({
         where: { id: document.id },
         data: { status: 'FAILED', errorMessage: message },
@@ -141,7 +185,9 @@ export class KnowledgeService {
       });
       queryEmbedding = embedding;
     } catch (error) {
-      this.logger.warn(`Falha ao gerar embedding da busca: ${error instanceof Error ? error.message : error}`);
+      this.logger.warn(
+        `Falha ao gerar embedding da busca: ${error instanceof Error ? error.message : error}`,
+      );
       return [];
     }
 

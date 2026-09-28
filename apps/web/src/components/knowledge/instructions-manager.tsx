@@ -12,8 +12,14 @@ import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import type { AiInstruction } from "@/lib/types";
 
-/** Mesmo valor do backend (ver CreateAiInstructionDto) — avisa ANTES do clique em salvar, não só depois. */
-const LIMITE_DO_CONTEUDO = 4000;
+/*
+ * Mesmos valores do backend (ver ai-context.ts na API) — avisam ANTES do
+ * clique em salvar, não só depois. As regras ativas vão inteiras em toda
+ * resposta da IA, por isso têm teto de quantidade e de tamanho somado.
+ */
+const LIMITE_DO_CONTEUDO = 1000;
+const LIMITE_DE_REGRAS_ATIVAS = 30;
+const ORCAMENTO_DAS_REGRAS = 6000;
 
 /**
  * As regras que a empresa ensina à IA.
@@ -120,6 +126,12 @@ export function InstructionsManager({
   }
 
   const editando = aberto !== null && aberto !== "novo";
+  const ativas = instructions.filter((instruction) => instruction.active);
+  const caracteresEmUso = ativas.reduce(
+    (soma, instruction) => soma + instruction.title.length + instruction.content.length,
+    0,
+  );
+  const ocupacao = Math.min(1, caracteresEmUso / ORCAMENTO_DAS_REGRAS);
 
   return (
     <section className="flex flex-col gap-3">
@@ -137,6 +149,28 @@ export function InstructionsManager({
           </Button>
         ) : null}
       </div>
+
+      {/* Quanto do espaço das regras ativas já foi usado. Sem isto o teto
+          só aparecia no erro ao salvar — e aí a pessoa já tinha escrito. */}
+      {ativas.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width]",
+                ocupacao > 0.9 ? "bg-amber-500" : "bg-primary",
+              )}
+              style={{ width: `${Math.round(ocupacao * 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {ativas.length} de {LIMITE_DE_REGRAS_ATIVAS} regras ativas ·{" "}
+            {caracteresEmUso.toLocaleString("pt-BR")} de{" "}
+            {ORCAMENTO_DAS_REGRAS.toLocaleString("pt-BR")} caracteres. Texto longo
+            (tabela de preços, políticas) rende mais como documento.
+          </p>
+        </div>
+      ) : null}
 
       {/* Abre no lugar do botão (regra nova) ou no lugar da própria linha
           (edição), com o cursor já no primeiro campo: quem clicou quer

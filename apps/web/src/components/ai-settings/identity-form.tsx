@@ -14,7 +14,7 @@ import { ApiError } from "@/lib/api-error";
 import type { AiSettings, AiTone } from "@/lib/types";
 
 /** Mesmo valor do backend (ver UpdateAiSettingsDto) — a tela precisa saber o teto pra avisar ANTES do clique em salvar, não só depois. */
-const LIMITE_DE_INSTRUCOES = 8000;
+const LIMITE_DE_INSTRUCOES = 3000;
 
 const TONE_OPTIONS: { value: AiTone; label: string }[] = [
   { value: "PROFESSIONAL", label: "Profissional" },

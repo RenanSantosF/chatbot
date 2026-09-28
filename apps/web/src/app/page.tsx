@@ -48,6 +48,14 @@ const PASSOS = [
 ];
 
 /**
+ * O preço mostrado na página — num lugar só.
+ *
+ * Quem cobra de verdade é o preço cadastrado no Stripe (`STRIPE_PRICE_ID`);
+ * este número é só o que a página anuncia. Mudou lá, muda aqui.
+ */
+const PRECO_MENSAL = "197";
+
+/**
  * O que o plano único inclui.
  *
  * O preço é texto solto, não vem de constante do sistema — quem cobra de
@@ -77,7 +85,7 @@ const PERGUNTAS = [
   {
     pergunta: "Quanto custa?",
     resposta:
-      "R$ 197 por mês, com 3.000 respostas de IA inclusas, sem taxa de instalação e sem fidelidade. Precisou de mais no meio do mês? Compra um pacote extra na hora.",
+      `R$ ${PRECO_MENSAL} por mês, com 3.000 respostas de IA inclusas, sem taxa de instalação e sem fidelidade. Precisou de mais no meio do mês? Compra um pacote extra na hora.`,
   },
   {
     pergunta: "E se a IA não souber responder?",
@@ -317,7 +325,7 @@ export default async function Home() {
 
             <div className="w-full max-w-md rounded-3xl border bg-card p-8 shadow-[0_24px_60px_-30px_oklch(0_0_0/30%)]">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-5xl font-bold tracking-tight">R$ 197</span>
+                <span className="text-5xl font-bold tracking-tight">R$ {PRECO_MENSAL}</span>
                 <span className="text-muted-foreground">/mês</span>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">Sem fidelidade. Cancele quando quiser.</p>

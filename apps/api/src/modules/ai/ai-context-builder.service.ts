@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { AiTone } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
@@ -11,6 +11,7 @@ import {
 } from '../inbox-settings/horario-comercial';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import {
+  LIMITE_DAS_INSTRUCOES_GERAIS,
   LIMITE_DA_MEMORIA,
   LIMITE_DO_HISTORICO,
   LIMITE_POR_MENSAGEM,
@@ -21,6 +22,7 @@ import {
   juntarTurnosSeguidos,
   marcarSaltoDeTempo,
   mereceBuscaNaBase,
+  regrasNoOrcamento,
 } from './ai-context';
 import type { AiMessage } from './providers/ai-provider.interface';
 import { TranscricaoService } from './transcricao.service';
@@ -56,6 +58,8 @@ interface RelevantChunk {
  */
 @Injectable()
 export class AiContextBuilder {
+  private readonly logger = new Logger(AiContextBuilder.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
@@ -183,13 +187,24 @@ export class AiContextBuilder {
       lines.push(
         '',
         'Instruções gerais de comportamento:',
-        params.customInstructions,
+        // O teto também vale aqui, pro texto salvo antes de ele existir.
+        encurtar(params.customInstructions, LIMITE_DAS_INSTRUCOES_GERAIS),
       );
     }
 
-    if (params.instructions.length > 0) {
+    // Chegam em ordem de prioridade (ver buildIdentityPrompt): se o
+    // orçamento apertar, quem fica de fora é a menos importante.
+    const { cabem: regras, ficaramDeFora } = regrasNoOrcamento(
+      params.instructions,
+    );
+    if (ficaramDeFora > 0) {
+      this.logger.warn(
+        `${ficaramDeFora} regra(s) ativa(s) ficaram fora do prompt por passar do orçamento.`,
+      );
+    }
+    if (regras.length > 0) {
       lines.push('', 'Instruções específicas que a empresa te ensinou:');
-      for (const instruction of params.instructions) {
+      for (const instruction of regras) {
         lines.push(`- ${instruction.title}: ${instruction.content}`);
       }
     }
