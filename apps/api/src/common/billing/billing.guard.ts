@@ -43,6 +43,14 @@ export class BillingGuard implements CanActivate {
     );
     if (isento) return true;
 
+    // Interruptor temporário de desenvolvimento: com a variável ligada,
+    // nenhuma conta fica bloqueada por falta de assinatura — pensado pra
+    // testar o resto do sistema sem precisar manter uma assinatura Stripe
+    // válida o tempo todo. Tirar do Railway assim que a cobrança for
+    // exigida de verdade; sem a variável (o padrão), o bloqueio continua
+    // valendo normalmente.
+    if (process.env.BILLING_ENFORCEMENT === 'off') return true;
+
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     // Sem usuário autenticado, não é este guard quem decide — o JwtAuthGuard,
     // que roda antes, já teria barrado.
