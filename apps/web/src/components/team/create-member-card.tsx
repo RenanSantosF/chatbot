@@ -100,34 +100,34 @@ export function CreateMemberCard({ onCreated }: { onCreated: (member: TeamMember
         <CardDescription>Cria o acesso na hora — sem precisar de e-mail de convite.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="member-name" className="text-xs">
-              Nome
-            </Label>
-            <Input
-              id="member-name"
-              className="w-48"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="member-name" className="text-xs text-muted-foreground">
+                Nome completo
+              </Label>
+              <Input
+                id="member-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="member-email" className="text-xs text-muted-foreground">
+                E-mail
+              </Label>
+              <Input
+                id="member-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="member-email" className="text-xs">
-              E-mail
-            </Label>
-            <Input
-              id="member-email"
-              type="email"
-              className="w-60"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label className="text-xs">Permissão</Label>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Permissão</Label>
             <div className="flex gap-2">
               {ROLE_OPTIONS.map((option) => (
                 <button
@@ -136,10 +136,10 @@ export function CreateMemberCard({ onCreated }: { onCreated: (member: TeamMember
                   title={option.description}
                   onClick={() => setRole(option.value)}
                   className={cn(
-                    "rounded-md border px-3 py-1.5 text-sm transition-colors",
+                    "h-9 rounded-lg border px-3 text-sm font-medium transition-colors",
                     role === option.value
                       ? "border-primary bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted",
+                      : "border-input text-muted-foreground hover:bg-muted",
                   )}
                 >
                   {option.label}
@@ -155,7 +155,7 @@ export function CreateMemberCard({ onCreated }: { onCreated: (member: TeamMember
               Cancelar
             </Button>
           </div>
-          {error ? <p className="w-full text-sm text-destructive">{error}</p> : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </form>
       </CardContent>
     </Card>
