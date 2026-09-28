@@ -378,7 +378,7 @@ function Shell({
             className="flex items-center justify-center py-1.5"
             title={`${tenant.name} · ${SITE_NAME}`}
           >
-            <Marca className="size-9 shrink-0" />
+            <Marca className="size-6 shrink-0" />
           </div>
         </SidebarHeader>
         <SidebarContent>

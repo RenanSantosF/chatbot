@@ -219,6 +219,15 @@ export function ChatPanel({
   // O rodapé da conversa está à vista? Decide se mensagem nova arrasta a
   // tela e se a conversa conta como lida.
   const [pertoDoFim, setPertoDoFim] = useState(true);
+  /** O mesmo `pertoDoFim`, lido pelo observador de tamanho (ver abaixo). */
+  const pertoDoFimRef = useRef(true);
+  /*
+   * A resposta que a barra mostra — a atual, ou a última enquanto a barra
+   * fecha. Sem guardar, cancelar a resposta sumiria com o conteúdo no
+   * mesmo instante e a barra fecharia vazia.
+   */
+  const [respostaExibida, setRespostaExibida] = useState(replyTo);
+  if (replyTo && replyTo !== respostaExibida) setRespostaExibida(replyTo);
   // Resolver e Reabrir mexem no estado da conversa e passam por rede. Sem
   // sinal de espera, o clique parecia não ter efeito e a pessoa clicava de
   // novo — resolvendo uma conversa que já tinha resolvido.
@@ -251,7 +260,7 @@ export function ChatPanel({
   const pinturasDeAberturaRef = useRef(2);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const composerRef = useRef<HTMLInputElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   /**
    * A linha que acabou de ser citada, acendendo.
@@ -305,6 +314,10 @@ export function ChatPanel({
 
     jaFocou.current = true;
     campo.focus();
+    // O cursor no fim: o que foi digitado enquanto a conversa carregava
+    // (ver `aoDigitar`) já está no campo, e o resto continua dali.
+    const fim = campo.value.length;
+    campo.setSelectionRange(fim, fim);
   }, [conversation]);
 
   /**
@@ -484,7 +497,10 @@ export function ChatPanel({
    * por outro pior.
    */
   useEffect(() => {
-    if (!conversation) return;
+    // Também enquanto a conversa carrega: quem clica numa conversa e já
+    // começa a responder não pode perder as primeiras letras só porque o
+    // campo ainda não existe.
+    if (!conversation && !loading) return;
 
     function aoDigitar(evento: KeyboardEvent) {
       if (evento.ctrlKey || evento.metaKey || evento.altKey) return;
@@ -514,7 +530,14 @@ export function ChatPanel({
       if (document.querySelector('[aria-modal="true"]')) return;
 
       const campo = composerRef.current;
-      if (!campo || campo.disabled) return;
+      if (!campo) {
+        // Carregando: a tecla fica guardada no rascunho, e o campo nasce
+        // com ela (e com o foco — ver o efeito de foco na abertura).
+        evento.preventDefault();
+        setDraft((atual) => atual + evento.key);
+        return;
+      }
+      if (campo.disabled) return;
 
       // Só o foco: a própria tecla chega ao campo pelo evento seguinte, e
       // inseri-la à mão aqui a escreveria duas vezes.
@@ -523,7 +546,7 @@ export function ChatPanel({
 
     document.addEventListener("keydown", aoDigitar);
     return () => document.removeEventListener("keydown", aoDigitar);
-  }, [conversation?.id, conversation]);
+  }, [conversation?.id, conversation, loading]);
 
   // useLayoutEffect, não useEffect: a correção precisa acontecer no mesmo
   // quadro em que os balões antigos entram. Um quadro depois já teria
@@ -688,6 +711,7 @@ export function ChatPanel({
 
     const observer = new IntersectionObserver(
       ([entrada]) => {
+        pertoDoFimRef.current = entrada.isIntersecting;
         setPertoDoFim(entrada.isIntersecting);
         if (entrada.isIntersecting) onRead();
       },
@@ -700,6 +724,27 @@ export function ChatPanel({
     observer.observe(fim);
     return () => observer.disconnect();
   }, [conversation?.id, onRead, conversation]);
+
+  /*
+   * A conversa acompanha quando a área dela encolhe.
+   *
+   * A barra de resposta que sobe sobre o compositor, e o próprio campo
+   * crescendo com uma mensagem de várias linhas, tiram altura da área da
+   * conversa por baixo. Sem isto a última mensagem ficava escondida atrás
+   * deles; com isto, quem estava no fim continua no fim, e a conversa
+   * sobe junto com a barra, quadro a quadro — o efeito do WhatsApp Web.
+   * Quem estava lendo mais acima não é mexido.
+   */
+  useEffect(() => {
+    const area = scrollAreaRef.current;
+    if (!area || !conversation) return;
+
+    const observador = new ResizeObserver(() => {
+      if (pertoDoFimRef.current) area.scrollTop = area.scrollHeight;
+    });
+    observador.observe(area);
+    return () => observador.disconnect();
+  }, [conversation?.id, conversation]);
 
   if (!conversation) {
     return (
@@ -1173,21 +1218,43 @@ export function ChatPanel({
         </SheetContent>
       </Sheet>
 
-      {replyTo ? (
-        <div className="flex items-center gap-2 bg-muted/60 px-3 py-2 duration-200 ease-out animate-in fade-in slide-in-from-bottom-2">
-          <div className="min-w-0 flex-1 border-l-2 border-primary pl-2">
-            <p className="text-[11px] font-medium text-primary">
-              {replyTo.senderType === "CUSTOMER" ? "Cliente" : "Você"}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {replyTo.content || "Anexo"}
-            </p>
-          </div>
-          <Button size="icon-sm" variant="ghost" aria-label="Cancelar resposta" onClick={onCancelReply}>
-            <X className="size-4" />
-          </Button>
+      {/* A barra da resposta abre CRESCENDO, e não aparecendo: é a altura
+          dela que empurra a conversa pra cima (ver o observador de tamanho
+          da área), então ela precisa ganhar altura aos poucos pra conversa
+          subir junto. `grid-rows` de 0fr a 1fr anima a altura sem medir. */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out",
+          replyTo ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+        onTransitionEnd={() => {
+          if (!replyTo) setRespostaExibida(null);
+        }}
+      >
+        <div className="overflow-hidden">
+          {respostaExibida ? (
+            <div className="flex items-center gap-2 bg-muted/60 px-3 py-2">
+              <div className="min-w-0 flex-1 rounded-md border-l-4 border-primary bg-background/70 px-2.5 py-1.5">
+                <p className="text-[12px] font-semibold text-primary">
+                  {respostaExibida.senderType === "CUSTOMER" ? "Cliente" : "Você"}
+                </p>
+                <p className="line-clamp-2 text-xs text-muted-foreground">
+                  {respostaExibida.content || "Anexo"}
+                </p>
+              </div>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Cancelar resposta"
+                onClick={onCancelReply}
+                tabIndex={replyTo ? 0 : -1}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {pendingFile ? (
         <AttachmentComposer
@@ -1222,7 +1289,7 @@ export function ChatPanel({
           );
         }}
       />
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 bg-card p-3">
+      <form onSubmit={handleSubmit} className="flex items-end gap-2 bg-card p-3">
         <input
           ref={fileInputRef}
           type="file"
@@ -1251,7 +1318,13 @@ export function ChatPanel({
           onPick={(emoji) => setDraft((atual) => atual + emoji)}
           onPickFigurinha={(mediaId) => void reenviarFigurinha(mediaId)}
         />
-        <Input
+        {/* Um <textarea> que cresce com o texto, e não um <input>: o
+            campo de uma linha só não tem como quebrar linha, então o
+            Shift+Enter não fazia nada além de enviar. Cresce até umas seis
+            linhas e aí rola por dentro, pra não empurrar a conversa pra
+            fora da tela. */}
+        <textarea
+          rows={1}
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
@@ -1273,11 +1346,15 @@ export function ChatPanel({
           spellCheck
           enterKeyHint="send"
           onKeyDown={(event) => {
-            // Um <input> já submeteria no Enter sozinho, mas só enquanto o
-            // formulário tiver um botão de envio — que acabou de sair. Com
-            // o tratamento explícito o comportamento para de depender
-            // dessa regra do navegador.
-            if (event.key === "Enter" && !event.shiftKey) {
+            // Enter envia; Shift+Enter cai no comportamento natural do
+            // textarea, que é quebrar a linha. `isComposing` protege quem
+            // digita com acento composto ou teclado de outro idioma: o
+            // Enter que confirma a composição não é um pedido de envio.
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
               event.preventDefault();
               void handleSubmit(event);
             }
@@ -1305,7 +1382,7 @@ export function ChatPanel({
           // canto da tela; a borda um pouco mais firme já diz onde o cursor
           // está, e o verde volta a significar alguma coisa quando aparece
           // em outro lugar.
-          className="rounded-md focus-visible:border-foreground/30 focus-visible:ring-0"
+          className="field-sizing-content max-h-36 min-h-9 w-full min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-[7px] text-base leading-snug shadow-xs outline-none transition-[color,border-color] placeholder:text-muted-foreground hover:border-ring/60 focus-visible:border-foreground/30 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30"
         />
         {/* No canto onde estava o botão de enviar. O gravador se expande
             sobre o compositor enquanto grava, então precisa ser o último

@@ -179,7 +179,7 @@ export default async function Home() {
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5">
           <Link href="/" className="flex items-center gap-2">
-            <Marca className="size-8" />
+            <Marca className="size-6" />
             <span className="text-lg font-semibold tracking-tight">{SITE_NAME}</span>
           </Link>
           <nav className="hidden items-center gap-7 text-sm font-medium text-muted-foreground md:flex">

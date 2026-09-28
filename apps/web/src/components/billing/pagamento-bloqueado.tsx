@@ -95,7 +95,7 @@ export function PagamentoBloqueado({
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6 text-center">
-      <Marca className="size-10" />
+      <Marca className="size-8" />
       {confirmando ? (
         <>
           <Spinner className="size-6" />
