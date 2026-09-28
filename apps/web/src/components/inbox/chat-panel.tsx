@@ -834,6 +834,8 @@ export function ChatPanel({
             cliente={conversation.customer}
             className="size-9 shrink-0"
             textoClassName="text-xs"
+            conferir
+            ampliavel
           />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{conversation.customer.name}</p>

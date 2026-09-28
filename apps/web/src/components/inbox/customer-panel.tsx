@@ -101,7 +101,13 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
       {/* Cabeçalho com a cara do contato. Antes o painel abria direto numa
           lista de "rótulo: valor", que é ficha cadastral, não pessoa. */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
-        <AvatarDoCliente cliente={customer} className="size-16" textoClassName="text-lg" />
+        <AvatarDoCliente
+          cliente={customer}
+          className="size-16"
+          textoClassName="text-lg"
+          conferir
+          ampliavel
+        />
         <div className="min-w-0">
           <p className="truncate font-semibold">{customer.name}</p>
           <a

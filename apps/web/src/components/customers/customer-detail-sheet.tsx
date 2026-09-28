@@ -68,6 +68,8 @@ export function CustomerDetailSheet({
                   className="size-12 shrink-0"
                   textoClassName="text-base"
                   colorido={false}
+                  conferir
+                  ampliavel
                 />
                 <div className="min-w-0">
                   <SheetTitle className="truncate">{customer.name}</SheetTitle>

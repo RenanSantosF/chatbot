@@ -1,8 +1,9 @@
 "use client";
 
 import { Download, X } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
 
 /**
  * Visualizador de imagem em modal. Portal no <body> pra a imagem não ficar
@@ -20,6 +21,7 @@ export function ImageLightbox({
   fileName?: string;
   onClose: () => void;
 }) {
+  const [carregada, setCarregada] = useState<string | null>(null);
   const handleKey = useCallback(
     (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -86,12 +88,26 @@ export function ImageLightbox({
         </button>
       </div>
 
+      {/* Um giro enquanto a imagem não chega: sem ele, o visualizador
+          abria com o fundo escuro e nada no meio, e parecia travado. */}
+      {carregada === src ? null : (
+        <span
+          aria-hidden
+          className="absolute size-8 animate-spin rounded-full border-2 border-white/25 border-t-white"
+        />
+      )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        key={src}
         src={src}
         alt={alt}
+        referrerPolicy="no-referrer"
+        onLoad={() => setCarregada(src)}
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[88vh] max-w-full rounded-md object-contain shadow-2xl duration-200 ease-out animate-in zoom-in-95"
+        className={cn(
+          "max-h-[88vh] max-w-full rounded-md object-contain shadow-2xl transition-opacity duration-200",
+          carregada === src ? "opacity-100" : "opacity-0",
+        )}
       />
     </div>,
     document.body,
