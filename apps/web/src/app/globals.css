@@ -114,8 +114,17 @@ button:disabled,
 
 /* Claro: branco de verdade (oklch 1) no painel E na conversa. A diferença
    entre as duas superfícies é de meio ponto percentual — existe pra dar
-   profundidade, não pra ser vista. As linhas divisórias ficam em 4% de
-   preto: separam quando você procura, somem quando você lê. */
+   profundidade, não pra ser vista. As linhas divisórias ficam em 6,5% de
+   preto: em 4% os cartões e colunas perdiam o contorno em monitor comum
+   (e com o brilho baixo do notebook, sumiam), e a tela virava um branco
+   só. Em 6,5% o contorno aparece sem virar grade.
+
+   O texto secundário (horário, prévia, rótulo) desceu de L 0.50 pra 0.45:
+   passa de ~5,4:1 pra ~6,5:1 sobre o branco. É o texto mais lido de
+   relance do painel, e o cinza claro cansava a vista no fim do dia.
+
+   O anel de foco é a cor da marca: em cinza ele não se distinguia da
+   borda do próprio campo, e quem navega pelo teclado perdia onde estava. */
 :root {
   --background: oklch(0.995 0 0);
   --foreground: oklch(0.16 0 0);
@@ -128,13 +137,13 @@ button:disabled,
   --secondary: oklch(0.975 0 0);
   --secondary-foreground: oklch(0.22 0 0);
   --muted: oklch(0.972 0 0);
-  --muted-foreground: oklch(0.5 0 0);
+  --muted-foreground: oklch(0.45 0 0);
   --accent: oklch(0.958 0 0);
   --accent-foreground: oklch(0.18 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0 0 0 / 4%);
-  --input: oklch(0 0 0 / 8%);
-  --ring: oklch(0.6 0 0);
+  --border: oklch(0 0 0 / 6.5%);
+  --input: oklch(0 0 0 / 11%);
+  --ring: oklch(0.5352 0.1016 174.2 / 55%);
   --chat-bg: oklch(0.988 0 0);
   --chat-dot: oklch(0 0 0 / 2.5%);
   --bubble-out: oklch(0.9575 0.0669 141.1); /* #D9FDD3 */
@@ -155,8 +164,8 @@ button:disabled,
   /* Mesma ideia do tema escuro: o verde da marca como TINTA do item ativo,
      sobre uma superfície neutra. #008069 sobre esse cinza dá 4,9:1. */
   --sidebar-accent-foreground: oklch(0.5352 0.1016 174.2);
-  --sidebar-border: oklch(0 0 0 / 4%);
-  --sidebar-ring: oklch(0.6 0 0);
+  --sidebar-border: oklch(0 0 0 / 6.5%);
+  --sidebar-ring: oklch(0.5352 0.1016 174.2 / 55%);
 }
 
 /* Escuro: quase preto neutro.

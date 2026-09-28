@@ -97,7 +97,9 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
   const remembered = customer.metadata ?? {};
 
   return (
-    <div className="flex flex-col gap-5 p-4">
+    // `pb-24`: o botão flutuante do assistente fica no canto de baixo e
+    // cobria a última linha da ficha ("O que a IA lembra").
+    <div className="flex flex-col gap-5 p-4 pb-24">
       {/* Cabeçalho com a cara do contato. Antes o painel abria direto numa
           lista de "rótulo: valor", que é ficha cadastral, não pessoa. */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
@@ -188,7 +190,7 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
       {/* Fora de <Section>: as anotações têm cabeçalho próprio, que serve de
           botão pra abrir e fechar. Fechado é uma linha só — a ficha não
           precisa carregar isso à mostra o tempo todo. */}
-      <div className="px-4 py-3">
+      <div>
         <CustomerNotes key={customer.id} customerId={customer.id} />
       </div>
 

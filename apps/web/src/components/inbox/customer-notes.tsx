@@ -85,7 +85,7 @@ export function CustomerNotes({ customerId }: { customerId: string }) {
         onClick={() => setAberto((v) => !v)}
         className="flex items-center justify-between gap-2 text-left"
       >
-        <span className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
           <StickyNote className="size-3.5" />
           Anotações
         </span>

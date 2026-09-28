@@ -32,7 +32,7 @@ export function StatTile({
           )}
           {hint ? <p className="truncate text-xs text-muted-foreground">{hint}</p> : null}
         </div>
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <Icon className="size-4" />
         </div>
       </CardContent>
