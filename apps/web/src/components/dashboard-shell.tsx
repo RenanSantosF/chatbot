@@ -119,15 +119,34 @@ function NotificationsButton() {
   );
 }
 
+/**
+ * Dois momentos da mesma queda: sem conexão ("Reconectando"), e de volta
+ * mas ainda buscando o que chegou nesse meio-tempo ("Sincronizando") — o
+ * mesmo "Conectando…/Atualizando…" do WhatsApp no celular. O segundo é
+ * discreto de propósito: nada está errado, só não está em dia ainda.
+ */
 function ConnectionBadge() {
-  const { connected } = useRealtime();
-  if (connected) return null;
+  const { connected, sincronizando } = useRealtime();
+
+  if (!connected) {
+    return (
+      <Badge variant="outline" className="animate-pulse gap-1 text-amber-600">
+        <Bell className="size-3" />
+        Reconectando
+      </Badge>
+    );
+  }
+
+  if (!sincronizando) return null;
 
   return (
-    <Badge variant="outline" className="animate-pulse gap-1 text-amber-600">
-      <Bell className="size-3" />
-      Reconectando
-    </Badge>
+    <span
+      role="status"
+      className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground animate-in fade-in"
+    >
+      <Spinner className="size-3" />
+      Sincronizando
+    </span>
   );
 }
 

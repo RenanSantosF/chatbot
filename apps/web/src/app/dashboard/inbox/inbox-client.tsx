@@ -246,7 +246,8 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    * não apagá-la da tela e buscar de novo o que acabou de chegar.
    */
   const conversaDoServidor = useRef(inicial?.conversa?.id ?? null);
-  const { socket, unreadCounts, clearUnread, setActiveConversationId } = useRealtime();
+  const { socket, unreadCounts, clearUnread, setActiveConversationId, sincronizar } =
+    useRealtime();
 
   /*
    * O `?c=` da URL abre a conversa TODA VEZ que muda, não só na primeira.
@@ -705,8 +706,15 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     );
 
     const onConnect = () => {
-      loadConversations(filtersRef.current).catch(() => {});
-      if (selectedIdRef.current) loadDetail(selectedIdRef.current).catch(() => {});
+      // O servidor não reenvia o que se perdeu durante a queda: lista,
+      // contadores e conversa aberta vêm de novo, e o cabeçalho mostra
+      // "Sincronizando" até a lista e a conversa chegarem.
+      const trabalho = Promise.all([
+        loadConversations(filtersRef.current),
+        selectedIdRef.current ? loadDetail(selectedIdRef.current) : null,
+      ]).catch(() => {});
+      sincronizar(trabalho);
+      loadCounts();
     };
 
     /**
@@ -905,6 +913,8 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     chaveDaSessao,
     user.id,
     flusharReconciliacaoDeHistorico,
+    sincronizar,
+    loadCounts,
   ]);
 
   /** Mesma classificação que o servidor faz, só que antes da viagem. */

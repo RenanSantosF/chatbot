@@ -13,6 +13,7 @@ import type {
 import { SITE_NAME } from "@/lib/site";
 import { resumoDaMensagem } from "@/lib/mensagem";
 import { cancelarAvisos, estaInscrito, inscreverParaAvisos } from "@/lib/push";
+import { criarSincronia } from "@/lib/sincronia";
 
 /**
  * O estado do WhatsApp da empresa, empurrado pelo servidor.
@@ -117,7 +118,25 @@ interface RealtimeContextValue {
   avisosNesteAparelho: boolean;
   /** Desliga o aviso com o painel fechado, sem mexer na permissão. */
   disableNotifications: () => Promise<void>;
+  /**
+   * A conexão voltou depois de cair, e o que chegou nesse meio-tempo ainda
+   * está sendo buscado. Nenhum evento é reenviado ao reconectar — sem este
+   * estado, a tela parecia em dia enquanto ainda faltava mensagem.
+   */
+  sincronizando: boolean;
+  /**
+   * Uma tela avisa que está recarregando depois da reconexão. O indicador
+   * fica aceso até todo trabalho registrado terminar. Na primeira conexão
+   * da aba é ignorado: ali não há nada perdido, e acender o aviso a cada
+   * abertura do painel seria ruído.
+   */
+  sincronizar: (trabalho: Promise<unknown>) => void;
 }
+
+/** Sem nenhuma tela registrando trabalho, o aviso some sozinho depois disto. */
+const SINCRONIA_SEM_TRABALHO_MS = 1200;
+/** Tempo mínimo aceso — menos que isso vira um piscar que ninguém lê. */
+const SINCRONIA_MINIMA_MS = 700;
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
@@ -219,6 +238,16 @@ export function RealtimeProvider({
   const namesRef = useRef<Record<string, string>>({});
   const router = useRouter();
 
+  const [sincronizando, setSincronizando] = useState(false);
+  // Quando acender e apagar o "Sincronizando" — ver `criarSincronia`.
+  const [sincronia] = useState(() =>
+    criarSincronia(setSincronizando, {
+      semTrabalho: SINCRONIA_SEM_TRABALHO_MS,
+      minimo: SINCRONIA_MINIMA_MS,
+    }),
+  );
+  useEffect(() => () => sincronia.encerrar(), [sincronia]);
+
   // O router entra por ref pra ele não virar dependência do efeito de
   // conexão: se a referência mudasse entre renders, o socket seria
   // derrubado e reaberto sem necessidade.
@@ -258,8 +287,14 @@ export function RealtimeProvider({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSocket(instance);
 
-    instance.on("connect", () => setConnected(true));
-    instance.on("disconnect", () => setConnected(false));
+    instance.on("connect", () => {
+      setConnected(true);
+      sincronia.voltou();
+    });
+    instance.on("disconnect", () => {
+      setConnected(false);
+      sincronia.caiu();
+    });
 
     // O WhatsApp da empresa caiu, voltou, ou tem um QR code novo. Chega
     // por aqui em vez de por consulta periódica porque os três são
@@ -400,7 +435,7 @@ export function RealtimeProvider({
     return () => {
       instance.disconnect();
     };
-  }, []);
+  }, [sincronia]);
 
   const totalUnread = useMemo(
     () => Object.values(unreadCounts).reduce((sum, count) => sum + count, 0),
@@ -481,6 +516,8 @@ export function RealtimeProvider({
       enableNotifications,
       avisosNesteAparelho,
       disableNotifications,
+      sincronizando,
+      sincronizar: sincronia.registrar,
     }),
     [
       socket,
@@ -497,6 +534,8 @@ export function RealtimeProvider({
       enableNotifications,
       avisosNesteAparelho,
       disableNotifications,
+      sincronizando,
+      sincronia,
     ],
   );
 
