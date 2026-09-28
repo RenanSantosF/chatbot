@@ -530,6 +530,7 @@ export function InboxFilterBar({
             </Secao>
 
             <EtiquetasDoFiltro
+              carregar={maisAberto || Boolean(value.tagId)}
               escolhida={value.tagId}
               onEscolher={(tagId) => set("tagId", tagId)}
             />
@@ -733,21 +734,30 @@ function Grupo({
  * formulário que o Inbox passou o tempo todo evitando.
  */
 function EtiquetasDoFiltro({
+  carregar,
   escolhida,
   onEscolher,
 }: {
+  /**
+   * Só busca quando o painel de filtros abre (ou já há etiqueta escolhida).
+   * O painel nasce fechado quase sempre, e buscar as etiquetas junto com o
+   * Inbox era uma chamada a mais na abertura pra uma fileira que ninguém
+   * estava vendo.
+   */
+  carregar: boolean;
   escolhida: string;
   onEscolher: (tagId: string) => void;
 }) {
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [tags, setTags] = useState<Tag[] | null>(null);
 
   useEffect(() => {
+    if (!carregar || tags !== null) return;
     apiFetch<Tag[]>("/tags")
       .then(setTags)
       .catch(() => setTags([]));
-  }, []);
+  }, [carregar, tags]);
 
-  if (tags.length === 0) return null;
+  if (!tags || tags.length === 0) return null;
 
   return (
     <div role="radiogroup" aria-label="Filtrar por etiqueta" className="flex flex-wrap gap-1">

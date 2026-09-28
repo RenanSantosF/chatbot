@@ -17,6 +17,8 @@ import {
   type InboxFilters,
 } from "@/components/inbox/inbox-filters";
 import { useRealtime } from "@/components/realtime-provider";
+import { useTelaLarga } from "@/hooks/use-tela-larga";
+import { conferirPrimeiraPagina } from "@/lib/conferencia-da-lista";
 import { useSession } from "@/components/session-provider";
 import type { Relogio } from "@/lib/espera";
 import { apiFetch } from "@/lib/api-client";
@@ -188,6 +190,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, tenant } = useSession();
+  const telaLarga = useTelaLarga();
   // Identifica de quem é o cache: troca de usuário/empresa na mesma aba
   // (SPA, sem recarregar) não reinicia esta variável de módulo sozinha —
   // ver `conversationCache`, que descarta tudo quando esta chave muda.
@@ -246,6 +249,14 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    * não apagá-la da tela e buscar de novo o que acabou de chegar.
    */
   const conversaDoServidor = useRef(inicial?.conversa?.id ?? null);
+  /**
+   * Se o próximo `connect` do socket é a PRIMEIRA conexão desta tela, e
+   * não uma volta depois de cair. Decidido uma vez só, na primeira vez que
+   * o socket aparece: se ele já estava conectado (a pessoa navegou de outra
+   * tela do painel), todo `connect` dali em diante é reconexão.
+   */
+  const conexaoInicialPendente = useRef<boolean | null>(null);
+  const conversationsRef = useRef<ConversationSummary[]>([]);
   const { socket, unreadCounts, clearUnread, setActiveConversationId, sincronizar } =
     useRealtime();
 
@@ -315,6 +326,9 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   /**
    * Só a contagem MAIS RECENTE vale — mesma regra da lista (`pedidoDaLista`).
@@ -705,7 +719,45 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       { janela: 600, prazoMaximo: 3000 },
     );
 
+    if (conexaoInicialPendente.current === null) {
+      conexaoInicialPendente.current = !socket.connected;
+    }
+
+    /*
+     * A primeira conexão só confere, não recarrega.
+     *
+     * Lista, contadores e conversa aberta acabaram de chegar junto com o
+     * HTML; buscar os três de novo um segundo depois — como numa
+     * reconexão — era a abertura do Inbox pagando tudo duas vezes, e os
+     * contadores sozinhos são uma dúzia de consultas. O que pode ter
+     * escapado é só o que chegou antes de o socket conectar, e isso uma
+     * página da lista mostra. Só se ela mudou é que o resto vem.
+     */
+    const conferirAoConectarPelaPrimeiraVez = async () => {
+      const meu = pedidoDaLista.current;
+      try {
+        const page = await apiFetch<Page<ConversationSummary>>(buildQuery(filtersRef.current));
+        if (meu !== pedidoDaLista.current) return;
+        const { mudou, mudaram } = conferirPrimeiraPagina(conversationsRef.current, page.items);
+        if (!mudou) return;
+        setConversations(page.items);
+        setCursor(page.nextCursor);
+        setLoadingList(false);
+        loadCounts();
+        const aberta = selectedIdRef.current;
+        if (aberta && mudaram.has(aberta)) await loadDetail(aberta);
+      } catch {
+        // Silencioso: é conferência em segundo plano, e o próximo evento
+        // do socket traz o que faltou.
+      }
+    };
+
     const onConnect = () => {
+      if (conexaoInicialPendente.current) {
+        conexaoInicialPendente.current = false;
+        void conferirAoConectarPelaPrimeiraVez();
+        return;
+      }
       // O servidor não reenvia o que se perdeu durante a queda: lista,
       // contadores e conversa aberta vêm de novo, e o cabeçalho mostra
       // "Sincronizando" até a lista e a conversa chegarem.
@@ -1323,9 +1375,11 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         onChangePriority={handlePriority}
       />
       </div>
-      <div className="hidden overflow-y-auto border-l xl:block">
-        <CustomerPanel conversation={detail} />
-      </div>
+      {telaLarga ? (
+        <div className="hidden overflow-y-auto border-l xl:block">
+          <CustomerPanel conversation={detail} />
+        </div>
+      ) : null}
     </div>
     </TranscricaoDeAudioProvider>
   );
