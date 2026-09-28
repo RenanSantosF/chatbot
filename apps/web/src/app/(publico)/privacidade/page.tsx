@@ -76,8 +76,8 @@ export default function PrivacidadePage() {
         </Atencao>
 
         <p>
-          Guardamos cópia dos anexos por um motivo concreto: a Meta apaga a mídia depois de
-          30 dias. Sem essa cópia, um documento enviado pelo cliente hoje simplesmente não
+          Guardamos cópia dos anexos por um motivo concreto: no WhatsApp, a mídia deixa de
+          estar disponível depois de um tempo. Sem essa cópia, um documento enviado pelo cliente hoje simplesmente não
           abriria no mês que vem.
         </p>
       </Secao>
@@ -99,8 +99,8 @@ export default function PrivacidadePage() {
         <Lista
           itens={[
             <>
-              <strong>Meta (WhatsApp)</strong> — recebe e entrega as mensagens. É o canal;
-              sem ela não há conversa.
+              <strong>WhatsApp</strong> — recebe e entrega as mensagens. É o canal; sem ele
+              não há conversa.
             </>,
             <>
               <strong>Provedor de IA</strong> — recebe o conteúdo da conversa para gerar a
@@ -127,7 +127,7 @@ export default function PrivacidadePage() {
             <>Senhas guardadas com hash; ninguém as recupera, nem nós.</>,
             <>Limite de tentativas de acesso, contra teste automatizado de senha.</>,
             <>Permissões por papel: cada pessoa vê e faz apenas o que lhe cabe.</>,
-            <>Assinatura verificada em todo webhook recebido da Meta.</>,
+            <>Conferência de origem em toda notificação recebida do WhatsApp.</>,
           ]}
         />
       </Secao>

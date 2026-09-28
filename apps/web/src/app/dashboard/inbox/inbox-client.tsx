@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { SquarePen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -188,7 +188,6 @@ function ordenarConversas(
 
 export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null }) {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { user, tenant } = useSession();
   const telaLarga = useTelaLarga();
   // Identifica de quem é o cache: troca de usuário/empresa na mesma aba
@@ -276,8 +275,23 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    * notificação sozinha.
    */
   const conversaDaUrl = searchParams.get("c");
+  /**
+   * O que ESTA tela escreveu no `?c=`. Quando a URL volta com um desses
+   * valores, é o eco do próprio clique, não um pedido de fora — e eco
+   * atrasado não pode reabrir uma conversa que a pessoa já deixou pra trás
+   * (ver `abrirConversa`).
+   */
+  const escritasNaUrl = useRef(new Set<string>());
   useEffect(() => {
-    if (!conversaDaUrl || conversaDaUrl === selectedIdRef.current) return;
+    if (!conversaDaUrl) return;
+    if (escritasNaUrl.current.has(conversaDaUrl)) {
+      // Chegou o eco de uma escrita nossa: as anteriores a ela já foram
+      // superadas, e um pedido de fora com o mesmo id (notificação)
+      // precisa voltar a funcionar.
+      escritasNaUrl.current.clear();
+      return;
+    }
+    if (conversaDaUrl === selectedIdRef.current) return;
     setSelectedId(conversaDaUrl);
   }, [conversaDaUrl]);
 
@@ -294,16 +308,27 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    * `replace` e não `push`: cada conversa aberta virando uma entrada no
    * histórico faria o botão Voltar caminhar por vinte atendimentos antes
    * de sair do Inbox.
+   *
+   * E `history.replaceState`, NÃO `router.replace`. O do roteador é uma
+   * navegação: pedia a página de novo ao servidor — que busca lista,
+   * contadores e a conversa — a cada clique. Clicando rápido em várias
+   * conversas, essas navegações terminavam uma depois da outra, cada uma
+   * devolvendo o `?c=` do seu clique, e a tela "voltava" pelas conversas
+   * anteriores até alcançar a atual. O nativo só troca o endereço; o Next
+   * sincroniza o `useSearchParams` sem viagem nenhuma.
    */
-  const abrirConversa = useCallback(
-    (id: string | null) => {
-      setSelectedId(id);
-      router.replace(id ? `/dashboard/inbox?c=${id}` : "/dashboard/inbox", {
-        scroll: false,
-      });
-    },
-    [router],
-  );
+  const abrirConversa = useCallback((id: string | null) => {
+    // O ref vai junto, já no clique: o efeito que o atualiza só roda
+    // depois da renderização, e até lá o eco da URL o encontraria velho.
+    selectedIdRef.current = id;
+    setSelectedId(id);
+    if (id) escritasNaUrl.current.add(id);
+    window.history.replaceState(
+      null,
+      "",
+      id ? `/dashboard/inbox?c=${id}` : "/dashboard/inbox",
+    );
+  }, []);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;

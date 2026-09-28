@@ -15,7 +15,7 @@ import { Marca } from "@/components/marca";
 import { redirect } from "next/navigation";
 import { ConversaDemo } from "@/components/publico/conversa-demo";
 import { apiFetchServer } from "@/lib/api-server";
-import { SITE_DESCRIPTION, SITE_NAME, absoluto } from "@/lib/site";
+import { EMPRESA, SITE_DESCRIPTION, SITE_NAME, absoluto } from "@/lib/site";
 import type { MeResponse } from "@/lib/types";
 
 /*
@@ -53,7 +53,7 @@ const PASSOS = [
  * Quem cobra de verdade é o preço cadastrado no Stripe (`STRIPE_PRICE_ID`);
  * este número é só o que a página anuncia. Mudou lá, muda aqui.
  */
-const PRECO_MENSAL = "197";
+const PRECO_MENSAL = "147";
 
 /**
  * O que o plano único inclui.
@@ -80,7 +80,7 @@ const PERGUNTAS = [
   {
     pergunta: "Preciso trocar o número da empresa?",
     resposta:
-      "Não. Você conecta o número que já usa por QR code, como no WhatsApp Web, e as conversas do aparelho vêm junto. Por não ser o caminho oficial da Meta, o número pode desconectar e pedir o QR code de novo.",
+      "Não. Você conecta o número que já usa por QR code, como no WhatsApp Web, e as conversas do aparelho vêm junto. Se um dia ele desconectar, é só ler o QR code de novo.",
   },
   {
     pergunta: "Quanto custa?",
@@ -95,7 +95,7 @@ const PERGUNTAS = [
   {
     pergunta: "Os anexos somem depois de 30 dias?",
     resposta:
-      "Não. O WhatsApp apaga a mídia depois de 30 dias; a Inteliwa guarda uma cópia própria, que continua abrindo no ano que vem.",
+      "Não. A Inteliwa guarda uma cópia própria de fotos, áudios e documentos, que continua abrindo no ano que vem.",
   },
 ];
 
@@ -375,6 +375,7 @@ export default async function Home() {
           <span className="flex items-center gap-2">
             <Marca className="size-5" />
             {SITE_NAME}
+            <span className="text-muted-foreground/70">· CNPJ {EMPRESA.cnpj}</span>
           </span>
           <nav className="flex items-center gap-5">
             <Link href="/termos" className="transition-colors hover:text-foreground">

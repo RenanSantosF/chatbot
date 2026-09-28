@@ -38,26 +38,23 @@ export const SITE_DESCRIPTION =
 /**
  * Quem é a empresa, juridicamente.
  *
- * Não é enfeite de rodapé: a revisão do app na Meta confere se o site
- * identifica a empresa por trás dele, e a LGPD exige um canal de contato
- * para titular de dados. Sem isso, a política de privacidade é um texto
- * sem dono.
+ * A LGPD exige que o titular saiba quem trata os dados e como falar com
+ * esse alguém — política de privacidade sem dono é um texto que não
+ * obriga ninguém. Por isso o CNPJ aparece no rodapé e nos documentos.
  *
- * Começa VAZIO de propósito. Os blocos que dependem destes valores só são
- * desenhados quando eles existem — assim nada como "PREENCHER AQUI" pode
- * ir ao ar por esquecimento, e completar a linha faz o bloco aparecer.
+ * Campo vazio não é desenhado: nada como "PREENCHER AQUI" vai ao ar por
+ * esquecimento, e completar a linha faz o dado aparecer.
  */
 export const EMPRESA = {
   /** Razão social exatamente como no Cartão CNPJ. */
   razaoSocial: "",
-  /** Só os números ou já formatado — o que for, aparece como está escrito. */
-  cnpj: "",
-  /** E-mail no domínio próprio. Gmail pessoal reprova no App Review. */
+  /** Como aparece: já formatado. */
+  cnpj: "68.601.410/0001-21",
+  /** E-mail de contato para dados pessoais e para a plataforma. */
   email: "",
 };
 
-/** Há identificação suficiente pra desenhar o bloco "quem somos"? */
-export const temIdentificacao = Boolean(EMPRESA.razaoSocial && EMPRESA.cnpj);
+export const temIdentificacao = Boolean(EMPRESA.cnpj);
 
 export const absoluto = (caminho: string) =>
   `${SITE_URL}${caminho.startsWith("/") ? caminho : `/${caminho}`}`;

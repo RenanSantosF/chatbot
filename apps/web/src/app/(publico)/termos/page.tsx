@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import {
-  Atencao,
   DocumentoLegal,
   Lista,
   Secao,
@@ -17,7 +16,7 @@ export const metadata: Metadata = {
   // num grupo aparecia com a chamada de venda da home.
   openGraph: { type: "article", locale: "pt_BR", url: "/termos", title: "Termos de uso — Inteliwa" },
   description:
-    "Condições de uso da Inteliwa: o que está incluído na assinatura e o único custo cobrado à parte, por terceiros (Meta, só na conexão oficial).",
+    "Condições de uso da Inteliwa: o que está incluído na assinatura, o papel da inteligência artificial e as responsabilidades de cada parte.",
 };
 
 export default function TermosPage() {
@@ -25,7 +24,7 @@ export default function TermosPage() {
     <DocumentoLegal
       titulo="Termos de uso"
       atualizadoEm="14 de agosto de 2026"
-      resumo="Inteliwa é um painel de atendimento que conecta o WhatsApp da sua empresa a uma inteligência artificial. Este documento diz o que fazemos, o que não fazemos, e quanto custa o que não é cobrado por nós."
+      resumo="Inteliwa é um painel de atendimento que conecta o WhatsApp da sua empresa a uma inteligência artificial. Este documento diz o que fazemos, o que não fazemos, e o que cabe a cada parte."
     >
       <Secao titulo="O que a Inteliwa é">
         <p>
@@ -50,19 +49,9 @@ export default function TermosPage() {
           normalmente pro painel, sem custo adicional, esperando uma pessoa da equipe.
         </p>
 
-        <Atencao>
-          <strong>Meta (WhatsApp), se você usar a conexão oficial.</strong> Quando a empresa
-          conecta pela API oficial da Meta, a própria Meta cobra por conversa iniciada, com
-          preço que varia conforme o tipo (atendimento, marketing, utilidade, autenticação) e
-          o país do cliente — cobrado direto da conta comercial da empresa na Meta. Isso não
-          se aplica à conexão padrão por QR code, que usa o número como um aparelho vinculado
-          e não tem esse custo.
-        </Atencao>
-
         <p>
-          Quando a Meta cobra, ela publica a tabela vigente no próprio site, e é lá que o
-          preço do dia deve ser conferido — não reproduzimos valores aqui de propósito: um
-          número desatualizado num documento como este é pior que número nenhum.
+          A conexão do WhatsApp é feita por QR code, com o número que a sua empresa já usa,
+          e não tem custo por mensagem enviada ou recebida.
         </p>
       </Secao>
 
@@ -96,11 +85,12 @@ export default function TermosPage() {
           itens={[
             <>
               Usar um número de WhatsApp que sua empresa tenha direito de usar, seguindo as
-              políticas da Meta.
+              regras de uso do WhatsApp.
             </>,
             <>
               Não enviar mensagem não solicitada. Denúncia de spam derruba a qualidade do seu
-              número e pode fazer a Meta bloqueá-lo — e esse bloqueio é da conta, não da Inteliwa.
+              número e pode levar ao bloqueio dele pelo WhatsApp — e esse bloqueio é da conta, não da
+              Inteliwa.
             </>,
             <>
               Manter suas credenciais em segurança, e as de cada pessoa da sua equipe. Cada
@@ -116,14 +106,14 @@ export default function TermosPage() {
 
       <Secao titulo="Disponibilidade">
         <p>
-          Trabalhamos para manter o serviço no ar, mas ele depende de terceiros — a API da
-          Meta, o provedor de IA, a infraestrutura de nuvem. Uma instabilidade em qualquer um
+          Trabalhamos para manter o serviço no ar, mas ele depende de terceiros — o próprio
+          WhatsApp, o provedor de IA, a infraestrutura de nuvem. Uma instabilidade em qualquer um
           deles afeta a Inteliwa, e não temos controle sobre isso. Não há garantia contratual de
           disponibilidade ininterrupta.
         </p>
         <p>
-          Quando o WhatsApp está fora do ar, as mensagens ficam retidas na Meta e chegam
-          quando o serviço volta. Nenhuma mensagem é descartada por nós.
+          Quando o WhatsApp está fora do ar, as mensagens chegam quando o serviço volta.
+          Nenhuma mensagem é descartada por nós.
         </p>
       </Secao>
 
@@ -136,7 +126,7 @@ export default function TermosPage() {
         </p>
         <p>
           Podemos suspender uma conta que esteja sendo usada para envio de spam, fraude ou
-          qualquer prática que coloque em risco o acesso das demais empresas à API da Meta.
+          qualquer prática que coloque em risco a plataforma ou as demais empresas que a usam.
         </p>
       </Secao>
 

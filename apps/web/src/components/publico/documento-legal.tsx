@@ -7,7 +7,7 @@
  * pessoa diferente perde a única coisa que ele precisa ter: credibilidade.
  */
 
-import { EMPRESA, temIdentificacao } from "@/lib/site";
+import { EMPRESA, SITE_NAME, temIdentificacao } from "@/lib/site";
 
 export function DocumentoLegal({
   titulo,
@@ -83,16 +83,11 @@ export function Atencao({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Quem responde pelo serviço, com nome e CNPJ.
+ * Quem responde pelo serviço, com CNPJ (e razão social, quando houver).
  *
- * Não é rodapé decorativo. A revisão do app na Meta confere se o site
- * identifica a empresa por trás dele, e a LGPD exige um canal de contato
- * para o titular dos dados — política de privacidade sem dono é um texto
- * que não obriga ninguém.
- *
- * Só aparece quando os dados existem (ver EMPRESA em lib/site). Enquanto a
- * razão social não for preenchida, o bloco simplesmente não é desenhado —
- * é preferível a um "PREENCHER AQUI" no ar.
+ * A LGPD exige que o titular saiba quem trata os dados — política de
+ * privacidade sem dono é um texto que não obriga ninguém. Só aparece
+ * quando o CNPJ existe (ver EMPRESA em lib/site).
  */
 export function Identificacao() {
   if (!temIdentificacao) return null;
@@ -100,7 +95,15 @@ export function Identificacao() {
   return (
     <Secao titulo="Quem responde por este serviço">
       <p>
-        <strong>{EMPRESA.razaoSocial}</strong>, inscrita no CNPJ sob o nº {EMPRESA.cnpj}.
+        {EMPRESA.razaoSocial ? (
+          <>
+            <strong>{EMPRESA.razaoSocial}</strong>, inscrita no CNPJ sob o nº {EMPRESA.cnpj}.
+          </>
+        ) : (
+          <>
+            {SITE_NAME} — CNPJ <strong>{EMPRESA.cnpj}</strong>.
+          </>
+        )}
       </p>
       {EMPRESA.email ? (
         <p>
