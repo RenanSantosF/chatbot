@@ -236,7 +236,20 @@ export function ChatPanel({
     }
   }
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const firstPaintRef = useRef(true);
+  /**
+   * Quantas pinturas desta conversa ainda contam como "abrindo": a do
+   * cache (instantânea) e a reconciliação que vem do servidor logo
+   * depois.
+   *
+   * Sem prazo fixo, de propósito — a reconciliação pode demorar mais que
+   * qualquer janela arbitrária numa conexão lenta, e era exatamente aí
+   * que a tela parava de puxar pro fim: a mensagem só estava chegando
+   * agora porque a conversa tinha ficado fechada, e era ela quem mais
+   * precisava do salto. Da terceira pintura em diante, só mensagem nova
+   * de verdade (chegando com a conversa já aberta) justifica arrastar a
+   * tela.
+   */
+  const pinturasDeAberturaRef = useRef(2);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerRef = useRef<HTMLInputElement | null>(null);
@@ -622,7 +635,7 @@ export function ChatPanel({
     //
     // Abrir uma conversa nunca é animado: a pessoa quer chegar no fim, não
     // assistir a viagem até lá.
-    const primeira = firstPaintRef.current || Date.now() - abertoEm < 1200;
+    const primeira = pinturasDeAberturaRef.current > 0 || Date.now() - abertoEm < 1200;
 
     // Mensagem do CLIENTE só arrasta a tela se quem está lendo já estava no
     // fim — ler o histórico com a conversa ativa era impossível quando toda
@@ -635,7 +648,7 @@ export function ChatPanel({
     const ultima = mensagens[mensagens.length - 1];
     const foiEuQueMandei = Boolean(ultima) && ultima.senderType !== "CUSTOMER";
     if (!primeira && !pertoDoFim && !foiEuQueMandei) return;
-    firstPaintRef.current = false;
+    if (pinturasDeAberturaRef.current > 0) pinturasDeAberturaRef.current -= 1;
 
     // Mexe no scrollTop do container em vez de scrollIntoView: este último
     // respeita `scroll-behavior` herdado e continuava animando na abertura,

@@ -314,8 +314,25 @@ export function InboxFilterBar({
             value={value.search}
             onChange={(event) => set("search", event.target.value)}
             placeholder="Buscar cliente..."
-            className="h-10 rounded-full border-transparent bg-muted pl-9 text-[13px] shadow-none"
+            // Sem anel de foco: numa pílula cheia (bg-muted, sem borda), o
+            // anel de 3px do Input padrão sobra grosso e destoa do resto da
+            // barra — aqui basta o fundo mudar de tom pra mostrar o foco.
+            className={cn(
+              "h-10 rounded-full border-transparent bg-muted pl-9 text-[13px] shadow-none focus-visible:border-transparent focus-visible:bg-accent focus-visible:ring-0",
+              value.search ? "pr-9" : "pr-3",
+            )}
           />
+          {value.search ? (
+            <button
+              type="button"
+              onClick={() => set("search", "")}
+              aria-label="Limpar busca"
+              title="Limpar busca"
+              className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
         </div>
 
         <button

@@ -99,11 +99,20 @@ function buildQuery(
   caminho = "/conversations",
 ): string {
   const params = new URLSearchParams();
+  const buscando = Boolean(filters.search.trim());
   // O eixo de grupos vem primeiro: ele decide QUAL caixa está aberta, e o
   // resto dos filtros recorta dentro dela.
   if (filters.grupos) params.set("grupos", "true");
-  if (filters.grupo !== "ALL") params.set("statusGroup", filters.grupo);
-  if (filters.status !== "ALL") params.set("status", filters.status);
+  // A aba (situação) some da busca: procurar alguém só pra descobrir que
+  // ele "não existe" porque a conversa está resolvida, numa aba diferente
+  // da que estava aberta, é o tipo de resultado que faz a pessoa desistir
+  // de confiar na busca. Sem esses dois, o servidor já devolve de toda
+  // situação — os contadores das abas não mudam, porque `counts` já ignora
+  // esta faceta por conta própria (ver `montarWhere`/`semSituacao`).
+  if (!buscando) {
+    if (filters.grupo !== "ALL") params.set("statusGroup", filters.grupo);
+    if (filters.status !== "ALL") params.set("status", filters.status);
+  }
   if (filters.priority !== "ALL") params.set("priority", filters.priority);
   // Interruptores independentes: dá pra pedir "minhas E não lidas", coisa
   // que a versão anterior (opções exclusivas) não permitia.
