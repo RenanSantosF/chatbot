@@ -1,5 +1,7 @@
+import { CacheCurto } from '../../common/cache/cache-curto';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../generated/prisma/client';
+import type { InboxSettings } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { UpdateInboxSettingsDto } from './dto/inbox-settings.dto';
@@ -23,6 +25,15 @@ function normalizar(
   const limpo = escreverExpediente(lerExpediente(entrada));
   return Object.keys(limpo).length > 0 ? limpo : Prisma.DbNull;
 }
+
+/**
+ * A configuração do Inbox, entre requisições, por alguns segundos.
+ *
+ * Quase toda chamada do Inbox lê esta linha (quem vê o quê, horário,
+ * leitura). Ela só muda quando alguém salva a tela de Atendimento — e
+ * `update` grava o valor novo aqui na mesma hora.
+ */
+const configuracoesLembradas = new CacheCurto<InboxSettings>(30_000);
 
 @Injectable()
 export class InboxSettingsService {
@@ -53,11 +64,16 @@ export class InboxSettingsService {
    * ganham a configuração sem migração de dados.
    */
   private async buscar() {
-    const existing = await this.prisma.db.inboxSettings.findFirst();
-    if (existing) return existing;
-    return this.prisma.db.inboxSettings.create({
-      data: { tenantId: this.prisma.tenantId },
-    });
+    const lembrada = configuracoesLembradas.get(this.prisma.tenantId);
+    if (lembrada) return lembrada;
+
+    const existing =
+      (await this.prisma.db.inboxSettings.findFirst()) ??
+      (await this.prisma.db.inboxSettings.create({
+        data: { tenantId: this.prisma.tenantId },
+      }));
+    configuracoesLembradas.set(this.prisma.tenantId, existing);
+    return existing;
   }
 
   /**
@@ -120,8 +136,10 @@ export class InboxSettingsService {
           : {}),
       },
     });
-    // Quem escreveu não pode continuar lendo o de antes no resto do pedido.
+    // Quem escreveu não pode continuar lendo o de antes no resto do pedido,
+    // nem as próximas requisições.
     this.emCache = Promise.resolve(atualizada);
+    configuracoesLembradas.set(this.prisma.tenantId, atualizada);
     return atualizada;
   }
 }

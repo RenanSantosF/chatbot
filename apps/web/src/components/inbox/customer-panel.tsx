@@ -106,6 +106,7 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
         <AvatarDoCliente
           cliente={customer}
           className="size-16"
+          tamanho={64}
           textoClassName="text-lg"
           conferir
           ampliavel

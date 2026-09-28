@@ -66,6 +66,7 @@ export function CustomerDetailSheet({
                 <AvatarDoCliente
                   cliente={customer}
                   className="size-12 shrink-0"
+                  tamanho={48}
                   textoClassName="text-base"
                   colorido={false}
                   conferir

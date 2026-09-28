@@ -131,6 +131,7 @@ export default function CustomersPage() {
               <AvatarDoCliente
                 cliente={customer}
                 className="size-9 shrink-0"
+                tamanho={36}
                 textoClassName="text-xs"
                 colorido={false}
               />

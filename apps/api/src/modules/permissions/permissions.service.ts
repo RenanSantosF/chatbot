@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { UserRole } from '../../../generated/prisma/client';
+import { CacheCurto } from '../../common/cache/cache-curto';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import {
   ALL_PERMISSION_KEYS,
@@ -7,6 +8,9 @@ import {
   PERMISSION_DEFAULTS,
   type PermissionKey,
 } from './permissions.constants';
+
+/** Respostas do `can`, por empresa + papel + permissão (ver lá). */
+const permissoesLembradas = new CacheCurto<boolean>(60_000);
 
 const CONFIGURABLE_ROLES: Exclude<UserRole, 'OWNER'>[] = ['ADMIN', 'AGENT'];
 
@@ -35,12 +39,19 @@ export class PermissionsService {
     };
   }
 
-  async set(role: Exclude<UserRole, 'OWNER'>, key: PermissionKey, allowed: boolean) {
+  async set(
+    role: Exclude<UserRole, 'OWNER'>,
+    key: PermissionKey,
+    allowed: boolean,
+  ) {
     await this.prisma.db.rolePermission.upsert({
-      where: { tenantId_role_key: { tenantId: this.prisma.tenantId, role, key } },
+      where: {
+        tenantId_role_key: { tenantId: this.prisma.tenantId, role, key },
+      },
       create: { tenantId: this.prisma.tenantId, role, key, allowed },
       update: { allowed },
     });
+    permissoesLembradas.esquecer(`${this.prisma.tenantId}:`);
     return this.matrix();
   }
 
@@ -51,9 +62,18 @@ export class PermissionsService {
   async can(role: UserRole, key: PermissionKey): Promise<boolean> {
     if (role === 'OWNER') return true;
 
+    // O guard pergunta isto em quase toda chamada, e a resposta só muda
+    // quando alguém salva a tela de permissões (que esquece a empresa
+    // inteira, abaixo em `set`).
+    const chave = `${this.prisma.tenantId}:${role}:${key}`;
+    const lembrado = permissoesLembradas.get(chave);
+    if (lembrado !== undefined) return lembrado;
+
     const override = await this.prisma.db.rolePermission.findFirst({
       where: { role, key },
     });
-    return override?.allowed ?? PERMISSION_DEFAULTS[role][key] ?? false;
+    const pode = override?.allowed ?? PERMISSION_DEFAULTS[role][key] ?? false;
+    permissoesLembradas.set(chave, pode);
+    return pode;
   }
 }

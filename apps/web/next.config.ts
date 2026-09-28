@@ -12,6 +12,21 @@ function withProtocol(url: string): string {
 const API_INTERNAL_URL = withProtocol(process.env.API_INTERNAL_URL ?? "http://localhost:3001");
 
 const nextConfig: NextConfig = {
+  /*
+   * Foto de perfil em miniatura, e não a original.
+   *
+   * O WhatsApp entrega a foto em ~640px; a lista de conversas a mostra em
+   * 44. Eram trinta fotos grandes a cada abertura do Inbox. Passando pelo
+   * otimizador, cada avatar chega no tamanho em que é desenhado (em WebP),
+   * e fica em cache no servidor — a URL do WhatsApp muda quando a foto é
+   * renovada, então a entrada velha simplesmente deixa de ser pedida.
+   * A foto inteira só é baixada no visualizador (ver AvatarDoCliente).
+   */
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "*.whatsapp.net" }],
+    qualities: [60, 75],
+    minimumCacheTTL: 7 * 24 * 60 * 60,
+  },
   async rewrites() {
     // O navegador só fala com o próprio Next.js (mesma origem). Isso faz o
     // cookie httpOnly de sessão, setado pela API, ficar no domínio do

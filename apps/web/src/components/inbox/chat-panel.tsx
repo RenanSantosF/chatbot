@@ -834,6 +834,7 @@ export function ChatPanel({
             cliente={conversation.customer}
             className="size-9 shrink-0"
             textoClassName="text-xs"
+            tamanho={36}
             conferir
             ampliavel
           />

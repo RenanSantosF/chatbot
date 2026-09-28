@@ -149,8 +149,14 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={url}
+            // A miniatura, não a original: o balão desenha 288px e a foto
+            // do celular passa de 1500 (ver miniatura.ts na API). A prévia
+            // local do envio já é o arquivo no navegador, sem viagem. A
+            // original vai só pro visualizador, abaixo.
+            src={meta.previaLocal ? url : `${url}?w=640`}
             alt={message.content || "Imagem recebida"}
+            loading="lazy"
+            decoding="async"
             onError={() => setFailed(true)}
             onLoad={(event) => {
               const { naturalWidth, naturalHeight } = event.currentTarget;

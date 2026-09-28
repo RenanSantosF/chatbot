@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,6 +29,7 @@ export function AvatarDoCliente({
   colorido = true,
   conferir = false,
   ampliavel = false,
+  tamanho = 48,
 }: {
   cliente: { id: string; name: string; avatarUrl?: string | null };
   className?: string;
@@ -43,6 +45,8 @@ export function AvatarDoCliente({
   conferir?: boolean;
   /** Clicar abre a foto inteira, buscando a versão mais nova. */
   ampliavel?: boolean;
+  /** Diâmetro desenhado, em px — é o tamanho em que a miniatura é pedida. */
+  tamanho?: number;
 }) {
   // A foto buscada nesta aba vale mais que a que veio na resposta da lista:
   // é mais nova (ver `lib/fotos-de-perfil`).
@@ -89,15 +93,17 @@ export function AvatarDoCliente({
         {initials(cliente.name)}
       </AvatarFallback>
       {url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- URL externa que expira; o otimizador do Next guardaria cópia de algo que muda.
-        <img
+        // Pelo otimizador do Next: chega no tamanho do círculo, e não nos
+        // ~640px da original (ver `images` no next.config). A original só
+        // é baixada ao ampliar.
+        <Image
           src={url}
           alt=""
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
+          fill
+          sizes={`${tamanho}px`}
+          quality={60}
           onError={() => setFalhou(url)}
-          className="absolute inset-0 size-full rounded-full object-cover"
+          className="rounded-full object-cover"
         />
       ) : null}
     </Avatar>

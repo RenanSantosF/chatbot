@@ -192,6 +192,7 @@ export function ConversationList({
             <AvatarDoCliente
               cliente={conversation.customer}
               className="size-11 shrink-0"
+              tamanho={44}
               textoClassName="text-xs"
             />
             <div className="min-w-0 flex-1">

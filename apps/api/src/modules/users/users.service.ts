@@ -1,3 +1,4 @@
+import { esquecerUsuario } from '../auth/strategies/jwt.strategy';
 import {
   BadRequestException,
   ConflictException,
@@ -123,6 +124,8 @@ export class UsersService {
    * o dono se autodesativar por engano e ficar trancado pra fora.
    */
   async update(id: string, dto: UpdateUserDto, actingUserId: string) {
+    // Papel e status valem na próxima chamada, sem esperar o cache.
+    esquecerUsuario(id);
     if (id === actingUserId) {
       throw new BadRequestException(
         'Você não pode alterar a própria conta por aqui.',
@@ -162,6 +165,7 @@ export class UsersService {
    * trancaria o dono legítimo pra fora.
    */
   async updateProfile(userId: string, dto: UpdateProfileDto) {
+    esquecerUsuario(userId);
     const data: {
       name?: string;
       passwordHash?: string;
