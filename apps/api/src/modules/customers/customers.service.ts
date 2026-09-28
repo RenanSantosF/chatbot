@@ -113,6 +113,8 @@ export interface ContatoDoAparelho {
   notify?: string;
   pushName?: string;
   verifiedName?: string;
+  /** A foto de perfil, quando a Evolution já a buscou (expira — ver `Customer.avatarUrl`). */
+  profilePicUrl?: string | null;
 }
 
 @Injectable()
@@ -340,6 +342,18 @@ export class CustomersService {
           criarSeNovo: true,
         });
         if (salvo) salvos += 1;
+
+        // A foto vem de graça no mesmo evento: aproveitar poupa uma
+        // pergunta ao servidor por contato na primeira mensagem de cada um.
+        const foto = contato.profilePicUrl;
+        const fotoNova =
+          typeof foto === 'string' && foto.startsWith('http') ? foto : null;
+        if (salvo && fotoNova && salvo.avatarUrl !== fotoNova) {
+          await this.prisma.db.customer.update({
+            where: { id: salvo.id },
+            data: { avatarUrl: fotoNova, avatarVerificadoEm: new Date() },
+          });
+        }
       } catch (erro) {
         this.logger.warn(
           `Não deu pra salvar o contato ${telefone}: ${erro instanceof Error ? erro.message : erro}`,

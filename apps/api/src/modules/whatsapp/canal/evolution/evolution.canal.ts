@@ -403,4 +403,28 @@ export class EvolutionCanal implements CanalDeMensagem {
 
     return nome;
   }
+
+  /**
+   * A foto de perfil de um cliente ou grupo.
+   *
+   * Três respostas diferentes, porque o chamador trata cada uma de um jeito:
+   * a URL; `null` quando a pessoa não tem foto (ou a esconde) — o que conta
+   * como conferido; e `undefined` quando a pergunta falhou, que é pra
+   * tentar de novo na próxima mensagem em vez de gravar "sem foto".
+   */
+  async fotoDePerfil(numero: string): Promise<string | null | undefined> {
+    const credenciais = await this.credenciais();
+    if (!credenciais) return undefined;
+
+    const resposta = await evolution.buscarFotoDePerfil(credenciais, numero);
+    if (!resposta.ok) {
+      this.logger.warn(
+        `Não deu pra buscar a foto de perfil de ${numero}: ${resposta.erro ?? 'sem resposta'}.`,
+      );
+      return undefined;
+    }
+
+    const url = resposta.dados?.profilePictureUrl;
+    return typeof url === 'string' && url.startsWith('http') ? url : null;
+  }
 }

@@ -326,7 +326,15 @@ const conversationListSelect = {
   createdAt: true,
   assignedUserId: true,
   queueId: true,
-  customer: { select: { id: true, name: true, phone: true, isGroup: true } },
+  customer: {
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      isGroup: true,
+      avatarUrl: true,
+    },
+  },
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
   queue: { select: { id: true, key: true, name: true } },
   tags: {

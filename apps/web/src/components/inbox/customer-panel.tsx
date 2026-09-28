@@ -12,9 +12,8 @@ import {
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarDoCliente } from "@/components/avatar-do-cliente";
 import { EmptyState } from "@/components/empty-state";
-import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META } from "@/lib/priority";
 import { descreverResponsavel } from "@/lib/atribuicao";
 import { cn } from "@/lib/utils";
@@ -102,11 +101,7 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
       {/* Cabeçalho com a cara do contato. Antes o painel abria direto numa
           lista de "rótulo: valor", que é ficha cadastral, não pessoa. */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
-        <Avatar className="size-16">
-          <AvatarFallback className={cn("text-lg font-medium", avatarColor(customer.id))}>
-            {initials(customer.name)}
-          </AvatarFallback>
-        </Avatar>
+        <AvatarDoCliente cliente={customer} className="size-16" textoClassName="text-lg" />
         <div className="min-w-0">
           <p className="truncate font-semibold">{customer.name}</p>
           <a

@@ -109,6 +109,8 @@ export interface CustomerResumo {
   phone: string;
   /** É um grupo do WhatsApp, e não uma pessoa. */
   isGroup?: boolean;
+  /** Foto do WhatsApp — só no canal por QR code, e a URL expira (ver `AvatarDoCliente`). */
+  avatarUrl?: string | null;
 }
 
 export interface Customer extends CustomerResumo {

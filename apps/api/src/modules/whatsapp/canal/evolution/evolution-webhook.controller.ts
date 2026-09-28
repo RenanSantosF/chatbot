@@ -40,6 +40,9 @@ type MensagemImportada = Parameters<
   ConversationsService['importarHistorico']
 >[0]['mensagens'][number];
 
+/** De quanto em quanto tempo a foto de perfil de um cliente é conferida. */
+const FOTO_VALIDA_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Onde a Evolution entrega o que chega no WhatsApp.
  *
@@ -165,6 +168,54 @@ export class EvolutionWebhookController {
    * exatamente a janela em que a repetição acontece.
    */
   private readonly nomesDeGrupo = new Map<string, string>();
+
+  /** Fotos já conferidas neste lote — mesma ideia de `nomesDeGrupo`. */
+  private readonly fotosConferidas = new Set<string>();
+
+  /**
+   * A foto de perfil, renovada no máximo uma vez por dia por cliente.
+   *
+   * A URL que a Evolution devolve expira em alguns dias, então guardar uma
+   * vez só não basta. Renovar quando o cliente escreve mantém em dia
+   * justamente quem aparece no topo da lista, sem varredura nenhuma.
+   *
+   * Roda sem `await` depois do recebimento, e nada aqui lança: foto é
+   * enfeite, e não pode segurar nem derrubar a entrega da mensagem.
+   */
+  private async atualizarFotoSePreciso(
+    tenantId: string,
+    identificador: string,
+  ) {
+    if (this.fotosConferidas.has(identificador)) return;
+    this.fotosConferidas.add(identificador);
+
+    try {
+      const cliente = await this.prisma.client.customer.findFirst({
+        where: { tenantId, phone: identificador },
+        select: { id: true, avatarVerificadoEm: true },
+      });
+      if (!cliente) return;
+      if (
+        cliente.avatarVerificadoEm &&
+        Date.now() - cliente.avatarVerificadoEm.getTime() < FOTO_VALIDA_MS
+      ) {
+        return;
+      }
+
+      const foto = await this.evolution.fotoDePerfil(identificador);
+      // Falhou a pergunta: não grava "sem foto" — a próxima mensagem tenta.
+      if (foto === undefined) return;
+
+      await this.prisma.client.customer.update({
+        where: { id: cliente.id },
+        data: { avatarUrl: foto, avatarVerificadoEm: new Date() },
+      });
+    } catch (erro) {
+      this.logger.warn(
+        `Não deu pra atualizar a foto de ${identificador}: ${erro instanceof Error ? erro.message : erro}`,
+      );
+    }
+  }
 
   @Public()
   @Post(':secret')
@@ -441,6 +492,8 @@ export class EvolutionWebhookController {
           : undefined,
         createdAt: horaDaMensagem(dados),
       });
+
+      void this.atualizarFotoSePreciso(config.tenantId, telefone);
     }
   }
 

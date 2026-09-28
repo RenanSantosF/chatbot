@@ -437,6 +437,16 @@ model Customer {
   /// fila de pendentes não conta, e a lista de Clientes não mostra.
   isGroup       Boolean        @default(false)
 
+  /// A foto de perfil do WhatsApp — uma URL do CDN do WhatsApp, que EXPIRA
+  /// em alguns dias. Por isso é renovada quando o cliente volta a escrever
+  /// (ver `avatarVerificadoEm`), e o painel cai nas iniciais quando uma URL
+  /// velha já não abre. Só existe no canal por QR code: a API oficial da
+  /// Meta não entrega foto de ninguém.
+  avatarUrl          String?
+  /// Última conferência da foto, com ou sem foto encontrada. Sem registrar
+  /// o "sem foto", quem esconde a foto seria perguntado a cada mensagem.
+  avatarVerificadoEm DateTime?
+
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   notes         CustomerNote[]

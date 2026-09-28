@@ -281,6 +281,33 @@ export function buscarGrupo(
   );
 }
 
+export interface FotoDePerfil {
+  wuid?: string;
+  /** `null` quando não há foto, ou quando a privacidade da pessoa a esconde. */
+  profilePictureUrl?: string | null;
+}
+
+/**
+ * A foto de perfil de um contato ou grupo.
+ *
+ * Rota `POST /chat/fetchProfilePictureUrl` da v2 (`NumberDto`). A URL
+ * devolvida é do CDN do WhatsApp e expira em alguns dias — quem guarda
+ * precisa renovar.
+ */
+export function buscarFotoDePerfil(
+  credenciais: Credenciais,
+  numero: string,
+): Promise<RespostaDaEvolution<FotoDePerfil>> {
+  return chamar(
+    credenciais,
+    `/chat/fetchProfilePictureUrl/${credenciais.instance}`,
+    {
+      method: 'POST',
+      body: { number: numero },
+    },
+  );
+}
+
 /** O que a Evolution responde ao conferir uma lista de números. */
 export interface NumeroConferido {
   exists?: boolean;

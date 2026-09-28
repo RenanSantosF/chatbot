@@ -1,7 +1,9 @@
 /**
- * A Cloud API do WhatsApp não entrega a foto de perfil do cliente (a Meta
- * só expõe o nome do contato), então o avatar é gerado a partir do nome:
- * iniciais sobre uma cor estável. "Estável" é o ponto — a mesma pessoa tem
+ * O avatar de quem está sem foto: iniciais sobre uma cor estável.
+ *
+ * "Sem foto" é comum — a Cloud API da Meta não entrega foto nenhuma, e no
+ * canal por QR code a pessoa pode escondê-la ou a URL pode ter expirado
+ * (ver `AvatarDoCliente`). "Estável" é o ponto — a mesma pessoa tem
  * sempre a mesma cor, o que já ajuda a bater o olho e reconhecer na lista.
  */
 const PALETTE = [

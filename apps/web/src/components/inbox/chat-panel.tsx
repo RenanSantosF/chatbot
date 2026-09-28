@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarDoCliente } from "@/components/avatar-do-cliente";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select-field";
@@ -29,7 +29,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useSession } from "@/components/session-provider";
 import { useRealtime } from "@/components/realtime-provider";
-import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/priority";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -831,11 +830,11 @@ export function ChatPanel({
           >
             <ArrowLeft className="size-5" />
           </Button>
-          <Avatar className="size-9 shrink-0">
-            <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
-              {initials(conversation.customer.name)}
-            </AvatarFallback>
-          </Avatar>
+          <AvatarDoCliente
+            cliente={conversation.customer}
+            className="size-9 shrink-0"
+            textoClassName="text-xs"
+          />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{conversation.customer.name}</p>
             <p className="truncate text-xs text-muted-foreground">{conversation.customer.phone}</p>

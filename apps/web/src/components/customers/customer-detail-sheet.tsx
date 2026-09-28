@@ -3,7 +3,7 @@
 import { MessageCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarDoCliente } from "@/components/avatar-do-cliente";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -24,15 +24,6 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   RESOLVED: "Resolvida",
   CLOSED: "Fechada",
 };
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
 
 export function CustomerDetailSheet({
   customer,
@@ -72,9 +63,12 @@ export function CustomerDetailSheet({
           <>
             <SheetHeader className="border-b pb-4">
               <div className="flex items-center gap-3">
-                <Avatar className="size-12 shrink-0">
-                  <AvatarFallback className="text-base">{initials(customer.name)}</AvatarFallback>
-                </Avatar>
+                <AvatarDoCliente
+                  cliente={customer}
+                  className="size-12 shrink-0"
+                  textoClassName="text-base"
+                  colorido={false}
+                />
                 <div className="min-w-0">
                   <SheetTitle className="truncate">{customer.name}</SheetTitle>
                   <SheetDescription className="truncate">{customer.phone}</SheetDescription>

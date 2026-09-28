@@ -4,7 +4,7 @@ import { MessageSquarePlus, Search, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarDoCliente } from "@/components/avatar-do-cliente";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StartConversationDialog } from "@/components/customers/start-conversation-dialog";
@@ -15,15 +15,6 @@ import { ImportContactsDialog } from "@/components/customers/import-contacts-dia
 import { PageHeader } from "@/components/page-header";
 import { apiFetch } from "@/lib/api-client";
 import type { Customer } from "@/lib/types";
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -137,9 +128,12 @@ export default function CustomersPage() {
               onClick={() => setSelected(customer)}
               className="flex items-center gap-3 p-3 text-left transition-colors hover:bg-muted/60"
             >
-              <Avatar className="size-9 shrink-0">
-                <AvatarFallback className="text-xs">{initials(customer.name)}</AvatarFallback>
-              </Avatar>
+              <AvatarDoCliente
+                cliente={customer}
+                className="size-9 shrink-0"
+                textoClassName="text-xs"
+                colorido={false}
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{customer.name}</p>
                 <p className="truncate text-xs text-muted-foreground">

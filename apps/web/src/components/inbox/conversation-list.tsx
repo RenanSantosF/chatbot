@@ -2,10 +2,9 @@
 
 import { MessageSquareDashed, Timer, UserRound } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarDoCliente } from "@/components/avatar-do-cliente";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { avatarColor, initials } from "@/lib/avatar";
 import { PRIORITY_META } from "@/lib/priority";
 import { descreverEspera, type Relogio } from "@/lib/espera";
 import { resumoDaMensagem } from "@/lib/mensagem";
@@ -190,11 +189,11 @@ export function ConversationList({
                 : { viewTransitionName: `conversa-${conversation.id}` }
             }
           >
-            <Avatar className="size-11 shrink-0">
-              <AvatarFallback className={cn("text-xs font-medium", avatarColor(conversation.customer.id))}>
-                {initials(conversation.customer.name)}
-              </AvatarFallback>
-            </Avatar>
+            <AvatarDoCliente
+              cliente={conversation.customer}
+              className="size-11 shrink-0"
+              textoClassName="text-xs"
+            />
             <div className="min-w-0 flex-1">
               {/* Linha 1: quem é, e quando falou. Nada mais.
 

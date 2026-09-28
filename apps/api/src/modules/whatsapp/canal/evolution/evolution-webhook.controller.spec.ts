@@ -52,7 +52,10 @@ function montar() {
     importarAgenda: jest.fn().mockResolvedValue({ recebidos: 1, salvos: 1 }),
   };
 
-  const evolution = { nomeDoGrupo: jest.fn().mockResolvedValue(null) };
+  const evolution = {
+    nomeDoGrupo: jest.fn().mockResolvedValue(null),
+    fotoDePerfil: jest.fn().mockResolvedValue(null),
+  };
 
   const controller = new EvolutionWebhookController(
     prisma as unknown as PrismaService,
@@ -1247,5 +1250,96 @@ describe('a agenda chega ao painel', () => {
     });
 
     expect(customers.importarAgenda).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A foto de perfil, renovada quando o cliente escreve.
+ *
+ * Roda depois da entrega, sem `await` — por isso os testes esperam a fila
+ * de promessas esvaziar antes de conferir.
+ */
+describe('foto de perfil', () => {
+  const esvaziarFila = () => new Promise((pronto) => setImmediate(pronto));
+  const FOTO = 'https://pps.whatsapp.net/v/foto.jpg';
+
+  it('busca e grava a foto de quem ainda não foi conferido', async () => {
+    const { controller, prisma, evolution, req } = montar();
+    prisma.client.customer.findFirst.mockResolvedValue({
+      id: 'cliente-1',
+      avatarVerificadoEm: null,
+    });
+    evolution.fotoDePerfil.mockResolvedValue(FOTO);
+
+    await controller.receber(SEGREDO, req, mensagem());
+    await esvaziarFila();
+
+    expect(evolution.fotoDePerfil).toHaveBeenCalledWith('5511999999999');
+    expect(prisma.client.customer.update).toHaveBeenCalledWith({
+      where: { id: 'cliente-1' },
+      data: { avatarUrl: FOTO, avatarVerificadoEm: expect.any(Date) },
+    });
+  });
+
+  it('não pergunta de novo a quem foi conferido há menos de um dia', async () => {
+    // Uma pergunta ao servidor por mensagem seria o preço de uma conversa
+    // movimentada — e a foto não muda de hora em hora.
+    const { controller, prisma, evolution, req } = montar();
+    prisma.client.customer.findFirst.mockResolvedValue({
+      id: 'cliente-1',
+      avatarVerificadoEm: new Date(Date.now() - 60 * 60 * 1000),
+    });
+
+    await controller.receber(SEGREDO, req, mensagem());
+    await esvaziarFila();
+
+    expect(evolution.fotoDePerfil).not.toHaveBeenCalled();
+  });
+
+  it('grava "sem foto" quando a pessoa não tem (ou esconde) a foto', async () => {
+    // Sem registrar a conferência, quem esconde a foto seria perguntado
+    // de novo a cada mensagem.
+    const { controller, prisma, evolution, req } = montar();
+    prisma.client.customer.findFirst.mockResolvedValue({
+      id: 'cliente-1',
+      avatarVerificadoEm: null,
+    });
+    evolution.fotoDePerfil.mockResolvedValue(null);
+
+    await controller.receber(SEGREDO, req, mensagem());
+    await esvaziarFila();
+
+    expect(prisma.client.customer.update).toHaveBeenCalledWith({
+      where: { id: 'cliente-1' },
+      data: { avatarUrl: null, avatarVerificadoEm: expect.any(Date) },
+    });
+  });
+
+  it('falha na busca não grava nada — a próxima mensagem tenta de novo', async () => {
+    const { controller, prisma, evolution, req } = montar();
+    prisma.client.customer.findFirst.mockResolvedValue({
+      id: 'cliente-1',
+      avatarVerificadoEm: null,
+    });
+    evolution.fotoDePerfil.mockResolvedValue(undefined);
+
+    await controller.receber(SEGREDO, req, mensagem());
+    await esvaziarFila();
+
+    expect(prisma.client.customer.update).not.toHaveBeenCalled();
+  });
+
+  it('um erro na foto não derruba a entrega da mensagem', async () => {
+    const { controller, prisma, evolution, conversations, req } = montar();
+    prisma.client.customer.findFirst.mockResolvedValue({
+      id: 'cliente-1',
+      avatarVerificadoEm: null,
+    });
+    evolution.fotoDePerfil.mockRejectedValue(new Error('servidor fora'));
+
+    await controller.receber(SEGREDO, req, mensagem());
+    await esvaziarFila();
+
+    expect(conversations.receiveInbound).toHaveBeenCalled();
   });
 });
