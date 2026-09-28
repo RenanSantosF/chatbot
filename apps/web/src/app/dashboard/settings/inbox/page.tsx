@@ -453,8 +453,8 @@ export default function InboxSettingsPage() {
               <span className="block text-sm font-medium">Encerrar sozinho por inatividade</span>
               <span className="block text-xs text-muted-foreground text-pretty">
                 Marca como resolvida e deixa uma nota na conversa. Se o cliente escrever de novo, o
-                atendimento reabre normalmente. Vem ligado porque é proteção de custo, não só
-                organização.
+                atendimento reabre normalmente. Vem desligado: a conversa só fecha quando alguém
+                da equipe decide.
               </span>
             </span>
             <Switch

@@ -20,27 +20,22 @@ type Fala =
   | { de: "atendente"; nome: string; texto: string; hora: string }
   | { de: "sistema"; texto: string };
 
+// Curta de propósito: é pra bater o olho e entender, não pra ler. As
+// três vozes — cliente, IA e pessoa — cabem em quatro balões.
 const CONVERSA: Fala[] = [
-  { de: "cliente", texto: "Boa tarde! Vocês fazem inventário?", hora: "14:02" },
+  { de: "cliente", texto: "Boa noite! Vocês abrem amanhã?", hora: "23:41" },
   {
     de: "ia",
-    texto:
-      "Boa tarde! Fazemos sim, tanto judicial quanto extrajudicial. Para eu te orientar melhor: já existe processo aberto?",
-    hora: "14:02",
+    texto: "Boa noite! Abrimos às 8h. Quer que eu já deixe um horário reservado?",
+    hora: "23:41",
   },
-  { de: "cliente", texto: "Ainda não. O falecimento foi semana passada.", hora: "14:03" },
-  {
-    de: "ia",
-    texto:
-      "Sinto muito pela sua perda. Nesse caso o prazo para abrir é de 60 dias, então dá tempo com folga. Vou te passar para a nossa equipe de sucessões — pode me confirmar seu nome completo?",
-    hora: "14:03",
-  },
-  { de: "sistema", texto: "Encaminhado para a equipe: o cliente relatou um caso com prazo." },
+  { de: "cliente", texto: "Quero! Às 9h dá?", hora: "23:42" },
+  { de: "sistema", texto: "Reserva anotada — a equipe confirma de manhã" },
   {
     de: "atendente",
     nome: "Marina",
-    texto: "Oi! Sou a Marina, do time de sucessões. Consigo te atender agora mesmo.",
-    hora: "14:05",
+    texto: "Bom dia! Confirmado pras 9h. Até já 😊",
+    hora: "08:02",
   },
 ];
 

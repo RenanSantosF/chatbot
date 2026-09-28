@@ -70,13 +70,13 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           href="/"
           className="relative flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
-          <Marca className="size-8" />
+          <Marca className="size-8" cor="#ffffff" />
           {SITE_NAME}
         </Link>
 
         <div className="relative flex flex-col gap-8">
           <p className="max-w-md text-3xl leading-tight font-semibold tracking-tight text-balance">
-            Seu cliente pergunta às duas da manhã. Alguém responde.
+            Seu WhatsApp atendendo sozinho, 24 horas.
           </p>
 
           <ul className="flex max-w-md flex-col gap-4">
