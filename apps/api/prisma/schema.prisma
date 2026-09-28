@@ -522,16 +522,18 @@ model InboxSettings {
   groupWindowHours Int      @default(72)
   /// Encerra sozinho o que ficou parado.
   ///
-  /// LIGADO por padrão, e a razão é dinheiro: passadas 24h sem mensagem do
-  /// cliente, a janela de atendimento do WhatsApp fecha e responder passa a
-  /// exigir modelo aprovado — que é burocrático e COBRADO por mensagem.
-  /// Conversa esquecida em aberto é uma dessas contas esperando pra
-  /// acontecer, e quem desliga o recurso deveria estar escolhendo pagar,
-  /// não descobrindo depois que pagou.
+  /// DESLIGADO por padrão — decisão explícita, pedida depois de a empresa
+  /// descobrir o recurso ligado sem ter escolhido isso. A razão pra existir
+  /// continua sendo dinheiro: passadas 24h sem mensagem do cliente, a janela
+  /// de atendimento do WhatsApp fecha e responder passa a exigir modelo
+  /// aprovado — que é burocrático e COBRADO por mensagem. Quem ligar o
+  /// recurso está escolhendo evitar essa conta; quem não ligar está optando
+  /// por correr esse risco conscientemente, não descobrindo-o por acaso.
   ///
-  /// O padrão de 20 horas encerra com folga antes das 24, enquanto ainda dá
-  /// tempo de alguém reabrir de graça.
-  autoCloseIdle    Boolean  @default(true)
+  /// O padrão de 20 horas (`autoCloseHours`, abaixo) encerra com folga antes
+  /// das 24, enquanto ainda dá tempo de alguém reabrir de graça — vale pra
+  /// quem ligar o recurso.
+  autoCloseIdle    Boolean  @default(false)
   autoCloseHours   Int      @default(20)
   /// Avisa o cliente antes de encerrar por inatividade.
   ///

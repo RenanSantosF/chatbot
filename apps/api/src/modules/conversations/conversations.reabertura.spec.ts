@@ -193,13 +193,33 @@ describe('a rodada nova na mesma conversa', () => {
     expect(prisma.db.conversation.update).not.toHaveBeenCalled();
   });
 
-  it('sem conversa dentro da janela, não reabre nada', async () => {
-    // Quem escreve três meses depois traz outro caso; ressuscitar a
-    // conversa antiga só confunde.
+  it('sem conversa anterior nenhuma, não reabre nada', async () => {
     const { reabrir, prisma } = montar({ anterior: null });
 
     await expect(reabrir()).resolves.toBeNull();
     expect(prisma.db.conversation.update).not.toHaveBeenCalled();
+  });
+
+  /**
+   * O relato: um card novo nascia quando o cliente voltava a escrever
+   * depois de tempo demais parado — o oposto de "é a mesma conversa de
+   * sempre" que o WhatsApp de verdade garante. Existia uma janela de tempo
+   * (`groupWindowHours`) que causava exatamente isso, filtrando a busca da
+   * conversa anterior por `lastMessageAt`; ela foi removida de propósito, e
+   * este teste é a garantia de que não volta — olhando o FILTRO da busca, e
+   * não só o retorno, porque o mock de `findFirst` devolve `anterior` sem
+   * checar `where` (um teste que só olhasse o retorno passaria com ou sem
+   * o filtro no código).
+   */
+  it('busca a conversa anterior sem nenhum filtro de tempo', async () => {
+    const { reabrir, prisma } = montar();
+
+    await reabrir();
+
+    const [{ where }] = prisma.db.conversation.findFirst.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(where).not.toHaveProperty('lastMessageAt');
   });
 });
 

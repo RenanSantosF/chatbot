@@ -3513,28 +3513,27 @@ export class ConversationsService {
    * a conversa anterior em vez de abrir um card novo.
    *
    * O ponto é o atendente: no WhatsApp de verdade a pessoa tem UMA conversa
-   * com a empresa e o histórico inteiro à vista. Abrir um card por assunto
-   * espalha o mesmo cliente por vários lugares, e quem atende a segunda
-   * mensagem não vê o que foi combinado na primeira.
+   * com a empresa e o histórico inteiro à vista, pra sempre — não importa
+   * quanto tempo se passou desde a última mensagem. Abrir um card por
+   * assunto espalha o mesmo cliente por vários lugares, e quem atende a
+   * segunda mensagem não vê o que foi combinado na primeira.
    *
-   * A janela existe porque isso deixa de valer com o tempo: quem escreve
-   * três meses depois traz outro caso, e ressuscitar a conversa antiga só
-   * confunde. Fora da janela, conversa nova — o histórico continua no
-   * perfil do cliente de qualquer forma.
+   * SEM janela de tempo, de propósito: existia uma (`groupWindowHours`),
+   * e o problema que ela criava era pior que o que resolvia — o cliente
+   * que voltava depois de meses ganhava um card do zero, sem nada do
+   * histórico à vista, o oposto do "é a mesma conversa de sempre" que o
+   * WhatsApp de verdade garante. Quem quiser cards separados por assunto
+   * desliga o agrupamento inteiro (`groupByCustomer`); não existe meio
+   * termo por tempo.
    */
   private async reabrirParaAgrupamento(customerId: string, grupo = false) {
     const settings = await this.inboxSettings.get();
     if (!settings.groupByCustomer) return null;
 
-    const limite = new Date(
-      Date.now() - settings.groupWindowHours * 60 * 60 * 1000,
-    );
-
     const anterior = await this.prisma.db.conversation.findFirst({
       where: {
         customerId,
         status: { in: ['RESOLVED', 'CLOSED'] },
-        lastMessageAt: { gte: limite },
       },
       orderBy: { lastMessageAt: 'desc' },
     });

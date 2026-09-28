@@ -432,19 +432,6 @@ export default function InboxSettingsPage() {
               aria-label="Agrupar conversas do mesmo cliente"
             />
           </label>
-
-          {settings.groupByCustomer ? (
-            <NumberField
-              id="group-window"
-              label="Agrupar se voltar em até"
-              sufixo="horas"
-              value={settings.groupWindowHours}
-              min={1}
-              max={720}
-              ajuda="Passado esse tempo, o assunto é outro e a conversa começa limpa. O histórico continua no perfil do cliente."
-              onSave={(valor) => patch({ groupWindowHours: valor })}
-            />
-          ) : null}
         </CardContent>
       </Card>
 
