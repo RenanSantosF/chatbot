@@ -6,7 +6,19 @@ export interface CachedConversation {
   detail: ConversationDetail;
   messagesCursor: string | null;
   fetchedAt: number;
+  /** Em qual conexão do tempo real foi guardada (ver `conexao`). */
+  conexao: number;
 }
+
+/**
+ * Quantas vezes o tempo real (re)conectou.
+ *
+ * Uma entrada guardada DURANTE a conexão atual recebeu, pelo socket, toda
+ * mensagem que chegou depois dela (ver `anexarMensagem`) — está em dia, e
+ * pode abrir na hora mesmo com não lidas. Guardada numa conexão anterior,
+ * pode ter perdido o que chegou durante a queda: o servidor não reenvia.
+ */
+let conexao = 0;
 
 /**
  * Cache de conversas abertas, no mesmo espírito do WhatsApp Web: voltar
@@ -53,12 +65,16 @@ export const conversationCache = {
     return cache.get(id);
   },
 
-  set(chaveDaSessao: string, id: string, entry: Omit<CachedConversation, "fetchedAt">) {
+  set(
+    chaveDaSessao: string,
+    id: string,
+    entry: Omit<CachedConversation, "fetchedAt" | "conexao">,
+  ) {
     garantirSessao(chaveDaSessao);
     // Reinsere pra a chave ir pro fim da ordem de iteração do Map, que é a
     // ordem de inserção — assim o descarte abaixo tira sempre a mais antiga.
     cache.delete(id);
-    cache.set(id, { ...entry, fetchedAt: Date.now() });
+    cache.set(id, { ...entry, fetchedAt: Date.now(), conexao });
 
     if (cache.size > MAX_ENTRIES) {
       const oldest = cache.keys().next().value;
@@ -79,6 +95,56 @@ export const conversationCache = {
   },
 
   /** Chamado explicitamente no logout — não espera a próxima sessão pra limpar. */
+  /**
+   * A entrada existe e recebeu tudo pelo tempo real desde que foi guardada
+   * — dá pra abrir a conversa com ela sem esperar o servidor.
+   */
+  emDia(chaveDaSessao: string, id: string): boolean {
+    garantirSessao(chaveDaSessao);
+    return cache.get(id)?.conexao === conexao;
+  },
+
+  /** O tempo real (re)conectou: o que foi guardado antes pode ter furos. */
+  novaConexao() {
+    conexao += 1;
+  },
+
+  /**
+   * Mensagem nova de uma conversa que NÃO está aberta.
+   *
+   * É o que mantém o cache em dia: antes, só a conversa aberta recebia as
+   * mensagens do socket, e abrir uma conversa com não lidas tinha de
+   * esperar o servidor — o "carregando" entre um chat e outro.
+   */
+  anexarMensagem(
+    chaveDaSessao: string,
+    id: string,
+    message: ConversationDetail["messages"][number],
+  ) {
+    garantirSessao(chaveDaSessao);
+    const entry = cache.get(id);
+    if (!entry || entry.detail.messages.some((m) => m.id === message.id)) return;
+    entry.detail = { ...entry.detail, messages: [...entry.detail.messages, message] };
+  },
+
+  /** Status (tiques) ou conteúdo de uma mensagem já guardada. */
+  atualizarMensagem(
+    chaveDaSessao: string,
+    id: string,
+    messageId: string,
+    mudanca: Partial<ConversationDetail["messages"][number]>,
+  ) {
+    garantirSessao(chaveDaSessao);
+    const entry = cache.get(id);
+    if (!entry) return;
+    entry.detail = {
+      ...entry.detail,
+      messages: entry.detail.messages.map((m) =>
+        m.id === messageId ? { ...m, ...mudanca } : m,
+      ),
+    };
+  },
+
   clear() {
     cache.clear();
     sessaoAtual = null;

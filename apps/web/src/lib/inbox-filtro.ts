@@ -83,3 +83,27 @@ export function pertenceAoFiltro(
 
   return true;
 }
+
+/**
+ * A mesma ordem que o servidor devolve, aplicada de novo no navegador.
+ *
+ * Existe porque dois lugares precisam reordenar sem pedir a lista inteira
+ * de volta: um evento de conversa chegando (`onConversationUpdated`) e a
+ * reconciliação de histórico importado (ver F02). Repetir o comparador em
+ * vez de compartilhar já causou os dois discordarem por um instante.
+ */
+export function ordenarConversas<T extends { waitingSince?: string | null; lastMessageAt: string | null }>(
+  items: T[],
+  ordem: InboxFilters["ordem"],
+): T[] {
+  if (ordem === "ESPERA") {
+    return [...items].sort((a, b) => {
+      const esperaA = a.waitingSince ? new Date(a.waitingSince).getTime() : Infinity;
+      const esperaB = b.waitingSince ? new Date(b.waitingSince).getTime() : Infinity;
+      return esperaA - esperaB;
+    });
+  }
+  return [...items].sort(
+    (a, b) => new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
+  );
+}

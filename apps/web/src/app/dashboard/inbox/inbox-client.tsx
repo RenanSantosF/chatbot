@@ -11,8 +11,10 @@ import { ChatPanel } from "@/components/inbox/chat-panel";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { CustomerPanel } from "@/components/inbox/customer-panel";
 import {
+  ABAS,
   DEFAULT_FILTERS,
   InboxFilterBar,
+  filtrosDaAba,
   type FilterCounts,
   type InboxFilters,
 } from "@/components/inbox/inbox-filters";
@@ -26,7 +28,7 @@ import { ApiError } from "@/lib/api-error";
 import { criarAgrupadorDeRajada } from "@/lib/agrupar-rajada";
 import { conversationCache } from "@/lib/conversation-cache";
 import { inboxListCache } from "@/lib/inbox-list-cache";
-import { pertenceAoFiltro } from "@/lib/inbox-filtro";
+import { ordenarConversas, pertenceAoFiltro } from "@/lib/inbox-filtro";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
 import type {
@@ -162,29 +164,6 @@ function mostraResolvidas(filtros: InboxFilters): boolean {
   return filtros.grupo === "ALL" || filtros.grupo === "DONE";
 }
 
-/**
- * A mesma ordem que o servidor devolve, aplicada de novo no navegador.
- *
- * Existe porque dois lugares precisam reordenar sem pedir a lista inteira
- * de volta: um evento de conversa chegando (`onConversationUpdated`) e a
- * reconciliação de histórico importado (ver F02). Repetir o comparador em
- * vez de compartilhar já causou os dois discordarem por um instante.
- */
-function ordenarConversas(
-  items: ConversationSummary[],
-  ordem: InboxFilters["ordem"],
-): ConversationSummary[] {
-  if (ordem === "ESPERA") {
-    return [...items].sort((a, b) => {
-      const esperaA = a.waitingSince ? new Date(a.waitingSince).getTime() : Infinity;
-      const esperaB = b.waitingSince ? new Date(b.waitingSince).getTime() : Infinity;
-      return esperaA - esperaB;
-    });
-  }
-  return [...items].sort(
-    (a, b) => new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
-  );
-}
 
 export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null }) {
   const searchParams = useSearchParams();
@@ -295,6 +274,30 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     setSelectedId(conversaDaUrl);
   }, [conversaDaUrl]);
 
+  const unreadCountsRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    unreadCountsRef.current = unreadCounts;
+  }, [unreadCounts]);
+
+  /**
+   * A conversa guardada que pode ser mostrada JÁ, ou nada.
+   *
+   * Com não lidas, só a memória mantida em dia pelo tempo real serve (ver
+   * `conversationCache.emDia`): uma guardada antes da última queda pode
+   * não ter as mensagens novas, e mostrá-la pra corrigir logo depois é o
+   * "abre o de ontem, pula pro de hoje".
+   */
+  const detalheGuardado = useCallback(
+    (id: string) => {
+      const resumo = conversationsRef.current.find((item) => item.id === id);
+      const podeEstarDesatualizado =
+        !conversationCache.emDia(chaveDaSessao, id) &&
+        ((resumo?.unreadCount ?? 0) > 0 || (unreadCountsRef.current[id] ?? 0) > 0);
+      return podeEstarDesatualizado ? undefined : conversationCache.get(chaveDaSessao, id);
+    },
+    [chaveDaSessao],
+  );
+
   /**
    * Abrir uma conversa também escreve na URL.
    *
@@ -322,13 +325,21 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // depois da renderização, e até lá o eco da URL o encontraria velho.
     selectedIdRef.current = id;
     setSelectedId(id);
+    // A conversa guardada entra NO MESMO render da troca, e não num efeito
+    // depois dele: é esse primeiro render que o painel usa pra decidir o
+    // que mostrar (e onde vai a tarja de não lidas). Um quadro que seja
+    // com "carregando" antes da conversa já guardada é o piscar que tira
+    // a sensação de instantâneo.
+    const guardada = id ? detalheGuardado(id) : undefined;
+    setDetail(guardada ? guardada.detail : null);
+    setMessagesCursor(guardada ? guardada.messagesCursor : null);
     if (id) escritasNaUrl.current.add(id);
     window.history.replaceState(
       null,
       "",
       id ? `/dashboard/inbox?c=${id}` : "/dashboard/inbox",
     );
-  }, []);
+  }, [detalheGuardado]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -437,6 +448,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
           inboxListCache.set(chaveDaSessao, buildQuery(current), {
             items: page.items,
             nextCursor: page.nextCursor,
+            filtros: current,
           });
         }
       } catch (erro) {
@@ -656,11 +668,22 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       setLoadingList(true);
     }
 
+    // Aba que o tempo real vem mantendo em dia: a lista da memória já é a
+    // do servidor, e pedir de novo só custaria uma consulta por clique.
+    const emDia =
+      Boolean(cache) && inboxListCache.emDia(chaveDaSessao, buildQuery(filters));
+
     const timer = setTimeout(() => {
       // Lista e contadores saem juntos, do mesmo recorte: é o que garante
       // que o número no botão e o que aparece embaixo dele falem da mesma
       // coisa.
       loadCounts(filters);
+      if (emDia) {
+        // Invalida qualquer resposta de outra aba ainda no ar: ela não pode
+        // chegar depois e pintar por cima desta.
+        pedidoDaLista.current += 1;
+        return;
+      }
       loadConversations(filters).catch(() =>
         toast.error("Não deu pra carregar as conversas."),
       );
@@ -718,21 +741,139 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // mantinha a conversa ANTERIOR na tela durante o quadro em que a nova
     // ainda não chegou — dava a impressão de a conversa errada abrir e só
     // depois trocar. Melhor um instante vazio que a conversa errada.
-    const resumo = conversations.find((item) => item.id === selectedId);
-    const podeEstarDesatualizado =
-      (resumo?.unreadCount ?? 0) > 0 || (unreadCounts[selectedId] ?? 0) > 0;
-    const cached = podeEstarDesatualizado
-      ? null
-      : conversationCache.get(chaveDaSessao, selectedId);
+    //
+    // "Em dia" vence o contador: a memória que recebeu pelo tempo real
+    // toda mensagem desde que foi guardada já TEM as não lidas, e abre na
+    // hora com o separador no lugar certo (ver `conversationCache.emDia`).
+    const cached = detalheGuardado(selectedId);
     setDetail(cached ? cached.detail : null);
     setMessagesCursor(cached ? cached.messagesCursor : null);
     loadDetail(selectedId).catch(() => toast.error("Não deu pra carregar essa conversa."));
-    // `conversations`/`unreadCounts` de propósito fora das dependências:
-    // o que importa é o valor no instante em que a conversa TROCOU, não
-    // reagir a toda atualização da lista enquanto ela já está aberta —
-    // isso reabriria a mesma conversa do zero a cada mensagem alheia.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, loadDetail, chaveDaSessao]);
+    // A lista e os contadores entram pelos refs de `detalheGuardado`, e não
+    // como dependência: o que importa é o valor no instante em que a
+    // conversa TROCOU — reagir a toda atualização da lista reabriria a
+    // mesma conversa do zero a cada mensagem alheia.
+  }, [selectedId, loadDetail, chaveDaSessao, detalheGuardado]);
+
+  /*
+   * Pré-carregamento: trazer a conversa ANTES do clique.
+   *
+   * É o que tira o "carregando" entre um chat e outro. A memória de
+   * conversas (`conversationCache`) fica em dia sozinha pelo tempo real
+   * depois de preenchida; o que faltava era preenchê-la antes de a pessoa
+   * pedir. Três momentos: o ponteiro parado sobre a linha, a mensagem nova
+   * que chega numa conversa ainda não guardada, e logo depois de conectar
+   * — as conversas com não lidas, que são as próximas a ser abertas.
+   *
+   * No máximo duas buscas ao mesmo tempo: pré-carregar é aposta, e não
+   * pode disputar a rede com o que a pessoa de fato pediu.
+   */
+  const preCarregando = useRef(new Set<string>());
+  /** Mensagem chegou enquanto a busca estava no ar: a resposta já nasce velha. */
+  const chegouDuranteABusca = useRef(new Set<string>());
+  const esperasDePreCarga = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  const preCarregar = useCallback(
+    (id: string, { adiar = false }: { adiar?: boolean } = {}) => {
+      const executar = () => {
+        esperasDePreCarga.current.delete(id);
+        if (
+          id === selectedIdRef.current ||
+          conversationCache.emDia(chaveDaSessao, id) ||
+          preCarregando.current.has(id) ||
+          preCarregando.current.size >= 2
+        ) {
+          return;
+        }
+        preCarregando.current.add(id);
+        chegouDuranteABusca.current.delete(id);
+        apiFetch<ConversationDetail & { messagesCursor: string | null }>(
+          `/conversations/${id}`,
+        )
+          .then((conversa) => {
+            // Aberta enquanto a busca corria: quem manda agora é o
+            // `loadDetail` da abertura, que também grava na memória.
+            if (id === selectedIdRef.current) return;
+            if (chegouDuranteABusca.current.has(id)) {
+              // Busca de novo daqui a pouco, já com a mensagem que chegou.
+              chegouDuranteABusca.current.delete(id);
+              esperasDePreCarga.current.set(id, setTimeout(executar, 800));
+              return;
+            }
+            conversationCache.set(chaveDaSessao, id, {
+              detail: conversa,
+              messagesCursor: conversa.messagesCursor,
+            });
+          })
+          .catch(() => {})
+          .finally(() => preCarregando.current.delete(id));
+      };
+
+      if (!adiar) {
+        executar();
+        return;
+      }
+      // Rajada de mensagens da mesma conversa vira uma busca só, no fim.
+      const anterior = esperasDePreCarga.current.get(id);
+      if (anterior) clearTimeout(anterior);
+      esperasDePreCarga.current.set(id, setTimeout(executar, 800));
+    },
+    [chaveDaSessao],
+  );
+
+  useEffect(
+    () => () => {
+      for (const espera of esperasDePreCarga.current.values()) clearTimeout(espera);
+    },
+    [],
+  );
+
+  /**
+   * Logo depois de conectar: as conversas com não lidas e as outras abas.
+   *
+   * Com um respiro de um segundo e meio, pra não competir com o que a
+   * abertura da tela ainda está pedindo. As abas vêm uma de cada vez e
+   * ficam em dia pelo tempo real dali em diante (ver
+   * `inboxListCache.aplicarConversa`) — trocar de aba passa a ser só
+   * trocar o que está na tela.
+   */
+  const esperaDoAquecimento = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aquecer = useCallback(() => {
+    if (esperaDoAquecimento.current) clearTimeout(esperaDoAquecimento.current);
+    esperaDoAquecimento.current = setTimeout(async () => {
+      conversationsRef.current
+        .filter((conversa) => conversa.unreadCount > 0)
+        .slice(0, 6)
+        .forEach((conversa, indice) => {
+          setTimeout(() => preCarregar(conversa.id), indice * 400);
+        });
+
+      const atual = filtersRef.current;
+      if (atual.search.trim()) return;
+      for (const aba of ABAS) {
+        const filtros = filtrosDaAba(atual, aba);
+        const chave = buildQuery(filtros);
+        if (inboxListCache.emDia(chaveDaSessao, chave)) continue;
+        try {
+          const page = await apiFetch<Page<ConversationSummary>>(chave);
+          inboxListCache.set(chaveDaSessao, chave, {
+            items: page.items,
+            nextCursor: page.nextCursor,
+            filtros,
+          });
+        } catch {
+          // Aba que não veio agora vem no clique, como antes.
+        }
+      }
+    }, 1500);
+  }, [chaveDaSessao, preCarregar]);
+
+  useEffect(
+    () => () => {
+      if (esperaDoAquecimento.current) clearTimeout(esperaDoAquecimento.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!socket) return;
@@ -778,6 +919,12 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     };
 
     const onConnect = () => {
+      // O que foi guardado antes desta conexão pode ter perdido mensagens
+      // durante a queda (o servidor não reenvia): deixa de valer como "em
+      // dia", e volta a valer conforme for buscado de novo.
+      conversationCache.novaConexao();
+      inboxListCache.novaConexao();
+      aquecer();
       if (conexaoInicialPendente.current) {
         conexaoInicialPendente.current = false;
         void conferirAoConectarPelaPrimeiraVez();
@@ -857,6 +1004,15 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       if (selectedIdRef.current === updated.id) {
         setDetail((prev) => (prev ? { ...prev, ...updated } : prev));
       }
+      // As abas fechadas também: a conversa entra ou sai de cada uma na
+      // hora, e trocar de aba mostra a lista já certa (ver
+      // `inboxListCache.aplicarConversa`).
+      inboxListCache.aplicarConversa(chaveDaSessao, updated, user.id);
+      const guardada = conversationCache.get(chaveDaSessao, updated.id);
+      if (guardada) guardada.detail = { ...guardada.detail, ...updated };
+      // Mensagem nova numa conversa que ainda não está na memória: traz
+      // antes de alguém clicar, pra ela abrir sem "carregando".
+      if (updated.unreadCount > 0) preCarregar(updated.id, { adiar: true });
       agendarContagem();
     };
 
@@ -867,7 +1023,15 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       conversationId: string;
       message: ConversationMessage;
     }) => {
-      if (selectedIdRef.current !== conversationId) return;
+      if (selectedIdRef.current !== conversationId) {
+        // Conversa fechada: a mensagem vai pra memória dela, e abrir depois
+        // não precisa esperar o servidor (ver `conversationCache.emDia`).
+        conversationCache.anexarMensagem(chaveDaSessao, conversationId, message);
+        if (preCarregando.current.has(conversationId)) {
+          chegouDuranteABusca.current.add(conversationId);
+        }
+        return;
+      }
       setDetail((prev) => {
         if (!prev || prev.id !== conversationId) return prev;
         // O socket entrega a mesma mensagem que já pode ter entrado pela
@@ -909,7 +1073,10 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       conversationId: string;
       message: ConversationMessage;
     }) => {
-      if (selectedIdRef.current !== conversationId) return;
+      if (selectedIdRef.current !== conversationId) {
+        conversationCache.atualizarMensagem(chaveDaSessao, conversationId, message.id, message);
+        return;
+      }
       setDetail((prev) =>
         prev
           ? { ...prev, messages: prev.messages.map((m) => (m.id === message.id ? message : m)) }
@@ -926,7 +1093,10 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       messageId: string;
       status: MessageStatus;
     }) => {
-      if (selectedIdRef.current !== conversationId) return;
+      if (selectedIdRef.current !== conversationId) {
+        conversationCache.atualizarMensagem(chaveDaSessao, conversationId, messageId, { status });
+        return;
+      }
       setDetail((prev) =>
         prev
           ? { ...prev, messages: prev.messages.map((m) => (m.id === messageId ? { ...m, status } : m)) }
@@ -992,6 +1162,8 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     flusharReconciliacaoDeHistorico,
     sincronizar,
     loadCounts,
+    aquecer,
+    preCarregar,
   ]);
 
   /** Mesma classificação que o servidor faz, só que antes da viagem. */
@@ -1361,6 +1533,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
           loadingMore={loadingMore}
           onLoadMore={loadMore}
           onSelect={abrirConversa}
+          onPreCarregar={preCarregar}
           relogio={relogio}
           saindo={saindoDaLista}
         />
@@ -1379,8 +1552,10 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
           esperado: rascunho de uma conversa não pode aparecer na outra. */}
       <ChatPanel
         key={selectedId ?? "vazio"}
-        conversation={detail}
-        loading={Boolean(selectedId) && !detail}
+        // Nunca a conversa de outro id: no render da troca, `detail` ainda
+        // pode ser a anterior.
+        conversation={detail?.id === selectedId ? detail : null}
+        loading={Boolean(selectedId) && detail?.id !== selectedId}
         sending={sending}
         replyTo={replyTo}
         hasOlder={Boolean(messagesCursor)}

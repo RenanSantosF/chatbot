@@ -137,7 +137,7 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
  * nem aguardando ninguém (ver `receiveInbound` no backend), então "grupos
  * resolvidos" seria um recorte que não quer dizer nada.
  */
-const ABAS: {
+export const ABAS: {
   id: string;
   label: string;
   ajuda: string;
@@ -183,6 +183,21 @@ const ABAS: {
 ];
 
 /**
+ * O recorte de uma aba, mantendo o resto do que a pessoa ligou.
+ *
+ * Exportado porque o Inbox pré-carrega as outras abas em segundo plano
+ * (ver `aquecer` no InboxClient), e o recorte que ele busca tem de ser
+ * exatamente o que o clique na aba vai pedir — senão a memória guardada
+ * não bate com a chave e o clique busca de novo.
+ */
+export function filtrosDaAba(
+  atual: InboxFilters,
+  aba: (typeof ABAS)[number],
+): InboxFilters {
+  return { ...atual, grupos: aba.grupos, grupo: aba.grupo, status: "ALL" };
+}
+
+/**
  * O número do selo, em no máximo três caracteres.
  *
  * Uma empresa com mil conversas resolvidas é questão de meses, e o quarto
@@ -226,8 +241,7 @@ export function InboxFilterBar({
    * situação exata ganhar do grupo) e os botões diziam outra. Ninguém
    * escolhe isso de propósito; dá pra chegar lá clicando duas vezes.
    */
-  const escolherAba = (aba: (typeof ABAS)[number]) =>
-    onChange({ ...value, grupos: aba.grupos, grupo: aba.grupo, status: "ALL" });
+  const escolherAba = (aba: (typeof ABAS)[number]) => onChange(filtrosDaAba(value, aba));
 
   const escolherStatus = (status: InboxFilters["status"]) =>
     onChange({ ...value, status, grupo: "ALL" });

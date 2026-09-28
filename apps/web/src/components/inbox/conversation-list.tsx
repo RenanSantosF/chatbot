@@ -54,6 +54,7 @@ export function ConversationList({
   loadingMore,
   onLoadMore,
   onSelect,
+  onPreCarregar,
   relogio,
   saindo,
 }: {
@@ -81,8 +82,23 @@ export function ConversationList({
   loadingMore?: boolean;
   onLoadMore?: () => void;
   onSelect: (id: string) => void;
+  /**
+   * O ponteiro parou sobre uma conversa: é a deixa pra trazê-la antes do
+   * clique. Entre pousar o mouse e clicar passam uns 200-400ms — quase
+   * sempre o bastante pra ela abrir sem "carregando".
+   */
+  onPreCarregar?: (id: string) => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Uma espera curta antes de pré-carregar: passar o mouse de cima a
+  // baixo pela lista não pode virar uma busca por conversa atravessada.
+  const esperaDoPonteiro = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (esperaDoPonteiro.current) clearTimeout(esperaDoPonteiro.current);
+    },
+    [],
+  );
 
   // Rolagem infinita: um observador na última linha dispara a próxima
   // página antes de a pessoa chegar no fim, então a lista parece não ter
@@ -166,6 +182,14 @@ export function ConversationList({
             key={conversation.id}
             type="button"
             onClick={() => onSelect(conversation.id)}
+            onPointerEnter={() => {
+              if (!onPreCarregar) return;
+              if (esperaDoPonteiro.current) clearTimeout(esperaDoPonteiro.current);
+              esperaDoPonteiro.current = setTimeout(() => onPreCarregar(conversation.id), 90);
+            }}
+            onPointerLeave={() => {
+              if (esperaDoPonteiro.current) clearTimeout(esperaDoPonteiro.current);
+            }}
             // Sem barra colorida na lateral e sem fundo tingido: a conversa
             // selecionada muda de superfície, e só. Quem chama atenção na
             // linha é o contador de não lidas, como em qualquer mensageiro.

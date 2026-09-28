@@ -601,7 +601,18 @@ export function ChatPanel({
    * e um marcador que sumisse junto não serviria pra nada — ele existe
    * justamente pra dizer "você parou de ler aqui" enquanto a pessoa lê.
    */
-  const [naoLidasAoAbrir] = useState(() => conversation?.unreadCount ?? 0);
+  //
+  // "Primeiro render" com a conversa, e não do painel: quando ela ainda
+  // está carregando, o painel nasce vazio, e congelar ali daria sempre
+  // zero — a tarja nunca apareceria justamente na conversa que tinha
+  // mensagem nova.
+  const [naoLidasCongeladas, setNaoLidasCongeladas] = useState<number | null>(() =>
+    conversation ? conversation.unreadCount : null,
+  );
+  if (naoLidasCongeladas === null && conversation) {
+    setNaoLidasCongeladas(conversation.unreadCount);
+  }
+  const naoLidasAoAbrir = naoLidasCongeladas ?? 0;
 
   /**
    * Id da primeira mensagem por ler, que é onde a tarja entra.
