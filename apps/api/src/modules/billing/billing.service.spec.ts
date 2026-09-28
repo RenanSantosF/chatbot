@@ -239,6 +239,39 @@ describe('BillingService.statusDeAcesso', () => {
   });
 });
 
+describe('BillingService.status', () => {
+  it('consulta normalmente quando o banco responde', async () => {
+    const { service } = montar({
+      stripeSubscriptionId: 'sub_1',
+      planLabel: 'Assinatura ativa',
+    });
+
+    const resultado = await service.status();
+
+    expect(resultado).toEqual(
+      expect.objectContaining({ assinaturaAtiva: true, bloqueado: false }),
+    );
+  });
+
+  it('destrava o acesso, em vez de derrubar o painel inteiro, quando a consulta ao banco falha', async () => {
+    const { service, prisma } = montar(null);
+    prisma.db.billingAccount.findFirst.mockRejectedValue(
+      new Error('relation "billing_account" does not exist'),
+    );
+
+    const resultado = await service.status();
+
+    expect(resultado).toEqual({
+      assinaturaAtiva: false,
+      planLabel: 'Grátis',
+      bloqueado: false,
+      emCarencia: false,
+      vencidoDesde: null,
+      bloqueiaEm: null,
+    });
+  });
+});
+
 describe('BillingService.processarEvento', () => {
   it('grava cliente e assinatura na primeira vez que o checkout completa', async () => {
     const { service, global } = montar(null);

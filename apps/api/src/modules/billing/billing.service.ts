@@ -88,13 +88,35 @@ export class BillingService {
     );
   }
 
+  /**
+   * Chamado em TODA requisição não-pública (ver BillingGuard) e em
+   * `/auth/me` — um banco fora do ar ou uma migração incompleta aqui não
+   * pode derrubar o painel inteiro. Quem já paga fica destrancado até a
+   * causa ser corrigida; bloquear todo mundo igual, inclusive quem está em
+   * dia, seria pior do que deixar passar por um instante.
+   */
   async status() {
-    const conta = await this.contaAtual();
-    return {
-      assinaturaAtiva: Boolean(conta.stripeSubscriptionId),
-      planLabel: conta.planLabel,
-      ...this.statusDeAcesso(conta),
-    };
+    try {
+      const conta = await this.contaAtual();
+      return {
+        assinaturaAtiva: Boolean(conta.stripeSubscriptionId),
+        planLabel: conta.planLabel,
+        ...this.statusDeAcesso(conta),
+      };
+    } catch (erro) {
+      this.logger.error(
+        'Não deu pra consultar o status da assinatura.',
+        erro as Error,
+      );
+      return {
+        assinaturaAtiva: false,
+        planLabel: 'Grátis',
+        bloqueado: false,
+        emCarencia: false,
+        vencidoDesde: null,
+        bloqueiaEm: null,
+      };
+    }
   }
 
   /**
