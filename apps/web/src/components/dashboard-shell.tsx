@@ -38,6 +38,7 @@ import { RealtimeProvider, useRealtime } from "@/components/realtime-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
 import { conversationCache } from "@/lib/conversation-cache";
+import { inboxListCache } from "@/lib/inbox-list-cache";
 import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import type {
@@ -345,6 +346,7 @@ function Shell({
     // então o que ficou em memória (o cache de conversas) sobreviveria
     // sozinho até a próxima pessoa logar nesta mesma aba.
     conversationCache.clear();
+    inboxListCache.clear();
     router.push("/login");
     router.refresh();
   }

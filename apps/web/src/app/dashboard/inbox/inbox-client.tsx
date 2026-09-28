@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 import { criarAgrupadorDeRajada } from "@/lib/agrupar-rajada";
 import { conversationCache } from "@/lib/conversation-cache";
+import { inboxListCache } from "@/lib/inbox-list-cache";
 import { pertenceAoFiltro } from "@/lib/inbox-filtro";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
@@ -380,21 +381,33 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    * gravar os dados — no mesmo lote de renderização, sem intervalo em que
    * a tela possa dizer que não há nada.
    */
-  const loadConversations = useCallback(async (current: InboxFilters) => {
-    const meu = ++pedidoDaLista.current;
-    try {
-      const page = await apiFetch<Page<ConversationSummary>>(buildQuery(current));
-      if (meu !== pedidoDaLista.current) return;
-      setConversations(page.items);
-      setCursor(page.nextCursor);
-      setLoadingList(false);
-    } catch (erro) {
-      // Falhar também tira o esqueleto: senão a tela gira pra sempre e
-      // ninguém entende que a busca acabou (mal).
-      if (meu === pedidoDaLista.current) setLoadingList(false);
-      throw erro;
-    }
-  }, []);
+  const loadConversations = useCallback(
+    async (current: InboxFilters) => {
+      const meu = ++pedidoDaLista.current;
+      try {
+        const page = await apiFetch<Page<ConversationSummary>>(buildQuery(current));
+        if (meu !== pedidoDaLista.current) return;
+        setConversations(page.items);
+        setCursor(page.nextCursor);
+        setLoadingList(false);
+        // Sem busca de texto: é a aba/recorte que se repete de sessão pra
+        // sessão de uso, e é isso que fica em cache pra a próxima troca de
+        // aba pintar na hora. Busca é sempre nova, cachear não ajudaria.
+        if (!current.search.trim()) {
+          inboxListCache.set(chaveDaSessao, buildQuery(current), {
+            items: page.items,
+            nextCursor: page.nextCursor,
+          });
+        }
+      } catch (erro) {
+        // Falhar também tira o esqueleto: senão a tela gira pra sempre e
+        // ninguém entende que a busca acabou (mal).
+        if (meu === pedidoDaLista.current) setLoadingList(false);
+        throw erro;
+      }
+    },
+    [chaveDaSessao],
+  );
 
   /**
    * A página seguinte só entra se o recorte não mudou no meio do caminho.
@@ -586,8 +599,23 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       primeiraPaginaDoServidor.current = false;
       if (mesmoRecorte(filters, DEFAULT_FILTERS)) return;
     }
-     
-    setLoadingList(true);
+
+    // Aba já visitada nesta sessão: pinta da memória na hora — sem
+    // esqueleto — e ainda assim busca no servidor embaixo, pra reconciliar
+    // o que mudou desde a última vez. Sem busca de texto só, pelo mesmo
+    // motivo do cache não gravar: recorte de texto é sempre novo.
+    const cache = !filters.search.trim()
+      ? inboxListCache.get(chaveDaSessao, buildQuery(filters))
+      : undefined;
+    if (cache) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setConversations(cache.items);
+      setCursor(cache.nextCursor);
+      setLoadingList(false);
+    } else {
+      setLoadingList(true);
+    }
+
     const timer = setTimeout(() => {
       // Lista e contadores saem juntos, do mesmo recorte: é o que garante
       // que o número no botão e o que aparece embaixo dele falem da mesma
@@ -598,7 +626,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       );
     }, filters.search ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [filters, filtersReady, loadConversations, loadCounts]);
+  }, [filters, filtersReady, loadConversations, loadCounts, chaveDaSessao]);
 
   useEffect(() => {
     // Atendente não tem permissão de LER as configurações de atendimento, e
