@@ -637,16 +637,33 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       return;
     }
     // Pinta do cache na hora (troca de conversa fica instantânea) e busca
-    // do servidor em segundo plano só pra reconciliar.
+    // do servidor em segundo plano só pra reconciliar — EXCETO quando já
+    // se sabe que o cache está velho. Uma conversa com não lida (contador
+    // do servidor ou do socket) tem mensagem que o cache não viu; pintar
+    // ele mesmo assim só pra corrigir de novo alguns instantes depois é o
+    // "abre, mostra o de ontem, pula pra hoje" que confundia. Aqui é
+    // melhor esperar: a tela mostra "carregando" e só pinta quando já vem
+    // completa, com o separador de não lidas no lugar certo desde o
+    // primeiro quadro.
     //
     // O `setDetail(null)` antes é o que mata o piscar: sem ele, o React
     // mantinha a conversa ANTERIOR na tela durante o quadro em que a nova
     // ainda não chegou — dava a impressão de a conversa errada abrir e só
     // depois trocar. Melhor um instante vazio que a conversa errada.
-    const cached = conversationCache.get(chaveDaSessao, selectedId);
+    const resumo = conversations.find((item) => item.id === selectedId);
+    const podeEstarDesatualizado =
+      (resumo?.unreadCount ?? 0) > 0 || (unreadCounts[selectedId] ?? 0) > 0;
+    const cached = podeEstarDesatualizado
+      ? null
+      : conversationCache.get(chaveDaSessao, selectedId);
     setDetail(cached ? cached.detail : null);
     setMessagesCursor(cached ? cached.messagesCursor : null);
     loadDetail(selectedId).catch(() => toast.error("Não deu pra carregar essa conversa."));
+    // `conversations`/`unreadCounts` de propósito fora das dependências:
+    // o que importa é o valor no instante em que a conversa TROCOU, não
+    // reagir a toda atualização da lista enquanto ela já está aberta —
+    // isso reabriria a mesma conversa do zero a cada mensagem alheia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, loadDetail, chaveDaSessao]);
 
   useEffect(() => {

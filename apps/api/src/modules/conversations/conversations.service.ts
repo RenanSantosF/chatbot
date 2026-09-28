@@ -1561,7 +1561,18 @@ export class ConversationsService {
 
   async applyDeliveryStatus(externalId: string, status: MessageStatus) {
     const message = await this.acharPeloIdExterno(externalId);
-    if (!message || STATUS_RANK[status] <= STATUS_RANK[message.status]) {
+    if (!message) {
+      // Silencioso de propósito no caso comum (webhook de status chegando
+      // fora de ordem é normal e frequente) — mas SEM achar a mensagem é
+      // raro, e é exatamente o sintoma de "o tique nunca vira" relatado.
+      // Sem este log, não tinha como saber se o webhook não chegou ou se
+      // chegou e não bateu com nada gravado.
+      this.logger.warn(
+        `Status de entrega (${status}) chegou pra um externalId sem mensagem correspondente: ${externalId}.`,
+      );
+      return;
+    }
+    if (STATUS_RANK[status] <= STATUS_RANK[message.status]) {
       return;
     }
 
