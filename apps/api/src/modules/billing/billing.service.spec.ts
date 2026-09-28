@@ -270,6 +270,28 @@ describe('BillingService.status', () => {
       bloqueiaEm: null,
     });
   });
+
+  it('com BILLING_ENFORCEMENT=off, libera sem consultar o banco', async () => {
+    const antes = process.env.BILLING_ENFORCEMENT;
+    process.env.BILLING_ENFORCEMENT = 'off';
+    try {
+      const { service, prisma } = montar(null);
+
+      const resultado = await service.status();
+
+      expect(resultado).toEqual({
+        assinaturaAtiva: false,
+        planLabel: 'Grátis',
+        bloqueado: false,
+        emCarencia: false,
+        vencidoDesde: null,
+        bloqueiaEm: null,
+      });
+      expect(prisma.db.billingAccount.findFirst).not.toHaveBeenCalled();
+    } finally {
+      process.env.BILLING_ENFORCEMENT = antes;
+    }
+  });
 });
 
 describe('BillingService.processarEvento', () => {

@@ -28,6 +28,20 @@ const CARENCIA_MS = DIAS_DE_CARENCIA * 24 * 60 * 60 * 1000;
 const MENSAGENS_POR_PACOTE_EXTRA = 1000;
 
 /**
+ * O status de quem não está sendo cobrado agora — seja porque o
+ * interruptor de desenvolvimento está ligado, seja porque a consulta ao
+ * banco falhou (ver `status`, os dois lugares que devolvem isto).
+ */
+const LIBERADO = {
+  assinaturaAtiva: false,
+  planLabel: 'Grátis',
+  bloqueado: false,
+  emCarencia: false,
+  vencidoDesde: null,
+  bloqueiaEm: null,
+} as const;
+
+/**
  * A assinatura da empresa, via Stripe.
  *
  * Uma conta Stripe só, da plataforma — a mesma que já funciona noutro
@@ -96,6 +110,16 @@ export class BillingService {
    * dia, seria pior do que deixar passar por um instante.
    */
   async status() {
+    // Interruptor temporário de desenvolvimento: com a variável ligada,
+    // nenhuma conta fica bloqueada por falta de assinatura — pensado pra
+    // testar o resto do sistema sem precisar manter uma assinatura Stripe
+    // válida o tempo todo. Tirar do Railway assim que a cobrança for
+    // exigida de verdade; sem a variável (o padrão), o bloqueio continua
+    // valendo normalmente.
+    if (process.env.BILLING_ENFORCEMENT === 'off') {
+      return LIBERADO;
+    }
+
     try {
       const conta = await this.contaAtual();
       return {
@@ -108,14 +132,7 @@ export class BillingService {
         'Não deu pra consultar o status da assinatura.',
         erro as Error,
       );
-      return {
-        assinaturaAtiva: false,
-        planLabel: 'Grátis',
-        bloqueado: false,
-        emCarencia: false,
-        vencidoDesde: null,
-        bloqueiaEm: null,
-      };
+      return LIBERADO;
     }
   }
 
