@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Content } from '@google/genai';
-import { GoogleGenAI } from '@google/genai';
+import type {
+  Content,
+  GenerateContentParameters,
+  GenerateContentResponse,
+  ThinkingConfig,
+} from '@google/genai';
+import { ApiError, GoogleGenAI, ThinkingLevel } from '@google/genai';
 import type {
   AiEmbedInput,
   AiEmbeddingProvider,
@@ -21,24 +26,53 @@ export const EMBEDDING_DIMENSIONS = 768;
 const MAX_TOOL_TURNS = 4;
 
 /**
- * Quanto o modelo pode "pensar" antes de escrever.
+ * Quanto o modelo pode "pensar" antes de escrever: o mínimo possível.
  *
- * O gemini-2.5-flash raciocina por padrão, e esse raciocínio é cobrado
- * como saída em TODO turno — inclusive num "bom dia". São tokens que o
- * cliente nunca lê e que, num atendimento, quase não mudam a resposta:
- * responder o horário de funcionamento a partir de um trecho de documento
- * não é um problema que precise de rascunho.
+ * Raciocínio é cobrado como saída em TODO turno — inclusive num "bom dia".
+ * São tokens que o cliente nunca lê e que, num atendimento, quase não
+ * mudam a resposta. A decisão mais delicada (transferir pra um humano)
+ * não depende só do modelo: as travas conferem a resposta e escalam por
+ * conta própria (ver ai-guardrails.ts).
  *
- * Zero desliga. A escolha é consciente e tem uma rede embaixo: a decisão
- * mais delicada que o modelo toma aqui é quando transferir pra um humano,
- * e essa decisão NÃO depende só dele — as travas conferem a resposta e
- * escalam por conta própria quando ele promete gente e não chama a
- * ferramenta (ver ai-guardrails.ts).
+ * O jeito de pedir "mínimo" mudou entre gerações, e foi isso que quebrou
+ * a IA com um 400 INVALID_ARGUMENT seco:
  *
- * Se um dia a operação exigir raciocínio (respostas que dependem de
- * calcular prazo, comparar tabela de preço), é este número que sobe.
+ * - Gemini 2.5 desliga com `thinkingBudget: 0`.
+ * - Gemini 3.x NÃO desliga: recusa o `thinkingBudget: 0` (a Flash-Lite
+ *   com 400) e pede `thinkingLevel`, cujo menor valor é MINIMAL. Algumas
+ *   variantes não aceitam MINIMAL e só vão de LOW pra cima — por isso a
+ *   segunda tentativa em `gerarConteudo`.
+ * - Antes da 2.5 não há raciocínio nenhum pra configurar.
+ *
+ * Nome desconhecido (um alias como `gemini-flash-latest`) é tratado como
+ * geração atual, que é o que esses aliases apontam.
  */
-const ORCAMENTO_DE_RACIOCINIO = 0;
+export function configDeRaciocinio(
+  modelo: string,
+  nivel: 'minimo' | 'baixo' = 'minimo',
+): ThinkingConfig | undefined {
+  const versao = /gemini-(\d+)(?:\.(\d+))?/.exec(modelo);
+  const maior = versao ? Number(versao[1]) : 3;
+  const menor = versao?.[2] ? Number(versao[2]) : 0;
+
+  if (maior >= 3) {
+    return {
+      thinkingLevel:
+        nivel === 'baixo' ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL,
+    };
+  }
+  if (maior === 2 && menor >= 5) return { thinkingBudget: 0 };
+  return undefined;
+}
+
+/**
+ * Modelos que já recusaram MINIMAL nesta execução do servidor.
+ *
+ * Sem memória, cada resposta pagaria uma chamada recusada antes da que
+ * funciona — o dobro da latência pra sempre, por causa de um detalhe de
+ * configuração que não muda.
+ */
+const soAceitamNivelBaixo = new Set<string>();
 
 /**
  * Teto da resposta.
@@ -101,6 +135,30 @@ const TEMPO_LIMITE_TRANSCRICAO_MS = 40_000;
  * quebrado. Ele não quebrou — o provedor não respondeu.
  */
 function comoErroDeTempo(error: unknown, oQue: string): Error {
+  /*
+   * Recusa do Google vira frase, não JSON.
+   *
+   * O erro cru do SDK é o corpo da resposta —
+   * `{"error":{"code":400,"message":"Request contains an invalid
+   * argument."...}}` — e era isso que aparecia no simulador pro dono da
+   * empresa. O detalhe técnico continua no log (ver quem chama).
+   */
+  if (error instanceof ApiError) {
+    const porStatus: Record<number, string> = {
+      400: 'O provedor de IA recusou o pedido (configuração inválida). Avise o suporte.',
+      401: 'A chave da IA da plataforma foi recusada. Avise o suporte.',
+      403: 'A chave da IA da plataforma não tem acesso a este modelo. Avise o suporte.',
+      404: 'O modelo de IA configurado não existe mais. Avise o suporte.',
+      429: 'O provedor de IA está no limite de uso agora. Tente de novo em instantes.',
+    };
+    const frase =
+      porStatus[error.status] ??
+      (error.status >= 500
+        ? 'O provedor de IA está instável agora. Tente de novo em instantes.'
+        : undefined);
+    if (frase) return new Error(frase);
+  }
+
   const abortou =
     error instanceof Error &&
     (error.name === 'AbortError' || error.name === 'TimeoutError');
@@ -122,9 +180,8 @@ function toGeminiRole(role: AiMessage['role']): 'user' | 'model' {
  * O consumo interno vira o formato que o resto do sistema entende.
  *
  * Raciocínio soma em cima da saída porque é assim que o Google cobra —
- * ele não tem preço próprio, é billado como token de saída comum. Com
- * `ORCAMENTO_DE_RACIOCINIO = 0` ele fica sempre zero hoje, mas o cálculo
- * já vem certo pro dia em que isso mudar.
+ * ele não tem preço próprio, é billado como token de saída comum. No
+ * Gemini 3 ele não zera (o mínimo é MINIMAL), então entra na conta.
  */
 function usoAcumulado(consumo: {
   entrada: number;
@@ -142,6 +199,45 @@ export class GeminiProvider
   implements AiProvider, AiEmbeddingProvider, AiTranscriptionProvider
 {
   private readonly logger = new Logger(GeminiProvider.name);
+
+  /**
+   * `generateContent` com o raciocínio no mínimo que o modelo aceita.
+   *
+   * Tenta MINIMAL; se o modelo recusar com 400, tenta LOW uma vez e
+   * lembra disso (ver `soAceitamNivelBaixo`). Um 400 que se repete com LOW
+   * é outro problema, e sobe como está.
+   */
+  private async gerarConteudo(
+    client: GoogleGenAI,
+    params: GenerateContentParameters,
+  ): Promise<GenerateContentResponse> {
+    const modelo = params.model;
+    const comNivel = (nivel: 'minimo' | 'baixo') =>
+      client.models.generateContent({
+        ...params,
+        config: {
+          ...params.config,
+          thinkingConfig: configDeRaciocinio(modelo, nivel),
+        },
+      });
+
+    const geracaoAtual = configDeRaciocinio(modelo)?.thinkingLevel;
+    if (!geracaoAtual || soAceitamNivelBaixo.has(modelo)) {
+      return comNivel(soAceitamNivelBaixo.has(modelo) ? 'baixo' : 'minimo');
+    }
+
+    try {
+      return await comNivel('minimo');
+    } catch (erro) {
+      if (!(erro instanceof ApiError) || erro.status !== 400) throw erro;
+      this.logger.warn(
+        `${modelo} recusou o raciocínio MINIMAL; tentando LOW. (${erro.message})`,
+      );
+      const resposta = await comNivel('baixo');
+      soAceitamNivelBaixo.add(modelo);
+      return resposta;
+    }
+  }
 
   async generateReply({
     systemPrompt,
@@ -184,7 +280,7 @@ export class GeminiProvider
 
     try {
       for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
-        const response = await client.models.generateContent({
+        const response = await this.gerarConteudo(client, {
           model: resolvedModel,
           contents,
           config: {
@@ -192,7 +288,6 @@ export class GeminiProvider
             tools: geminiTools,
             temperature: TEMPERATURA,
             maxOutputTokens: MAXIMO_DE_SAIDA,
-            thinkingConfig: { thinkingBudget: ORCAMENTO_DE_RACIOCINIO },
             abortSignal: AbortSignal.timeout(TEMPO_LIMITE_MS),
           },
         });
@@ -309,7 +404,7 @@ export class GeminiProvider
     const client = new GoogleGenAI({ apiKey });
 
     try {
-      const resposta = await client.models.generateContent({
+      const resposta = await this.gerarConteudo(client, {
         model: model ?? DEFAULT_MODEL,
         contents: [
           {
@@ -335,7 +430,6 @@ export class GeminiProvider
           // tem que dar o mesmo texto sempre — é o que permite comparar o
           // que o painel mostra com o que o cliente disse.
           temperature: 0,
-          thinkingConfig: { thinkingBudget: ORCAMENTO_DE_RACIOCINIO },
           abortSignal: AbortSignal.timeout(TEMPO_LIMITE_TRANSCRICAO_MS),
         },
       });
