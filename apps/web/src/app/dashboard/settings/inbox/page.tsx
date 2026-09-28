@@ -26,7 +26,7 @@ import { TagsCard } from "@/components/settings/tags-card";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import type { InboxSettings } from "@/lib/types";
+import type { AiSettings, InboxSettings } from "@/lib/types";
 
 export default function InboxSettingsPage() {
   const [settings, setSettings] = useState<InboxSettings | null>(null);
@@ -36,14 +36,41 @@ export default function InboxSettingsPage() {
   const [salvandoDespedida, setSalvandoDespedida] = useState(false);
   const [saudacao, setSaudacao] = useState("");
   const [salvandoSaudacao, setSalvandoSaudacao] = useState(false);
+  // A IA vive noutra tela de configurações — sem isto, dava pra deixar os
+  // dois interruptores "ligados" aqui e lá, mesmo sabendo (pela descrição
+  // do card) que a saudação nunca sai enquanto a IA responde. Ligados os
+  // dois na TELA é que confundia, mesmo sem efeito prático nenhum.
+  const [iaAtiva, setIaAtiva] = useState(false);
 
   useEffect(() => {
-    apiFetch<InboxSettings>("/inbox-settings")
-      .then((result) => {
-        setSettings(result);
+    Promise.all([
+      apiFetch<InboxSettings>("/inbox-settings"),
+      apiFetch<AiSettings>("/ai/settings").catch(() => null),
+    ])
+      .then(async ([result, ai]) => {
         setMessage(result.resolveMessage);
         setDespedida(result.autoCloseMessage);
         setSaudacao(result.greetingMessage);
+        setIaAtiva(ai?.active ?? false);
+
+        // Estado que só existia porque a IA foi ligada DEPOIS de a
+        // saudação já estar configurada — os dois nunca fazem sentido
+        // juntos, então corrige sozinho em vez de deixar a tela mostrar
+        // um "ligado" que nunca dispara.
+        if (result.greetingEnabled && ai?.active) {
+          const corrigido = await apiFetch<InboxSettings>("/inbox-settings", {
+            method: "PATCH",
+            body: JSON.stringify({ greetingEnabled: false }),
+          }).catch(() => null);
+          setSettings(corrigido ?? result);
+          if (corrigido) {
+            toast.info(
+              "A resposta automática ao primeiro contato foi desligada porque a IA está ativa.",
+            );
+          }
+          return;
+        }
+        setSettings(result);
       })
       .catch(() => toast.error("Não deu pra carregar as configurações."));
   }, []);
@@ -135,11 +162,27 @@ export default function InboxSettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <label className="flex items-center justify-between gap-4 rounded-md border p-3">
-            <span className="text-sm font-medium">Responder automaticamente ao primeiro contato</span>
+          <label
+            className={cn(
+              "flex items-center justify-between gap-4 rounded-md border p-3",
+              iaAtiva && "opacity-60",
+            )}
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">
+                Responder automaticamente ao primeiro contato
+              </span>
+              {iaAtiva ? (
+                <span className="block text-xs text-muted-foreground text-pretty">
+                  Desligado porque a IA está ativa — os dois nunca respondem juntos.
+                </span>
+              ) : null}
+            </span>
             <Switch
               checked={settings.greetingEnabled}
               onCheckedChange={(checked) => patch({ greetingEnabled: checked })}
+              disabled={iaAtiva}
+              title={iaAtiva ? "Desligue a IA em Configurações > IA pra poder ligar isto." : undefined}
               aria-label="Responder ao primeiro contato"
             />
           </label>
