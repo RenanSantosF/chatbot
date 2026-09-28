@@ -54,7 +54,7 @@ function construtorCom(opcoes: {
     } as never,
     tenantPrisma as never,
     { searchRelevantChunks: jest.fn().mockResolvedValue([]) } as never,
-    { missingRequired: jest.fn().mockResolvedValue([]) } as never,
+    { missingConfigured: jest.fn().mockResolvedValue([]) } as never,
     { expediente: jest.fn().mockResolvedValue({}) } as never,
     { transcrever: jest.fn().mockResolvedValue(null) } as never,
   );

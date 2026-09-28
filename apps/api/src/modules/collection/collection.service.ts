@@ -32,7 +32,9 @@ export class CollectionService {
     let candidate = base;
     let attempt = 1;
     while (
-      await this.prisma.db.collectionField.findFirst({ where: { key: candidate } })
+      await this.prisma.db.collectionField.findFirst({
+        where: { key: candidate },
+      })
     ) {
       attempt += 1;
       candidate = `${base}-${attempt}`;
@@ -70,7 +72,9 @@ export class CollectionService {
   }
 
   private async require(id: string) {
-    const field = await this.prisma.db.collectionField.findFirst({ where: { id } });
+    const field = await this.prisma.db.collectionField.findFirst({
+      where: { id },
+    });
     if (!field) {
       throw new NotFoundException('Campo não encontrado.');
     }
@@ -91,19 +95,22 @@ export class CollectionService {
       key: field.key,
       label: field.label,
       required: field.required,
-      hint: [field.description, TYPE_HINT[field.type]].filter(Boolean).join(' — '),
+      hint: [field.description, TYPE_HINT[field.type]]
+        .filter(Boolean)
+        .join(' — '),
     }));
   }
 
   /**
-   * O que ainda falta coletar nesta conversa. É isso que permite bloquear a
-   * transferência: em vez de confiar que o modelo lembrou de perguntar, o
-   * sistema confere o que está gravado e devolve a lista do que falta.
+   * Os campos ATIVOS que ainda faltam coletar nesta conversa — obrigatórios
+   * e opcionais juntos. Compartilhado por `missingRequired` (só bloqueio de
+   * transferência) e `missingConfigured` (o que entra no prompt da IA):
+   * duas perguntas sobre o mesmo dado, uma função só decidindo o que já foi
+   * informado.
    */
-  async missingRequired(conversationId: string): Promise<string[]> {
+  private async missingFields(conversationId: string) {
     const fields = await this.activeFields();
-    const required = fields.filter((field) => field.required);
-    if (required.length === 0) return [];
+    if (fields.length === 0) return [];
 
     const conversation = await this.prisma.db.conversation.findFirst({
       where: { id: conversationId },
@@ -117,20 +124,49 @@ export class CollectionService {
     const collected = asRecord(conversation.collectedData);
     const stored = asRecord(conversation.customer.metadata);
 
-    return required
-      .filter((field) => {
-        if (field.target === 'NAME') {
-          // O nome que veio do perfil do WhatsApp não conta como coletado
-          // se for só o número — é o caso de quem não tem nome no perfil.
-          const name = conversation.customer.name?.trim() ?? '';
-          return !name || /^\+?\d[\d\s-]*$/.test(name);
-        }
-        if (field.target === 'EMAIL') {
-          return !conversation.customer.email;
-        }
-        return !collected[field.key] && !stored[field.key];
-      })
+    return fields.filter((field) => {
+      if (field.target === 'NAME') {
+        // O nome que veio do perfil do WhatsApp não conta como coletado
+        // se for só o número — é o caso de quem não tem nome no perfil.
+        const name = conversation.customer.name?.trim() ?? '';
+        return !name || /^\+?\d[\d\s-]*$/.test(name);
+      }
+      if (field.target === 'EMAIL') {
+        return !conversation.customer.email;
+      }
+      return !collected[field.key] && !stored[field.key];
+    });
+  }
+
+  /**
+   * O que ainda falta coletar nesta conversa, só os OBRIGATÓRIOS. É isso
+   * que permite bloquear a transferência: em vez de confiar que o modelo
+   * lembrou de perguntar, o sistema confere o que está gravado e devolve a
+   * lista do que falta.
+   */
+  async missingRequired(conversationId: string): Promise<string[]> {
+    const missing = await this.missingFields(conversationId);
+    return missing
+      .filter((field) => field.required)
       .map((field) => field.label);
+  }
+
+  /**
+   * O que ainda falta coletar, incluindo os OPCIONAIS.
+   *
+   * Um campo configurado sem "obrigatório" marcado continuava mudo pra IA:
+   * ela nunca via instrução nenhuma pra perguntar por ele, porque o prompt
+   * só citava `missingRequired`. Sem bloquear transferência nenhuma — isso
+   * continua exclusivo dos obrigatórios —, mas com instrução pra pedir.
+   */
+  async missingConfigured(
+    conversationId: string,
+  ): Promise<{ label: string; required: boolean }[]> {
+    const missing = await this.missingFields(conversationId);
+    return missing.map((field) => ({
+      label: field.label,
+      required: field.required,
+    }));
   }
 
   /**
@@ -192,7 +228,8 @@ function asRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const result: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (entry === null || entry === undefined || typeof entry === 'object') continue;
+    if (entry === null || entry === undefined || typeof entry === 'object')
+      continue;
     result[key] = String(entry);
   }
   return result;

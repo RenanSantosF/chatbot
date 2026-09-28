@@ -185,3 +185,49 @@ describe('CollectionService.missingRequired', () => {
     );
   });
 });
+
+/**
+ * `missingConfigured` é o que alimenta o prompt da IA — diferente de
+ * `missingRequired`, que só decide o bloqueio de transferência. Um campo
+ * opcional configurado na tela precisa aparecer aqui, senão a IA nunca
+ * sabe que deveria perguntar por ele (era exatamente o bug: só o
+ * obrigatório chegava ao prompt).
+ */
+describe('CollectionService.missingConfigured', () => {
+  it('inclui os campos OPCIONAIS que faltam, não só os obrigatórios', async () => {
+    const service = servicoCom({
+      campos: [campo({ required: false })],
+      conversa: {
+        collectedData: {},
+        customer: { name: 'Ana', email: null, metadata: {} },
+      },
+    });
+
+    await expect(service.missingConfigured('conversa-1')).resolves.toEqual([
+      { label: 'CPF', required: false },
+    ]);
+  });
+
+  it('marca cada campo com o próprio required, obrigatório e opcional juntos', async () => {
+    const service = servicoCom({
+      campos: [
+        campo({ key: 'cpf', label: 'CPF', required: true }),
+        campo({ key: 'profissao', label: 'Profissão', required: false }),
+      ],
+      conversa: {
+        collectedData: {},
+        customer: { name: 'Ana', email: null, metadata: {} },
+      },
+    });
+
+    await expect(service.missingConfigured('conversa-1')).resolves.toEqual([
+      { label: 'CPF', required: true },
+      { label: 'Profissão', required: false },
+    ]);
+  });
+
+  it('não exige nada quando a empresa não configurou campos', async () => {
+    const service = servicoCom({ campos: [], conversa: null });
+    await expect(service.missingConfigured('conversa-1')).resolves.toEqual([]);
+  });
+});

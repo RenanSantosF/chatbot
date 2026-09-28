@@ -14,7 +14,7 @@ function montar(
     mensagens?: Record<string, unknown>[];
     cliente?: Record<string, unknown> | null;
     trechos?: { content: string; documentTitle: string }[];
-    camposFaltando?: string[];
+    camposFaltando?: { label: string; required: boolean }[];
     aiSettings?: Record<string, unknown> | null;
     /** Quando o atendimento foi reaberto, se foi. */
     reaberturaEm?: Date;
@@ -26,9 +26,7 @@ function montar(
 ) {
   const buscas: string[] = [];
   let whereDasMensagens: Record<string, unknown> = {};
-  const transcrever = jest
-    .fn()
-    .mockResolvedValue(opcoes.transcricao ?? null);
+  const transcrever = jest.fn().mockResolvedValue(opcoes.transcricao ?? null);
 
   const prisma = {
     client: {
@@ -90,7 +88,7 @@ function montar(
     }),
   };
   const collection = {
-    missingRequired: jest.fn().mockResolvedValue(opcoes.camposFaltando ?? []),
+    missingConfigured: jest.fn().mockResolvedValue(opcoes.camposFaltando ?? []),
   };
 
   const builder = new AiContextBuilder(
@@ -320,15 +318,37 @@ describe('o que a IA passa a saber', () => {
     expect(systemPrompt).toContain('[Tabela]');
   });
 
-  it('sabe o que ainda falta coletar', async () => {
+  it('sabe o que ainda falta coletar, obrigatório', async () => {
     const { builder } = montar({
-      camposFaltando: ['CPF', 'Número do processo'],
+      camposFaltando: [
+        { label: 'CPF', required: true },
+        { label: 'Número do processo', required: true },
+      ],
     });
 
     const { systemPrompt } = await builder.build('conversa-1');
 
-    expect(systemPrompt).toContain('CPF, Número do processo');
+    expect(systemPrompt).toContain('Obrigatórios: CPF, Número do processo');
+    expect(systemPrompt).toContain('Sem eles você não consegue transferir');
     expect(systemPrompt).toContain('collectCustomerData');
+  });
+
+  /**
+   * Um campo sem "obrigatório" marcado não tinha instrução nenhuma no
+   * prompt — a IA só via os obrigatórios, e o campo opcional configurado
+   * na tela nunca era perguntado. Este teste é o que teria acusado isso.
+   */
+  it('também pede os campos OPCIONAIS, sem travar a transferência por causa deles', async () => {
+    const { builder } = montar({
+      camposFaltando: [{ label: 'Profissão', required: false }],
+    });
+
+    const { systemPrompt } = await builder.build('conversa-1');
+
+    expect(systemPrompt).toContain('Também vale perguntar');
+    expect(systemPrompt).toContain('Profissão');
+    expect(systemPrompt).not.toContain('Obrigatórios:');
+    expect(systemPrompt).not.toContain('Sem eles você não consegue transferir');
   });
 
   it('a memória desligada apaga o que já estava guardado, não só o novo', async () => {

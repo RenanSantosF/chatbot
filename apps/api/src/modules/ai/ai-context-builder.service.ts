@@ -114,7 +114,7 @@ export class AiContextBuilder {
     instructions: { title: string; content: string }[];
     relevantChunks: RelevantChunk[];
     customerMemory: Record<string, string>;
-    pendingFields: string[];
+    pendingFields: { label: string; required: boolean }[];
     expediente: { semana: string[]; aberto: boolean; volta: string | null };
   }): string {
     const lines = [
@@ -195,10 +195,26 @@ export class AiContextBuilder {
     }
 
     if (params.pendingFields.length > 0) {
+      const obrigatorios = params.pendingFields
+        .filter((field) => field.required)
+        .map((field) => field.label);
+      const opcionais = params.pendingFields
+        .filter((field) => !field.required)
+        .map((field) => field.label);
+
+      lines.push('', 'Dados que a empresa quer coletar e ainda faltam:');
+      if (obrigatorios.length > 0) {
+        lines.push(
+          `- Obrigatórios: ${obrigatorios.join(', ')}. Sem eles você não consegue transferir o atendimento.`,
+        );
+      }
+      if (opcionais.length > 0) {
+        lines.push(
+          `- Também vale perguntar, se vier a calhar: ${opcionais.join(', ')}.`,
+        );
+      }
       lines.push(
-        '',
-        `Dados que a empresa exige coletar e que ainda faltam: ${params.pendingFields.join(', ')}.`,
-        'Peça esses dados naturalmente ao longo da conversa (um ou dois por vez, nunca todos de uma vez) e registre cada um com a ferramenta collectCustomerData assim que o cliente informar. Sem eles você não consegue transferir o atendimento.',
+        'Peça esses dados naturalmente ao longo da conversa (um ou dois por vez, nunca todos de uma vez) e registre cada um com a ferramenta collectCustomerData assim que o cliente informar.',
       );
     }
 
@@ -230,7 +246,7 @@ export class AiContextBuilder {
     relevantChunks: RelevantChunk[],
     extras: {
       customerMemory?: Record<string, string>;
-      pendingFields?: string[];
+      pendingFields?: { label: string; required: boolean }[];
       customerName?: string | null;
     } = {},
   ): Promise<string> {
@@ -406,7 +422,7 @@ export class AiContextBuilder {
         ? this.searchKnowledgeSafely(pergunta)
         : Promise.resolve([]),
       this.carregarCliente(conversationId),
-      this.collection.missingRequired(conversationId),
+      this.collection.missingConfigured(conversationId),
     ]);
 
     const systemPrompt = await this.buildIdentityPrompt(relevantChunks, {
