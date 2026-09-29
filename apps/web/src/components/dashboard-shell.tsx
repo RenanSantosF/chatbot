@@ -3,6 +3,7 @@
 import {
   Bell,
   BellRing,
+  CalendarClock,
   ChartNoAxesColumn,
   Gauge,
   MessageCircleMore,
@@ -41,6 +42,7 @@ import { apiFetch } from "@/lib/api-client";
 import { conversationCache } from "@/lib/conversation-cache";
 import { inboxListCache } from "@/lib/inbox-list-cache";
 import { ApiError } from "@/lib/api-error";
+import { avisoDeFimDaLiberacao } from "@/lib/liberacao";
 import { cn } from "@/lib/utils";
 import type {
   EstadoDaCobranca,
@@ -294,6 +296,81 @@ function CobrancaVencida({ cobranca, role }: { cobranca: EstadoDaCobranca; role:
   );
 }
 
+/**
+ * Os dias liberados à mão estão acabando, e não há assinatura pra seguir.
+ *
+ * Aparece nos três últimos dias (ver avisoDeFimDaLiberacao) — sem ele,
+ * quem ganhou dias de teste só descobria que acabou quando já estava
+ * bloqueado, que é o pior momento pra pedir um cartão. Âmbar enquanto há
+ * folga; vermelho no último dia.
+ */
+function LiberacaoAcabando({ cobranca, role }: { cobranca: EstadoDaCobranca; role: UserRole }) {
+  const [agora, setAgora] = useState(() => Date.now());
+  const [indo, setIndo] = useState(false);
+  const aviso = avisoDeFimDaLiberacao(cobranca, agora);
+  const avisando = aviso !== null;
+
+  useEffect(() => {
+    if (!avisando) return;
+    const timer = setInterval(() => setAgora(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, [avisando]);
+
+  if (!aviso) return null;
+
+  async function assinar() {
+    setIndo(true);
+    try {
+      const { url } = await apiFetch<{ url: string }>("/billing/checkout", { method: "POST" });
+      window.location.href = url;
+    } catch (erro) {
+      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra abrir o pagamento.");
+      setIndo(false);
+    }
+  }
+
+  const dia = new Date(aviso.ate).toLocaleDateString("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
+
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b px-4 py-2 text-center text-xs",
+        aviso.urgente
+          ? "border-destructive/30 bg-destructive/10 text-destructive"
+          : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+      )}
+    >
+      <CalendarClock className="size-3.5 shrink-0" />
+      <span className="font-medium">
+        Seu acesso liberado termina em {formatarTempoRestante(aviso.restante)} ({dia}).
+      </span>
+      <span className="opacity-80">
+        {role !== "OWNER"
+          ? "Peça para o dono da conta assinar e continuar sem interrupção."
+          : aviso.cobrancaNoFim
+            ? "Assine agora e continue sem interrupção — a primeira cobrança só acontece quando ele acabar."
+            : "Assine agora para continuar usando sem interrupção."}
+      </span>
+      {role === "OWNER" ? (
+        <button
+          type="button"
+          disabled={indo}
+          onClick={() => void assinar()}
+          className="inline-flex items-center gap-1 font-medium underline underline-offset-2 disabled:opacity-60"
+        >
+          {indo ? <Spinner className="size-3" /> : null}
+          Assinar agora
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function Nav({ role, plataforma }: { role: UserRole; plataforma: boolean }) {
   const pathname = usePathname();
   const { totalUnread } = useRealtime();
@@ -464,6 +541,7 @@ function Shell({
           </Button>
         </header>
         <CobrancaVencida cobranca={cobranca} role={user.role} />
+        <LiberacaoAcabando cobranca={cobranca} role={user.role} />
         <CanalCaido />
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">

@@ -92,6 +92,9 @@ export function PagamentoBloqueado({
   }
 
   const jaAssinouAntes = cobranca.vencidoDesde !== null;
+  // Teve dias liberados à mão (teste, cortesia) e eles acabaram: "ainda
+  // não tem assinatura" soaria como se a pessoa nunca tivesse usado.
+  const liberacaoAcabou = !jaAssinouAntes && Boolean(cobranca.liberadoAte);
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6 text-center">
@@ -107,16 +110,24 @@ export function PagamentoBloqueado({
         <>
           <div className="flex flex-col gap-1.5">
             <h1 className="text-lg font-semibold">
-              {jaAssinouAntes ? "Assinatura vencida" : "Assinatura necessária"}
+              {jaAssinouAntes
+                ? "Assinatura vencida"
+                : liberacaoAcabou
+                  ? "Seu período liberado terminou"
+                  : "Assinatura necessária"}
             </h1>
             <p className="max-w-sm text-sm text-muted-foreground text-pretty">
               {user.role === "OWNER"
                 ? jaAssinouAntes
                   ? "O prazo de carência acabou e o acesso foi bloqueado. Regularize o pagamento para voltar a usar o sistema."
-                  : "Esta conta ainda não tem uma assinatura ativa. Assine para começar a usar o sistema."
+                  : liberacaoAcabou
+                    ? "Assine para continuar usando — suas conversas, contatos e configurações estão guardados do jeito que você deixou."
+                    : "Esta conta ainda não tem uma assinatura ativa. Assine para começar a usar o sistema."
                 : jaAssinouAntes
                   ? "A assinatura desta empresa venceu e o acesso foi bloqueado. Peça para o dono da conta regularizar o pagamento."
-                  : "Esta conta ainda não tem uma assinatura ativa. Peça para o dono da conta assinar."}
+                  : liberacaoAcabou
+                    ? "O período liberado desta empresa terminou. Peça para o dono da conta assinar — tudo continua guardado."
+                    : "Esta conta ainda não tem uma assinatura ativa. Peça para o dono da conta assinar."}
             </p>
           </div>
           <div className="flex items-center gap-2">
