@@ -211,6 +211,8 @@ export interface ConversationMessage {
     messageType: MessageType;
     /** A mensagem citada foi apagada: a tarjinha não mostra mais o texto. */
     deletedAt?: string | null;
+    /** Num grupo, quem escreveu a original (vem da API, ver comParticipanteDaCitada). */
+    participante?: string | null;
   } | null;
   createdAt: string;
 }

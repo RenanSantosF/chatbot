@@ -890,9 +890,9 @@ export function ChatPanel({
   }, [ehGrupo, mensagensDaConversa]);
 
   const nomeDoContato = conversation?.customer.name || conversation?.customer.phone || "Cliente";
-  function autorDaCitada(citada: { id: string; senderType: string }) {
+  function autorDaCitada(citada: { id: string; senderType: string; participante?: string | null }) {
     if (citada.senderType !== "CUSTOMER") return "Você";
-    return participantePorMensagem.get(citada.id) ?? nomeDoContato;
+    return citada.participante || participantePorMensagem.get(citada.id) || nomeDoContato;
   }
 
   if (!conversation) {

@@ -869,7 +869,9 @@ export class ConversationsService {
     const hasMore = items.length > take;
     const page = hasMore ? items.slice(0, take) : items;
 
-    const comNome = await this.comNomeDeQuemEnviou([...page].reverse());
+    const comNome = await this.comNomeDeQuemEnviou(
+      await this.comParticipanteDaCitada([...page].reverse()),
+    );
 
     return {
       items: comNome.map((mensagem) => this.esconderApagada(mensagem)),
@@ -961,6 +963,48 @@ export class ConversationsService {
   }
 
   /**
+   * Acrescenta à citação o nome de quem escreveu a original, num grupo.
+   *
+   * O nome do participante mora no metadado da mensagem (ver
+   * `receberMensagem`), e a citação só traz o essencial da original — sem
+   * isto, a tarjinha de uma resposta em grupo só conseguia dizer o nome
+   * do grupo. Uma consulta só, pelos ids, e só o campo que interessa sai
+   * daqui: o resto do metadado da original (mídia, etc.) não viaja junto.
+   */
+  private async comParticipanteDaCitada<
+    T extends { replyTo?: { id: string; senderType: string } | null },
+  >(mensagens: T[]): Promise<T[]> {
+    const ids = [
+      ...new Set(
+        mensagens
+          .filter((m) => m.replyTo?.senderType === 'CUSTOMER')
+          .map((m) => m.replyTo?.id as string),
+      ),
+    ];
+    if (ids.length === 0) return mensagens;
+
+    const originais = await this.prisma.db.message.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, metadata: true },
+    });
+    const participantes = new Map<string, string>();
+    for (const original of originais) {
+      const dados = original.metadata as { participante?: unknown } | null;
+      if (typeof dados?.participante === 'string' && dados.participante) {
+        participantes.set(original.id, dados.participante);
+      }
+    }
+    if (participantes.size === 0) return mensagens;
+
+    return mensagens.map((m) => {
+      const participante = m.replyTo && participantes.get(m.replyTo.id);
+      return participante
+        ? { ...m, replyTo: { ...m.replyTo, participante } }
+        : m;
+    });
+  }
+
+  /**
    * Anuncia uma mensagem nova pro painel, sempre com `senderName`.
    *
    * Existe pra os caminhos que não passam por `persistMessage` (anexo,
@@ -970,9 +1014,15 @@ export class ConversationsService {
    */
   private async emitirMensagemCriada(
     conversationId: string,
-    mensagem: { senderType: string; senderId: string | null },
+    mensagem: {
+      senderType: string;
+      senderId: string | null;
+      replyTo?: { id: string; senderType: string } | null;
+    },
   ) {
-    const [comNome] = await this.comNomeDeQuemEnviou([mensagem]);
+    const [comNome] = await this.comNomeDeQuemEnviou(
+      await this.comParticipanteDaCitada([mensagem]),
+    );
     await this.emitirParaConversaId(conversationId, 'message.created', {
       conversationId,
       message: comNome,

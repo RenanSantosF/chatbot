@@ -160,3 +160,53 @@ describe('citação de mensagem apagada', () => {
     );
   });
 });
+
+describe('citação em grupo', () => {
+  const resposta = {
+    id: 'm2',
+    content: 'pode sim',
+    senderType: 'AGENT',
+    senderId: null,
+    messageType: 'TEXT',
+    metadata: null,
+    deletedAt: null,
+    replyTo: {
+      id: 'm1',
+      content: 'tem horário amanhã?',
+      senderType: 'CUSTOMER',
+      messageType: 'TEXT',
+      deletedAt: null,
+    },
+  };
+
+  it('a tarjinha leva o nome de quem escreveu a original — e só ele', async () => {
+    const { service, prisma } = montar({ mensagens: [resposta] });
+    // Segunda consulta: o metadado das originais citadas.
+    prisma.db.message.findMany
+      .mockResolvedValueOnce([resposta])
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          metadata: { participante: 'Carla', mediaId: 'segredo' },
+        },
+      ]);
+
+    const pagina = await service.listMessages('conversa-1');
+
+    expect(pagina.items[0].replyTo).toEqual(
+      expect.objectContaining({ id: 'm1', participante: 'Carla' }),
+    );
+    expect(JSON.stringify(pagina.items[0].replyTo)).not.toContain('segredo');
+  });
+
+  it('fora de grupo a citação continua como era', async () => {
+    const { service, prisma } = montar({ mensagens: [resposta] });
+    prisma.db.message.findMany
+      .mockResolvedValueOnce([resposta])
+      .mockResolvedValueOnce([{ id: 'm1', metadata: null }]);
+
+    const pagina = await service.listMessages('conversa-1');
+
+    expect(pagina.items[0].replyTo).not.toHaveProperty('participante');
+  });
+});

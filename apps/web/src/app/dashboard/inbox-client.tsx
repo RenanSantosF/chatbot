@@ -105,6 +105,28 @@ const EMPTY_COUNTS: FilterCounts = {
  * exatamente o que pediria, e repetir a chamada só gastaria uma ida ao
  * servidor pra receber de volta o que já está escrito.
  */
+/**
+ * O balão atualizado (reação, status), sem perder o que só a listagem traz.
+ *
+ * `message.updated` vem direto do banco: sem `senderName` e sem o
+ * participante da citação. Trocar o balão por ele apagava os dois nomes
+ * até a conversa ser recarregada.
+ */
+function mesclarAtualizacao(
+  atual: ConversationMessage,
+  nova: ConversationMessage,
+): ConversationMessage {
+  return {
+    ...atual,
+    ...nova,
+    senderName: nova.senderName ?? atual.senderName,
+    replyTo:
+      nova.replyTo && atual.replyTo?.id === nova.replyTo.id
+        ? { ...nova.replyTo, participante: nova.replyTo.participante ?? atual.replyTo.participante }
+        : nova.replyTo,
+  };
+}
+
 function mesmoRecorte(a: InboxFilters, b: InboxFilters): boolean {
   return (Object.keys(b) as (keyof InboxFilters)[]).every((chave) => a[chave] === b[chave]);
 }
@@ -1206,9 +1228,18 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         conversationCache.atualizarMensagem(chaveDaSessao, conversationId, message.id, message);
         return;
       }
+      // Mescla em vez de trocar: a atualização (reação, status) chega sem
+      // o que só a listagem e o "mensagem nova" acrescentam — o nome de
+      // quem enviou e o participante da citação — e trocar o balão
+      // inteiro fazia esses nomes sumirem depois de uma reação.
       setDetail((prev) =>
         prev
-          ? { ...prev, messages: prev.messages.map((m) => (m.id === message.id ? message : m)) }
+          ? {
+              ...prev,
+              messages: prev.messages.map((m) =>
+                m.id === message.id ? mesclarAtualizacao(m, message) : m,
+              ),
+            }
           : prev,
       );
     };
