@@ -92,20 +92,36 @@ function DaySeparator({ label }: { label: string }) {
  * Onde a leitura parou da última vez.
  *
  * Diferente do separador de dia: aquele é uma marca do calendário, este é
- * uma marca pessoal e some quando a conversa é reaberta. Por isso a linha
- * colorida atravessando a conversa inteira — quem volta a uma conversa com
- * quarenta mensagens novas precisa achar esse ponto de relance, sem ler.
+ * uma marca pessoal e some quando a conversa é reaberta. Por isso a faixa
+ * atravessando a conversa inteira — quem volta a uma conversa com quarenta
+ * mensagens novas precisa achar esse ponto de relance, sem ler.
+ *
+ * Neutra, como no WhatsApp: uma faixa clara com a pílula branca no meio.
+ * Verde aqui competia com o balão de saída, que é da mesma família de cor,
+ * e o aviso parecia mais uma mensagem.
  */
 function UnreadDivider({ count }: { count: number }) {
   return (
-    <div className="flex items-center gap-2 py-2" role="separator">
-      <span className="h-px flex-1 bg-primary/40" />
-      <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+    <div className="-mx-4 my-2 flex justify-center md:-mx-8 bg-foreground/[0.04] py-1.5" role="separator">
+      <span className="rounded-full bg-bubble-in px-3 py-1 text-xs font-medium text-muted-foreground shadow-xs">
         {count === 1 ? "1 mensagem não lida" : `${count} mensagens não lidas`}
       </span>
-      <span className="h-px flex-1 bg-primary/40" />
     </div>
   );
+}
+
+/**
+ * De que "voz" é a mensagem, pra agrupar as seguidas.
+ *
+ * Cliente numa conversa individual é uma voz só; num grupo, cada
+ * participante é uma. Do lado da empresa, cada atendente e a IA são vozes
+ * diferentes — é quando a voz muda que o nome precisa reaparecer.
+ */
+function vozDa(message: ConversationMessage) {
+  if (message.senderType === "CUSTOMER") {
+    return `c:${message.metadata?.participante ?? ""}`;
+  }
+  return `${message.senderType}:${message.senderName ?? message.senderId ?? ""}`;
 }
 
 /**
@@ -1038,7 +1054,7 @@ export function ChatPanel({
         // overflow-x-hidden: uma imagem ou tabela larga abria barra
         // horizontal na conversa inteira, e aí a régua vinha por cima do
         // compositor. A mídia se ajusta; o painel não escorrega.
-        className="chat-wallpaper relative flex min-h-0 flex-1 flex-col gap-1.5 overflow-x-hidden overflow-y-auto p-4"
+        className="chat-wallpaper relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 py-3 md:px-8"
         onDragOver={(event) => {
           event.preventDefault();
           if (!composicaoTravada) setDragging(true);
@@ -1109,6 +1125,15 @@ export function ChatPanel({
         {conversation.messages.map((message: ConversationMessage, index) => {
           const previous = conversation.messages[index - 1];
           const startsNewDay = !previous || !sameDay(previous.createdAt, message.createdAt);
+          // Seguidas da mesma voz grudam (2px); a troca de voz respira
+          // (10px). É o ritmo do WhatsApp, e é o que deixa ver de relance
+          // quem falou o quê sem ler nome nenhum.
+          const inicioDoGrupo =
+            startsNewDay ||
+            message.id === primeiraNaoLida ||
+            previous.senderType === "SYSTEM" ||
+            Boolean(previous.deletedAt) ||
+            vozDa(previous) !== vozDa(message);
           return (
             // `clientKey` antes do `id`: é o que mantém o MESMO elemento
             // quando o balão otimista vira a versão do servidor, em vez de
@@ -1143,16 +1168,18 @@ export function ChatPanel({
                   // continua funcionando dentro do balão, que é onde faz
                   // sentido (ver `select-text` no MessageBubble).
                   "flex w-full min-w-0 cursor-pointer rounded-lg transition-colors select-none",
+                  inicioDoGrupo ? "pt-2.5" : "pt-0.5",
                   message.senderType === "CUSTOMER" ? "justify-start" : "justify-end",
                   message.senderType === "SYSTEM" && "cursor-default justify-center",
                   // O eco do gesto: a linha inteira acende por um instante
                   // e apaga. Sem ele, o duplo clique só enche a barrinha de
                   // citação lá embaixo — longe de onde o olho estava.
-                  linhaPiscando === message.id && "bg-primary/10",
+                  linhaPiscando === message.id && "bg-foreground/[0.06]",
                 )}
               >
               <MessageBubble
                 message={message}
+                inicioDoGrupo={inicioDoGrupo}
                 animar={new Date(message.createdAt).getTime() > abertoEm}
                 highlight={needle.trim()}
                 isCurrentMatch={message.id === currentMatchId}
@@ -1406,7 +1433,7 @@ export function ChatPanel({
           // canto da tela; a borda um pouco mais firme já diz onde o cursor
           // está, e o verde volta a significar alguma coisa quando aparece
           // em outro lugar.
-          className="field-sizing-content max-h-36 min-h-9 w-full min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-[7px] text-base leading-snug shadow-xs outline-none transition-[color,border-color] placeholder:text-muted-foreground hover:border-ring/60 focus-visible:border-foreground/30 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30"
+          className="field-sizing-content max-h-36 min-h-9 w-full min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-[7px] text-base leading-snug shadow-xs outline-none transition-[color,border-color] placeholder:text-muted-foreground focus-visible:border-foreground/25 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30"
         />
         {/* No canto onde estava o botão de enviar. O gravador se expande
             sobre o compositor enquanto grava, então precisa ser o último

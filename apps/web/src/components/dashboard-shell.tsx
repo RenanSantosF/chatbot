@@ -111,7 +111,9 @@ function NotificationsButton() {
       onClick={enableNotifications}
       aria-label="Ativar avisos de mensagem nova"
       title="Ativar avisos de mensagem nova"
-      className="h-8 shrink-0 gap-1.5 bg-primary/10 px-2.5 text-primary hover:bg-primary/20 hover:text-primary"
+      // Branco com borda, e não verde: é um convite, não um alerta — e o
+      // verde fica pra marca.
+      className="h-8 shrink-0 gap-1.5 border bg-card px-2.5 text-foreground shadow-xs hover:bg-muted"
     >
       <BellRing className="size-4" />
       <span className="text-xs font-medium">Ativar avisos</span>

@@ -24,7 +24,7 @@ export function ThemeToggle() {
   }, []);
 
   return (
-    <div className="flex items-center gap-0.5 rounded-lg border bg-background p-0.5">
+    <div className="flex items-center gap-0.5 rounded-lg border bg-muted/70 p-0.5">
       {OPTIONS.map((option) => {
         const active = mounted && theme === option.value;
         return (
@@ -40,7 +40,9 @@ export function ThemeToggle() {
               // faixa de 44px do cabeçalho sem encostar nas bordas.
               "flex size-7 items-center justify-center rounded-md transition-colors",
               active
-                ? "bg-primary text-primary-foreground"
+                ? // Selecionado em cinza, como segmento de controle: verde
+                  // aqui era mais um ponto de cor disputando com a conversa.
+                  "bg-card text-foreground shadow-xs ring-1 ring-border"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >

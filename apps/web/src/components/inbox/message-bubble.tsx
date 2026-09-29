@@ -195,8 +195,26 @@ function Highlighted({ text, term }: { text: string; term: string }) {
   );
 }
 
+/**
+ * O espaço que a hora ocupa no fim da última linha do texto.
+ *
+ * É o truque do WhatsApp: a hora não ganha uma linha só pra ela. Um
+ * espaço invisível do tamanho dela entra no fim do texto; se couber na
+ * última linha, a hora se encaixa ali, ao lado da última palavra; se não
+ * couber, o espaço quebra pra baixo e leva a hora junto. Uma linha a
+ * menos em quase todo balão — é daí que vem boa parte da diferença de
+ * altura entre uma conversa aqui e lá.
+ */
+function larguraDaHora(message: ConversationMessage, fromCustomer: boolean) {
+  let largura = 40; // "14:05" + folga até a última palavra
+  if (!fromCustomer) largura += 18; // tiques
+  if (message.senderType === "AI") largura += 16; // "IA"
+  return largura;
+}
+
 export function MessageBubble({
   message,
+  inicioDoGrupo = true,
   animar = false,
   highlight = "",
   isCurrentMatch = false,
@@ -206,6 +224,12 @@ export function MessageBubble({
   onDelete,
 }: {
   message: ConversationMessage;
+  /**
+   * Primeira de uma sequência do mesmo remetente. Só ela leva o nome de
+   * quem escreveu e o canto "de bico"; as seguintes grudam nela, como no
+   * WhatsApp — o nome repetido em cada balão era ruído, não informação.
+   */
+  inicioDoGrupo?: boolean;
   /**
    * Anima a entrada do balão. Só vale pra mensagem que chegou com a
    * conversa já aberta: animar o histórico inteiro na abertura fazia a tela
@@ -229,10 +253,10 @@ export function MessageBubble({
       <div
         data-message-id={message.id}
         className={cn(
-          "flex max-w-[75%] items-center gap-1.5 rounded-2xl px-3.5 py-2 text-[13px] italic",
+          "flex max-w-[75%] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] italic",
           message.senderType === "CUSTOMER"
-            ? "self-start rounded-bl-sm bg-bubble-in/60 text-muted-foreground"
-            : "self-end rounded-br-sm bg-bubble-out/50 text-bubble-out-foreground/70",
+            ? "self-start bg-bubble-in/60 text-muted-foreground"
+            : "self-end bg-bubble-out/50 text-bubble-out-foreground/70",
         )}
       >
         <Ban className="size-3.5 shrink-0" />
@@ -283,7 +307,16 @@ export function MessageBubble({
    * do balão (nome, legenda, hora) ganha o recuo de volta em cada linha.
    */
   const foto = message.messageType === "IMAGE" && !message.deletedAt && !figurinha;
-  const recuo = foto ? "px-2" : undefined;
+  const recuo = foto ? "px-1.5" : undefined;
+  const temTexto = Boolean(message.content) && message.messageType !== "LOCATION";
+  /*
+   * Onde a hora vai:
+   *   - no fim do texto, quando há texto (ver `larguraDaHora`);
+   *   - por cima da foto sem legenda, no canto, como no WhatsApp;
+   *   - numa linha própria no resto (áudio, documento, figurinha).
+   */
+  const horaNoTexto = temTexto && !figurinha;
+  const horaSobreAFoto = foto && !temTexto;
   const reactions = Object.entries(message.reactions ?? {}).filter(
     ([, who]) => Array.isArray(who) && who.length > 0,
   );
@@ -296,9 +329,9 @@ export function MessageBubble({
         // `select-none` pra o duplo clique no vazio não selecionar o texto
         // do balão vizinho (e o navegador não abrir o menu dele por cima).
         // Dentro da mensagem, copiar continua sendo o gesto normal.
-        "group/msg relative flex max-w-[75%] min-w-0 flex-col select-text",
+        "group/msg relative flex max-w-[85%] min-w-0 flex-col select-text md:max-w-[75%] 2xl:max-w-[65%]",
         fromCustomer ? "self-start" : "self-end",
-        isCurrentMatch && "rounded-2xl ring-2 ring-amber-400/70",
+        isCurrentMatch && "rounded-lg ring-2 ring-amber-400/70",
       )}
     >
       {onReply || onReact || onForward || onDelete ? (
@@ -369,15 +402,20 @@ export function MessageBubble({
         // cursor-text: a linha em volta é clicável pra responder e usa
         // cursor-pointer; dentro do balão o cursor volta ao de texto pra não
         // parecer que o texto não pode ser selecionado.
-        "flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden text-[15px] leading-relaxed",
+        //
+        // As medidas são as do WhatsApp Web: 14,5px com entrelinha de 19px,
+        // recuo de 6 a 9px e canto de 8px. Antes eram 15px com entrelinha
+        // de 24px e recuo de 14px — a mesma conversa ocupava quase o dobro
+        // da altura.
+        "relative flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden text-[14.5px] leading-[19px]",
         figurinha
           ? "items-start"
           : cn(
-              "rounded-2xl shadow-[0_1px_1px_oklch(0_0_0/6%)]",
-              foto ? "p-1 pb-1.5" : "px-3.5 py-2.5",
+              "rounded-lg shadow-[0_1px_0.5px_oklch(0_0_0/13%)]",
+              foto ? "p-1" : "pt-1.5 pr-[7px] pb-2 pl-[9px]",
               fromCustomer
-                ? "rounded-bl-sm bg-bubble-in text-bubble-in-foreground"
-                : "rounded-br-sm bg-bubble-out text-bubble-out-foreground",
+                ? cn("bg-bubble-in text-bubble-in-foreground", inicioDoGrupo && "rounded-tl-[3px]")
+                : cn("bg-bubble-out text-bubble-out-foreground", inicioDoGrupo && "rounded-tr-[3px]"),
             ),
         animar &&
           (fromCustomer
@@ -388,8 +426,8 @@ export function MessageBubble({
       {/* Quem respondeu, em negrito no topo do balão. Numa conversa que
           passou por três pessoas o balão verde sozinho não conta a
           história: quem lê depois não sabe quem prometeu o quê. */}
-      {message.senderName ? (
-        <span className={cn("text-[13px] font-semibold text-bubble-out-foreground/80", recuo)}>
+      {message.senderName && inicioDoGrupo ? (
+        <span className={cn("text-[12.5px] leading-[18px] font-medium text-bubble-out-foreground/75", recuo)}>
           {message.senderName}
         </span>
       ) : null}
@@ -403,8 +441,8 @@ export function MessageBubble({
 
           Só nas recebidas: o que a empresa manda sai pelo painel e já tem o
           `senderName` acima dizendo qual atendente escreveu. */}
-      {fromCustomer && message.metadata?.participante ? (
-        <span className={cn("text-[13px] font-semibold text-primary", recuo)}>
+      {fromCustomer && message.metadata?.participante && inicioDoGrupo ? (
+        <span className={cn("text-[12.5px] leading-[18px] font-medium text-primary", recuo)}>
           {message.metadata.participante}
         </span>
       ) : null}
@@ -438,22 +476,38 @@ export function MessageBubble({
           as coordenadas. Antes vinham os dois — o cartão e, embaixo,
           "Localização: -20.3620781, -40.4308282" — e o balão ficava com
           cara de log em vez de mensagem. */}
-      {message.content && message.messageType !== "LOCATION" ? (
-        <span className={cn("whitespace-pre-wrap break-words", recuo, foto && "pt-0.5")}>
+      {temTexto ? (
+        <span className={cn("whitespace-pre-wrap break-words", recuo, foto && "pt-0.5 pb-1")}>
           <Highlighted text={message.content} term={highlight} />
+          {horaNoTexto ? (
+            <span
+              aria-hidden
+              className="inline-block"
+              style={{ width: larguraDaHora(message, fromCustomer) }}
+            />
+          ) : null}
         </span>
       ) : null}
       <span
         className={cn(
           "flex items-center justify-end gap-1 text-[11px] leading-none",
-          recuo,
-          // Sem balão atrás, a hora precisa do próprio contraste contra o
-          // papel de parede.
-          figurinha
-            ? "w-full text-muted-foreground"
-            : fromCustomer
-              ? "text-muted-foreground"
-              : "text-bubble-out-foreground/70",
+          horaNoTexto
+            ? // Encaixada no fim da última linha, no espaço reservado acima.
+              cn("absolute bottom-[5px]", foto ? "right-2.5" : "right-[7px]")
+            : horaSobreAFoto
+              ? // Sobre a foto, com um fundo que garante leitura em
+                // qualquer imagem.
+                "absolute right-2.5 bottom-2.5 rounded-full bg-black/35 px-1.5 py-1 text-white"
+              : recuo,
+          horaSobreAFoto
+            ? null
+            : // Sem balão atrás, a hora precisa do próprio contraste contra o
+              // papel de parede.
+              figurinha
+              ? "w-full text-muted-foreground"
+              : fromCustomer
+                ? "text-muted-foreground"
+                : "text-bubble-out-foreground/70",
         )}
       >
         {message.senderType === "AI" ? <span className="font-medium">IA</span> : null}

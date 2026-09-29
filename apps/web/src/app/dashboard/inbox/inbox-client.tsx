@@ -1194,16 +1194,6 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // real substitui pela versão real; se falhar, ela some e avisamos.
     const optimisticId = `${ID_OTIMISTA}${Date.now()}`;
 
-    // A empresa mostra o nome de quem respondeu no balão? Em vez de buscar
-    // a configuração (que atendente não tem permissão de ler), a resposta
-    // está na própria conversa: se as mensagens de atendente já carregam
-    // nome, o ajuste está ligado. Sem isso o balão otimista nasce sem nome
-    // e ganha um quando a versão do servidor chega — o mesmo salto visual
-    // que a troca abaixo existe pra evitar.
-    const mostraNome = Boolean(
-      detail?.messages.some((m) => m.senderType === "AGENT" && m.senderName),
-    );
-
     const optimistic: ConversationMessage = {
       id: optimisticId,
       // A chave de tela nasce aqui e acompanha a mensagem até o fim: é ela
@@ -1212,8 +1202,12 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       clientKey: optimisticId,
       conversationId: selectedId,
       senderType: "AGENT",
-      senderId: null,
-      senderName: mostraNome ? user.name : null,
+      // Com o nome e o id de quem escreve desde o primeiro instante: o
+      // servidor sempre devolve os dois (ver `comNomeDeQuemEnviou`), e o
+      // balão otimista sem eles ganhava o nome em cima quando a versão real
+      // chegava, um segundo depois — a "piscada" depois de enviar.
+      senderId: user.id,
+      senderName: user.name,
       content,
       messageType: "TEXT",
       metadata: null,
@@ -1301,8 +1295,8 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       clientKey: optimisticId,
       conversationId: selectedId,
       senderType: "AGENT",
-      senderId: null,
-      senderName: null,
+      senderId: user.id,
+      senderName: user.name,
       content: caption ?? "",
       messageType: tipoDoArquivo(file),
       // `previaLocal` é o endereço do arquivo AQUI, que a tela usa

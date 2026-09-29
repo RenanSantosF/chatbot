@@ -143,7 +143,10 @@ button:disabled,
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0 0 0 / 6.5%);
   --input: oklch(0 0 0 / 11%);
-  --ring: oklch(0.5352 0.1016 174.2 / 55%);
+  /* Foco em cinza, não no verde da marca: campo focado é o estado normal
+     de quem trabalha o dia inteiro no painel, e um brilho verde constante
+     tira do verde o papel de identidade. */
+  --ring: oklch(0 0 0 / 22%);
   --chat-bg: oklch(0.988 0 0);
   --chat-dot: oklch(0 0 0 / 2.5%);
   --bubble-out: oklch(0.9575 0.0669 141.1); /* #D9FDD3 */
@@ -161,11 +164,11 @@ button:disabled,
   --sidebar-primary: oklch(0.5352 0.1016 174.2); /* #008069 */
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0 0);
-  /* Mesma ideia do tema escuro: o verde da marca como TINTA do item ativo,
-     sobre uma superfície neutra. #008069 sobre esse cinza dá 4,9:1. */
-  --sidebar-accent-foreground: oklch(0.5352 0.1016 174.2);
+  /* O item ativo é marcado pela superfície cinza, com texto neutro — como
+     a barra lateral do WhatsApp. O verde fica pra marca e pros detalhes. */
+  --sidebar-accent-foreground: oklch(0.16 0 0);
   --sidebar-border: oklch(0 0 0 / 6.5%);
-  --sidebar-ring: oklch(0.5352 0.1016 174.2 / 55%);
+  --sidebar-ring: oklch(0 0 0 / 22%);
 }
 
 /* Escuro: quase preto neutro.
@@ -244,7 +247,7 @@ button:disabled,
      colunas perdiam o contorno. Continua imperceptível na leitura. */
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 9%);
-  --ring: oklch(0.6350 0.1360 158.5);
+  --ring: oklch(1 0 0 / 28%);
   --chat-bg: oklch(0.2430 0.0030 197);
   --chat-dot: oklch(1 0 0 / 3%);
   --bubble-out: oklch(0.3770 0.0699 163.4); /* #144D37 */
@@ -273,9 +276,9 @@ button:disabled,
   --sidebar-accent: oklch(0.3180 0.0014 197);
   /* O verde vira TINTA, não fundo. É o mesmo tom do `--primary` (#1DA968),
      escolhido por medida: 5.9:1 sobre o fundo escuro. */
-  --sidebar-accent-foreground: oklch(0.6350 0.1360 158.5);
+  --sidebar-accent-foreground: oklch(0.9436 0.0051 228.8);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.6350 0.1360 158.5);
+  --sidebar-ring: oklch(1 0 0 / 28%);
 }
 
 /* Barra de rolagem fininha e discreta.
