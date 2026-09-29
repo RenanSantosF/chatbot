@@ -2,15 +2,17 @@
 
 import {
   Download,
-  Maximize,
-  Minimize,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
   Video,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 function relogio(segundos: number): string {
@@ -26,8 +28,12 @@ function relogio(segundos: number): string {
  * grudada num quadro preto, e um botão de tela cheia que tomava o monitor
  * inteiro — tudo o que a conversa não é. Aqui é o jeito do WhatsApp: o
  * primeiro quadro como capa, um botão de tocar no meio, a duração no
- * canto, e o vídeo toca ali mesmo, sem sair da conversa. Tela cheia existe,
- * mas só quando a pessoa pede, pelo botão da barra (ou duplo clique).
+ * canto, e o vídeo toca ali mesmo, sem sair da conversa.
+ *
+ * Pra ver maior, ele AMPLIA sobre o painel (ver `VideoAmpliado`), e não
+ * vai pra tela cheia do sistema: a tela cheia tomava o monitor inteiro,
+ * escondia a barra de tarefas e as outras janelas, e pra quem está
+ * atendendo isso é sair do trabalho pra ver um vídeo.
  *
  * A caixa tem proporção fixa desde o primeiro quadro (quadrada até o
  * vídeo dizer o tamanho dele, e limitada a uma faixa depois). Sem isso o
@@ -44,27 +50,161 @@ export function VideoMessage({
   onFalha: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const caixaRef = useRef<HTMLDivElement | null>(null);
-  const [telaCheia, setTelaCheia] = useState(false);
+  const [ampliado, setAmpliado] = useState<{ tempo: number; tocando: boolean } | null>(null);
+  const [dimensoes, setDimensoes] = useState<{ largura: number; altura: number } | null>(null);
+
+  function ampliar() {
+    const video = videoRef.current;
+    // O ampliado continua de onde o do balão estava; o do balão para, pra
+    // não tocarem os dois ao mesmo tempo.
+    setAmpliado({ tempo: video?.currentTime ?? 0, tocando: Boolean(video && !video.paused) });
+    video?.pause();
+  }
+
+  return (
+    <>
+      <Player
+        url={url}
+        fileName={fileName}
+        videoRef={videoRef}
+        onFalha={onFalha}
+        onDimensoes={setDimensoes}
+        onAmpliar={ampliar}
+      />
+      {ampliado ? (
+        <VideoAmpliado
+          url={url}
+          fileName={fileName}
+          inicio={ampliado.tempo}
+          tocar={ampliado.tocando}
+          dimensoes={dimensoes}
+          onFechar={(tempo) => {
+            // De volta ao balão no mesmo ponto, parado.
+            if (videoRef.current) videoRef.current.currentTime = tempo;
+            setAmpliado(null);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * O vídeo grande, sobre o painel escurecido.
+ *
+ * Cabe na janela (até 90% da largura e 85% da altura), na proporção dele,
+ * e fecha como o visualizador de foto: X, Esc ou clique fora.
+ */
+function VideoAmpliado({
+  url,
+  fileName,
+  inicio,
+  tocar,
+  dimensoes,
+  onFechar,
+}: {
+  url: string;
+  fileName?: string;
+  inicio: number;
+  tocar: boolean;
+  dimensoes: { largura: number; altura: number } | null;
+  onFechar: (tempo: number) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const fechar = () => onFechar(videoRef.current?.currentTime ?? inicio);
+  const fecharRef = useRef(fechar);
+  useEffect(() => {
+    fecharRef.current = fechar;
+  });
 
   useEffect(() => {
-    const aoMudar = () => setTelaCheia(document.fullscreenElement === caixaRef.current);
-    document.addEventListener("fullscreenchange", aoMudar);
-    return () => document.removeEventListener("fullscreenchange", aoMudar);
+    // Esc fecha só esta camada (na captura, como no visualizador de foto:
+    // senão o mesmo Esc fechava a conversa junto).
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key !== "Escape") return;
+      evento.stopPropagation();
+      fecharRef.current();
+    };
+    document.addEventListener("keydown", aoTeclar, true);
+    const antes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", aoTeclar, true);
+      document.body.style.overflow = antes;
+    };
   }, []);
 
-  function alternarTelaCheia() {
-    // A CAIXA vai pra tela cheia, e não o <video>: assim a barra e os
-    // botões continuam sendo os nossos lá também.
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void caixaRef.current?.requestFullscreen().catch(() => {});
-  }
+  const proporcao = dimensoes ? dimensoes.largura / dimensoes.altura : 16 / 9;
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Vídeo"
+      onClick={fechar}
+      className="fixed inset-0 z-100 flex items-center justify-center bg-black/85 p-4 duration-200 animate-in fade-in supports-backdrop-filter:backdrop-blur-sm"
+    >
+      <button
+        type="button"
+        onClick={fechar}
+        aria-label="Fechar"
+        title="Fechar (Esc)"
+        className="absolute top-3 right-3 flex size-9 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/15 hover:text-white"
+      >
+        <X className="size-5" />
+      </button>
+      <div
+        onClick={(evento) => evento.stopPropagation()}
+        style={{
+          width: `min(90vw, calc(85vh * ${proporcao}))`,
+          aspectRatio: String(proporcao),
+        }}
+      >
+        <Player
+          url={url}
+          fileName={fileName}
+          videoRef={videoRef}
+          ampliado
+          inicio={inicio}
+          tocarAoAbrir={tocar}
+          onAmpliar={fechar}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** A caixa do vídeo com os controles — a mesma no balão e ampliada. */
+function Player({
+  url,
+  fileName,
+  videoRef,
+  ampliado = false,
+  inicio,
+  tocarAoAbrir = false,
+  onFalha,
+  onDimensoes,
+  onAmpliar,
+}: {
+  url: string;
+  fileName?: string;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  ampliado?: boolean;
+  inicio?: number;
+  tocarAoAbrir?: boolean;
+  onFalha?: () => void;
+  onDimensoes?: (dimensoes: { largura: number; altura: number }) => void;
+  onAmpliar: () => void;
+}) {
   const [proporcao, setProporcao] = useState(1);
   const [tocando, setTocando] = useState(false);
-  const [jaTocou, setJaTocou] = useState(false);
-  const [esperando, setEsperando] = useState(false);
+  const [jaTocou, setJaTocou] = useState(ampliado);
+  // Ampliado já tocando: o giro aparece enquanto ele carrega, e não o
+  // botão de tocar — que sugeriria que é preciso clicar de novo.
+  const [esperando, setEsperando] = useState(tocarAoAbrir);
   const [duracao, setDuracao] = useState(0);
-  const [agora, setAgora] = useState(0);
+  const [agora, setAgora] = useState(inicio ?? 0);
   const [mudo, setMudo] = useState(false);
 
   function alternar() {
@@ -88,28 +228,33 @@ export function VideoMessage({
 
   return (
     <div
-      ref={caixaRef}
-      style={telaCheia ? undefined : { aspectRatio: `1 / ${proporcao}` }}
+      style={ampliado ? undefined : { aspectRatio: `1 / ${proporcao}` }}
       className={cn(
-        "group/video relative w-72 max-w-full overflow-hidden rounded-xl bg-black",
-        telaCheia && "size-full max-w-none rounded-none",
+        "group/video relative overflow-hidden bg-black",
+        ampliado ? "size-full rounded-lg shadow-2xl" : "w-72 max-w-full rounded-xl",
       )}
     >
       <video
         ref={videoRef}
         // `#t=0.1` faz o navegador desenhar um quadro de verdade como capa,
         // em vez da caixa preta — sem baixar o vídeo inteiro pra isso.
-        src={`${url}#t=0.1`}
+        src={ampliado ? url : `${url}#t=0.1`}
         preload="metadata"
         playsInline
         disablePictureInPicture
         controlsList="nofullscreen nodownload noremoteplayback"
         onLoadedMetadata={(evento) => {
-          const { videoWidth, videoHeight, duration } = evento.currentTarget;
+          const video = evento.currentTarget;
+          const { videoWidth, videoHeight, duration } = video;
           if (videoWidth && videoHeight) {
             setProporcao(Math.min(Math.max(videoHeight / videoWidth, 0.6), 1.4));
+            onDimensoes?.({ largura: videoWidth, altura: videoHeight });
           }
           setDuracao(duration);
+          if (ampliado) {
+            if (inicio) video.currentTime = inicio;
+            if (tocarAoAbrir) void video.play().catch(() => {});
+          }
         }}
         onTimeUpdate={(evento) => setAgora(evento.currentTarget.currentTime)}
         onPlay={() => {
@@ -124,12 +269,12 @@ export function VideoMessage({
         onVolumeChange={(evento) => setMudo(evento.currentTarget.muted)}
         onError={onFalha}
         onClick={alternar}
-        onDoubleClick={alternarTelaCheia}
+        onDoubleClick={onAmpliar}
         className={cn(
           "absolute inset-0 size-full cursor-pointer",
           // Parado, a capa preenche a caixa como uma foto; tocando, o
           // vídeo aparece inteiro, sem corte.
-          jaTocou || telaCheia ? "object-contain" : "object-cover",
+          jaTocou ? "object-contain" : "object-cover",
         )}
       />
 
@@ -222,12 +367,12 @@ export function VideoMessage({
             </button>
             <button
               type="button"
-              onClick={alternarTelaCheia}
-              aria-label={telaCheia ? "Sair da tela cheia" : "Tela cheia"}
-              title={telaCheia ? "Sair da tela cheia" : "Tela cheia"}
+              onClick={onAmpliar}
+              aria-label={ampliado ? "Diminuir" : "Ver maior"}
+              title={ampliado ? "Diminuir" : "Ver maior"}
               className="flex size-7 items-center justify-center rounded-full transition-colors hover:bg-white/15"
             >
-              {telaCheia ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+              {ampliado ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
             </button>
             <a
               href={url}
