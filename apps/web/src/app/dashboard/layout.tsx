@@ -11,7 +11,7 @@ import type { MeResponse } from "@/lib/types";
  * Não por segredo — toda rota daqui exige sessão. É porque um robô que
  * insiste nelas só coleta redirecionamentos pro login, gasta o orçamento
  * de rastreamento que deveria ir pra landing, e ainda arrisca colocar um
- * "/dashboard/inbox" competindo com a página inicial no resultado de
+ * "/dashboard/configuracoes" competindo com a página inicial no resultado de
  * busca. O robots.txt pede pra não visitar; isto garante que, se visitar
  * mesmo assim, não indexa.
  */

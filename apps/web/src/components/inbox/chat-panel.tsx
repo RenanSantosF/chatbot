@@ -37,6 +37,7 @@ import { AssignmentActions } from "./assignment-actions";
 import { MessageBubble } from "./message-bubble";
 import { QuickReplyPicker, termoDoAtalho } from "./quick-reply-picker";
 import { TagChip, TagPicker } from "./tag-picker";
+import { resumoDaMensagem } from "@/lib/mensagem";
 import { AttachmentComposer } from "./attachment-composer";
 import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
@@ -375,6 +376,7 @@ export function ChatPanel({
   const pularIdaAoFimRef = useRef(false);
   /** A pessoa já rolou nesta conversa? Zera a cada conversa aberta. */
   const jaRolouRef = useRef(false);
+  const conteudoRef = useRef<HTMLDivElement | null>(null);
   const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
 
   /**
@@ -780,10 +782,21 @@ export function ChatPanel({
     const area = scrollAreaRef.current;
     if (!area || !conversation) return;
 
+    // E quando o CONTEÚDO cresce sozinho: foto e vídeo só ganham a altura
+    // de verdade quando terminam de carregar, às vezes segundos depois de
+    // a conversa abrir — e a conversa ficava parada um pedaço acima do fim,
+    // com a última mensagem escondida. O observador roda antes do de
+    // interseção, então "estava no fim" ainda é o de antes do crescimento.
     const observador = new ResizeObserver(() => {
-      if (pertoDoFimRef.current) area.scrollTop = area.scrollHeight;
+      if (!pertoDoFimRef.current) return;
+      if (jaRolouRef.current) {
+        area.scrollTo({ top: area.scrollHeight, behavior: "smooth" });
+      } else {
+        area.scrollTop = area.scrollHeight;
+      }
     });
     observador.observe(area);
+    if (conteudoRef.current) observador.observe(conteudoRef.current);
     return () => observador.disconnect();
   }, [conversation?.id, conversation]);
 
@@ -1107,6 +1120,10 @@ export function ChatPanel({
             plano, ou com o teclado, o topo pode ser alcançado sem o
             observador disparar, e aí a pessoa precisa de algo pra clicar.
         */}
+        {/* O conteúdo num bloco só, pra poder ser medido: é o crescimento
+            DELE (foto e vídeo que terminam de carregar) que a conversa
+            acompanha, ver o observador de tamanho abaixo. */}
+        <div ref={conteudoRef} className="flex flex-col">
         <div ref={topoRef} aria-hidden className="h-px" />
         {hasOlder ? (
           <div className="flex justify-center pb-2">
@@ -1206,6 +1223,7 @@ export function ChatPanel({
           );
         })}
         <div ref={bottomRef} />
+        </div>
 
         {/* Aparece só quando a pessoa está lendo o histórico. Sem ele, a
             escolha de não arrastar a tela deixaria mensagem nova chegando
@@ -1303,7 +1321,7 @@ export function ChatPanel({
                   {respostaExibida.senderType === "CUSTOMER" ? "Cliente" : "Você"}
                 </p>
                 <p className="line-clamp-2 text-xs text-muted-foreground">
-                  {respostaExibida.content || "Anexo"}
+                  {resumoDaMensagem(respostaExibida.content, respostaExibida.messageType)}
                 </p>
               </div>
               <Button

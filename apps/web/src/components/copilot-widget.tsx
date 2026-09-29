@@ -45,7 +45,7 @@ export function CopilotWidget() {
   // No Inbox, o canto de baixo é o do botão de enviar e do microfone (a
   // coluna da direita só aparece em tela bem larga): o botão flutuante
   // sobe pra não ficar em cima deles.
-  const noInbox = usePathname()?.startsWith("/dashboard/inbox") ?? false;
+  const noInbox = usePathname() === "/dashboard";
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });

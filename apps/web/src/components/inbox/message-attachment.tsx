@@ -17,6 +17,7 @@ import { proporcaoDaMiniatura } from "@/lib/miniatura";
 import { cn } from "@/lib/utils";
 import { AudioMessage } from "./audio-message";
 import { ImageLightbox } from "./image-lightbox";
+import { VideoMessage } from "./video-message";
 import type { ConversationMessage } from "@/lib/types";
 
 /**
@@ -198,14 +199,7 @@ export function MessageAttachment({ message }: { message: ConversationMessage })
   }
 
   if (message.messageType === "VIDEO" && !failed) {
-    return (
-      <video
-        controls
-        src={url}
-        onError={() => setFailed(true)}
-        className="max-h-64 w-auto max-w-full rounded-md"
-      />
-    );
+    return <VideoMessage url={url} fileName={meta.fileName} onFalha={() => setFailed(true)} />;
   }
 
   /*

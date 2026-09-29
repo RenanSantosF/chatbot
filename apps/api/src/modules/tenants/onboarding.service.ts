@@ -116,7 +116,7 @@ export class OnboardingService {
         chave: 'conversa',
         titulo: 'Receber a primeira conversa',
         descricao: 'Mande uma mensagem pro seu próprio número e veja ela chegar aqui.',
-        destino: '/dashboard/inbox',
+        destino: '/dashboard',
         feito: conversas > 0,
       },
     ];

@@ -53,7 +53,7 @@ export function CustomerDetailSheet({
 
   function openConversation(id: string) {
     onOpenChange(false);
-    router.push(`/dashboard/inbox?c=${id}`);
+    router.push(`/dashboard?c=${id}`);
   }
 
   return (
@@ -105,7 +105,7 @@ export function CustomerDetailSheet({
                     customer={customer}
                     onStarted={(id) => {
                       onOpenChange(false);
-                      router.push(`/dashboard/inbox?c=${id}`);
+                      router.push(`/dashboard?c=${id}`);
                     }}
                   />
                 </div>

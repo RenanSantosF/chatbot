@@ -27,6 +27,14 @@ const nextConfig: NextConfig = {
     qualities: [60, 75],
     minimumCacheTTL: 7 * 24 * 60 * 60,
   },
+  /*
+   * O Inbox morava em /dashboard/inbox e virou a raiz do painel. Link
+   * antigo (notificação já entregue, favorito, app instalado) continua
+   * chegando na conversa certa: o `?c=` é repassado pelo redirecionamento.
+   */
+  async redirects() {
+    return [{ source: "/dashboard/inbox", destination: "/dashboard", permanent: false }];
+  },
   async rewrites() {
     // O navegador só fala com o próprio Next.js (mesma origem). Isso faz o
     // cookie httpOnly de sessão, setado pela API, ficar no domínio do

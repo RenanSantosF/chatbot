@@ -307,7 +307,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     window.history.replaceState(
       null,
       "",
-      id ? `/dashboard/inbox?c=${id}` : "/dashboard/inbox",
+      id ? `/dashboard?c=${id}` : "/dashboard",
     );
   }, [detalheGuardado]);
 

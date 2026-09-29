@@ -352,3 +352,49 @@ describe('estado de entrega em número (o defeito do tique)', () => {
     expect(traduzirStatus('')).toBeNull();
   });
 });
+
+describe('visualização única', () => {
+  it.each(['viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension'])(
+    'o embrulho %s vira aviso, e não some',
+    (embrulho) => {
+      const traduzida = traduzirMensagem({
+        message: {
+          [embrulho]: { message: { imageMessage: { mimetype: 'image/jpeg', viewOnce: true } } },
+        },
+      });
+
+      expect(traduzida).toEqual({
+        content: 'Foto de visualização única',
+        messageType: 'OTHER',
+        metadata: { visualizacaoUnica: 'IMAGE' },
+        citando: undefined,
+      });
+    },
+  );
+
+  it('reconhece a marca na própria mídia, sem embrulho', () => {
+    const traduzida = traduzirMensagem({
+      message: { videoMessage: { mimetype: 'video/mp4', viewOnce: true } },
+    });
+
+    expect(traduzida?.metadata).toEqual({ visualizacaoUnica: 'VIDEO' });
+    expect(traduzida?.content).toBe('Vídeo de visualização única');
+  });
+
+  it('não pede download: não há o que baixar num aparelho vinculado', () => {
+    const traduzida = traduzirMensagem({
+      message: { viewOnceMessageV2: { message: { audioMessage: { ptt: true } } } },
+    });
+
+    expect(traduzida?.metadata).not.toHaveProperty('evolutionPendente');
+    expect(traduzida?.metadata).not.toHaveProperty('evolutionMedia');
+  });
+
+  it('foto comum continua sendo foto', () => {
+    const traduzida = traduzirMensagem({
+      message: { imageMessage: { mimetype: 'image/jpeg' } },
+    });
+
+    expect(traduzida?.messageType).toBe('IMAGE');
+  });
+});

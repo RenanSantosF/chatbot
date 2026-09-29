@@ -29,6 +29,10 @@ export function resumoDaMensagem(
 ): string {
   if (messageType === "TEXT") return content;
 
+  // Em OTHER o texto já descreve o que é ("Contato compartilhado: Ana",
+  // "Foto de visualização única"): o rótulo "Anexo" na frente só atrapalha.
+  if (messageType === "OTHER" && content.trim()) return content.trim();
+
   const rotulo = MEDIA_PREVIEW[messageType] ?? "Anexo";
   // A legenda, quando existe, diz mais que o rótulo: "Imagem · segue o
   // orçamento" é mais útil que "Imagem" sozinho.

@@ -138,6 +138,11 @@ export interface MessageMetadata {
   voice?: boolean;
   /** Motivo da recusa da Meta, gravado quando o envio falha. */
   falha?: string;
+  /**
+   * Foto, vídeo ou áudio de visualização única: o WhatsApp só entrega o
+   * conteúdo pro celular, e aqui fica o aviso no lugar (ver a API).
+   */
+  visualizacaoUnica?: "IMAGE" | "VIDEO" | "AUDIO";
   /** Chave do anexo no bucket próprio, quando já foi arquivado. */
   storageKey?: string;
   latitude?: number;

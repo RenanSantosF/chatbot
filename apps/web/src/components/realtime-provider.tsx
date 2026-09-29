@@ -425,7 +425,7 @@ export function RealtimeProvider({
           });
           notification.onclick = () => {
             window.focus();
-            routerRef.current.push(`/dashboard/inbox?c=${conversationId}`);
+            routerRef.current.push(`/dashboard?c=${conversationId}`);
             notification.close();
           };
         }

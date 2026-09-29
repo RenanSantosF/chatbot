@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { resumoDaMensagem } from "@/lib/mensagem";
 import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
 
@@ -61,6 +62,40 @@ function DeliveryTicks({ status, motivo }: { status: MessageStatus; motivo?: str
 }
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏"];
+
+/** O "1" num círculo tracejado, o mesmo sinal que o WhatsApp usa. */
+function IconeDeVisualizacaoUnica({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden className={className}>
+      <circle
+        cx="12"
+        cy="12"
+        r="9.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeDasharray="44 4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10.6 9.2 12.6 8v8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const NOME_DA_VISUALIZACAO_UNICA = { IMAGE: "uma foto", VIDEO: "um vídeo", AUDIO: "um áudio" };
+
+/** O aviso no lugar do conteúdo, nas palavras do WhatsApp. */
+function avisoDeVisualizacaoUnica(tipo: "IMAGE" | "VIDEO" | "AUDIO", recebida: boolean) {
+  const oQue = NOME_DA_VISUALIZACAO_UNICA[tipo] ?? "uma mensagem";
+  return recebida
+    ? `Você recebeu ${oQue} de visualização única. Por privacidade, só dá pra abrir no seu celular.`
+    : `Você enviou ${oQue} de visualização única pelo celular.`;
+}
 
 /**
  * O visual dos botões da barra que flutua sobre o balão.
@@ -312,17 +347,23 @@ export const MessageBubble = memo(function MessageBubble({
    * grossa — mais grossa, proporcionalmente, quanto menor a foto. O resto
    * do balão (nome, legenda, hora) ganha o recuo de volta em cada linha.
    */
-  const foto = message.messageType === "IMAGE" && !message.deletedAt && !figurinha;
+  const foto =
+    (message.messageType === "IMAGE" || message.messageType === "VIDEO") &&
+    !message.deletedAt &&
+    !figurinha;
   const recuo = foto ? "px-1.5" : undefined;
-  const temTexto = Boolean(message.content) && message.messageType !== "LOCATION";
+  const unica = message.metadata?.visualizacaoUnica;
+  const temTexto =
+    Boolean(message.content) && message.messageType !== "LOCATION" && !unica;
   /*
    * Onde a hora vai:
    *   - no fim do texto, quando há texto (ver `larguraDaHora`);
    *   - por cima da foto sem legenda, no canto, como no WhatsApp;
    *   - numa linha própria no resto (áudio, documento, figurinha).
    */
-  const horaNoTexto = temTexto && !figurinha;
-  const horaSobreAFoto = foto && !temTexto;
+  const horaNoTexto = (temTexto || Boolean(unica)) && !figurinha;
+  // Só na foto: no vídeo o canto de baixo é da barra de controles.
+  const horaSobreAFoto = foto && !temTexto && message.messageType === "IMAGE";
   const reactions = Object.entries(message.reactions ?? {}).filter(
     ([, who]) => Array.isArray(who) && who.length > 0,
   );
@@ -472,12 +513,25 @@ export const MessageBubble = memo(function MessageBubble({
           <p className={cn("line-clamp-2 opacity-70", message.replyTo.deletedAt && "italic")}>
             {message.replyTo.deletedAt
               ? "Mensagem apagada"
-              : message.replyTo.content || "Anexo"}
+              : resumoDaMensagem(message.replyTo.content, message.replyTo.messageType)}
           </p>
         </div>
       ) : null}
 
-      {message.messageType !== "TEXT" ? <MessageAttachment message={message} /> : null}
+      {message.messageType !== "TEXT" && !unica ? <MessageAttachment message={message} /> : null}
+      {unica ? (
+        <span className="flex items-start gap-2 text-[13.5px] italic opacity-75">
+          <IconeDeVisualizacaoUnica className="mt-px size-4.5 shrink-0" />
+          <span>
+            {avisoDeVisualizacaoUnica(unica, fromCustomer)}
+            <span
+              aria-hidden
+              className="inline-block"
+              style={{ width: larguraDaHora(message, fromCustomer) }}
+            />
+          </span>
+        </span>
+      ) : null}
       {/* Localização não repete o texto: o cartão acima já mostra o lugar e
           as coordenadas. Antes vinham os dois — o cartão e, embaixo,
           "Localização: -20.3620781, -40.4308282" — e o balão ficava com

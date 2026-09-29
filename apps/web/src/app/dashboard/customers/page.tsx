@@ -74,7 +74,7 @@ export default function CustomersPage() {
                 do contato resolve quem já está na lista; este resolve
                 quem a empresa acabou de anotar num papel. */}
             <StartConversationDialog
-              onStarted={(id) => router.push(`/dashboard/inbox?c=${id}`)}
+              onStarted={(id) => router.push(`/dashboard?c=${id}`)}
               gatilho={
                 <Button size="sm" variant="outline">
                   <MessageSquarePlus className="size-4" />

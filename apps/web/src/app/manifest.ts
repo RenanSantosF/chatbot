@@ -36,7 +36,7 @@ export default function manifest(): MetadataRoute.Manifest {
      * dois toques por abertura, todo dia. Quem não estiver logado é
      * mandado pro login normalmente.
      */
-    start_url: "/dashboard/inbox",
+    start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     /*

@@ -149,10 +149,62 @@ function conteudo(message: Record<string, unknown>): Record<string, unknown> {
   const efemera = message.ephemeralMessage as { message?: Record<string, unknown> } | undefined;
   if (efemera?.message) return conteudo(efemera.message);
 
-  const vista = message.viewOnceMessage as { message?: Record<string, unknown> } | undefined;
-  if (vista?.message) return conteudo(vista.message);
-
   return message;
+}
+
+/** Os três embrulhos que o WhatsApp já usou pra visualização única. */
+const EMBRULHOS_DE_VISUALIZACAO_UNICA = [
+  'viewOnceMessage',
+  'viewOnceMessageV2',
+  'viewOnceMessageV2Extension',
+];
+
+const TIPO_DA_VISUALIZACAO_UNICA: Record<
+  string,
+  { tipo: MessageType; rotulo: string }
+> = {
+  imageMessage: { tipo: 'IMAGE', rotulo: 'Foto de visualização única' },
+  videoMessage: { tipo: 'VIDEO', rotulo: 'Vídeo de visualização única' },
+  audioMessage: { tipo: 'AUDIO', rotulo: 'Áudio de visualização única' },
+};
+
+/**
+ * Foto, vídeo ou áudio de visualização única.
+ *
+ * Eles não abrem aqui, e não é limitação nossa: o WhatsApp só entrega o
+ * conteúdo pro celular, e aparelho vinculado (o WhatsApp Web, e este
+ * painel) recebe só o aviso de que ela existe. Antes a mensagem era
+ * descartada em silêncio — o embrulho mudou de nome (V2, V2Extension) e
+ * nenhum caminho o reconhecia —, e a conversa ficava com um buraco: o
+ * cliente mandava a foto, perguntava "viu?", e quem atendia não sabia do
+ * que ele falava. Agora ela vira um aviso no lugar, como no WhatsApp Web.
+ */
+function visualizacaoUnica(
+  message: Record<string, unknown>,
+): { tipo: MessageType; rotulo: string; citando?: string } | null {
+  let interna: Record<string, unknown> | undefined;
+  for (const chave of EMBRULHOS_DE_VISUALIZACAO_UNICA) {
+    const embrulho = message[chave] as
+      { message?: Record<string, unknown> } | undefined;
+    if (embrulho) {
+      interna = embrulho.message ?? {};
+      break;
+    }
+  }
+
+  // Sem embrulho, a marca pode vir na própria mídia (`viewOnce: true`).
+  const alvo = interna ?? message;
+  for (const [chave, descricao] of Object.entries(TIPO_DA_VISUALIZACAO_UNICA)) {
+    const midia = alvo[chave] as
+      (ContextoDaCitacao & { viewOnce?: boolean }) | undefined;
+    if (midia && (interna || midia.viewOnce === true)) {
+      return { ...descricao, citando: citacao(midia) };
+    }
+  }
+
+  return interna
+    ? { tipo: 'IMAGE', rotulo: 'Mensagem de visualização única' }
+    : null;
 }
 
 /**
@@ -194,6 +246,18 @@ export function traduzirMensagem(
   if (!bruto) return null;
 
   const message = conteudo(bruto);
+
+  const unica = visualizacaoUnica(message);
+  if (unica) {
+    return {
+      content: unica.rotulo,
+      messageType: 'OTHER',
+      // Sem endereço de mídia de propósito: não há o que baixar.
+      metadata: { visualizacaoUnica: unica.tipo },
+      citando: unica.citando ?? dados.contextInfo?.stanzaId,
+    };
+  }
+
   // A Evolution reescreve `extendedTextMessage` como `conversation` e sobe
   // o contexto pra raiz do evento. O texto continua chegando; a citação só
   // chega se for procurada aqui.

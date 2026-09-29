@@ -60,8 +60,10 @@ const NAV_ITEMS: {
   icon: typeof MessageCircleMore;
   roles?: UserRole[];
 }[] = [
-  { href: "/dashboard", label: "Visão geral", icon: ChartNoAxesColumn },
-  { href: "/dashboard/inbox", label: "Inbox", icon: MessageCircleMore },
+  // O Inbox é a raiz do painel: é onde se trabalha o dia inteiro, e é o
+  // que abre ao entrar.
+  { href: "/dashboard", label: "Conversas", icon: MessageCircleMore },
+  { href: "/dashboard/visao-geral", label: "Visão geral", icon: ChartNoAxesColumn },
   { href: "/dashboard/customers", label: "Clientes", icon: Users },
 ];
 
@@ -303,7 +305,7 @@ function Nav({ role }: { role: UserRole }) {
   return (
     <SidebarMenu>
       {NAV_ITEMS.map((item) => {
-        const showBadge = item.href === "/dashboard/inbox" && totalUnread > 0;
+        const showBadge = item.href === "/dashboard" && totalUnread > 0;
         return (
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
@@ -352,7 +354,7 @@ function Shell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isInbox = pathname === "/dashboard/inbox";
+  const isInbox = pathname === "/dashboard";
   // Área (dois primeiros segmentos), não rota inteira: assim a animação de
   // entrada roda ao trocar de seção, e não a cada sub-tela de Configurações.
   const secao = pathname.split("/").slice(0, 3).join("/");
