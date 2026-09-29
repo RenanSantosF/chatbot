@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   title: "Entrar ou criar conta",
   description:
     "Acesse o painel da Inteliwa ou crie a conta da sua empresa para começar a atender no WhatsApp com inteligência artificial.",
-  alternates: { canonical: "/register" },
+  alternates: { canonical: "/login" },
 };
 
 /**
