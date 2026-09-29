@@ -88,6 +88,11 @@ function montar() {
           customer: {},
         }),
       },
+      historicoGuardado: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       message: {
         findFirst: jest.fn((args: { where: { id: string } }) =>
           Promise.resolve(mensagens[args.where.id] ?? null),

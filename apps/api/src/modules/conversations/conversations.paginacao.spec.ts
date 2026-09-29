@@ -33,6 +33,11 @@ function montar() {
           .fn()
           .mockResolvedValue({ ...conversa, messages: [], tags: [] }),
       },
+      historicoGuardado: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       message: {
         findMany: jest
           .fn()

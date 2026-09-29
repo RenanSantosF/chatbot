@@ -31,6 +31,11 @@ function construtorCom(opcoes: {
   const tenantPrisma = {
     tenantId: 'tenant-teste',
     db: {
+      historicoGuardado: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       message: { findFirst, findMany },
       aiSettings: { findFirst: jest.fn().mockResolvedValue(null) },
       aiInstruction: { findMany: jest.fn().mockResolvedValue([]) },

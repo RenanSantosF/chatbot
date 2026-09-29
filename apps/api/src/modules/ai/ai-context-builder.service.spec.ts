@@ -43,6 +43,11 @@ function montar(
   const tenantPrisma = {
     tenantId: 'tenant-teste',
     db: {
+      historicoGuardado: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       message: {
         findMany: jest
           .fn()

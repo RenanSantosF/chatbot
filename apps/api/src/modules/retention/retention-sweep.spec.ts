@@ -29,6 +29,11 @@ function montar(
           ),
         update,
       },
+      historicoGuardado: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       message: { deleteMany },
     },
   };

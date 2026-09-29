@@ -47,6 +47,11 @@ function montar(conversaAberta: Record<string, unknown> | null = null) {
         // O teto diário de primeiras abordagens (ver protegerContraBloqueio).
         count: jest.fn().mockResolvedValue(0),
       },
+      historicoGuardado: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       message: {
         create: jest
           .fn()

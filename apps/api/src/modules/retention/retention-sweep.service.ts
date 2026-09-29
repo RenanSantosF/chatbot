@@ -82,6 +82,11 @@ export class RetentionSweepService implements OnModuleInit, OnModuleDestroy {
     const { count } = await this.prisma.client.message.deleteMany({
       where: { tenantId, createdAt: { lt: corte } },
     });
+    // O histórico guardado de lado também é mensagem (ver
+    // HistoricoGuardado): o bloco cuja mais nova já venceu vai inteiro.
+    await this.prisma.client.historicoGuardado.deleteMany({
+      where: { tenantId, maisRecenteEm: { lt: corte } },
+    });
 
     if (count > 0) {
       this.logger.log(

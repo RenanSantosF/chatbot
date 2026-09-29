@@ -35,6 +35,14 @@ import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { CanalService } from '../whatsapp/canal/canal.service';
 import { idDaMensagem } from '../whatsapp/canal/evolution/evolution-id';
 import { AVISO_DE_INDISPONIBILIDADE } from '../ai/ai-indisponivel';
+import {
+  abrirHistoricoGuardado,
+  lerGuardadas,
+  linhaDoHistorico,
+  paraGuardar,
+  type MensagemDoHistorico,
+} from './historico-guardado';
+import { mediaIdDe } from './media-id';
 
 /**
  * Quem está pedindo — o suficiente pra saber o que essa pessoa pode ver.
@@ -47,11 +55,13 @@ import { AVISO_DE_INDISPONIBILIDADE } from '../ai/ai-indisponivel';
  */
 
 /**
- * Quantas mensagens de cada conversa a importação do aparelho grava.
+ * Quantas mensagens de cada conversa a importação do aparelho traz.
  *
  * O suficiente pra retomar qualquer atendimento — as últimas trocas, com
  * contexto de sobra pra IA (que lê bem menos que isso, ver
- * LIMITE_DO_HISTORICO). O resto fica no celular (ver `importarHistorico`).
+ * LIMITE_DO_HISTORICO). Só a mais recente vira mensagem na hora; as
+ * outras esperam a conversa ser aberta (ver HistoricoGuardado). O resto
+ * fica no celular (ver `importarHistorico`).
  */
 export const LIMITE_DO_HISTORICO_IMPORTADO = 40;
 
@@ -369,22 +379,7 @@ const conversationListSelect = {
  * `{...detalhe, ...resumo}` ao receber um evento, e o array de um item
  * sobrescreveria o histórico inteiro. Por isso vira `lastMessage`.
  */
-/**
- * Tira o id da mídia de dentro do metadata pra gravar na coluna própria.
- *
- * A coluna é espelho, não substituta: o metadata continua carregando mime,
- * nome do arquivo e chave do bucket, e é de lá que este valor sai. Ter o
- * espelho num único lugar evita o defeito silencioso de um caminho de
- * criação preencher a coluna e outro não — o anexo gravado pelo caminho
- * esquecido simplesmente não abriria.
- */
-export function mediaIdDe(metadata: unknown): string | undefined {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return undefined;
-  }
-  const valor = (metadata as { mediaId?: unknown }).mediaId;
-  return typeof valor === 'string' && valor ? valor : undefined;
-}
+export { mediaIdDe } from './media-id';
 
 /**
  * A prévia da lista, sem o texto do que foi apagado.
@@ -856,6 +851,12 @@ export class ConversationsService {
     options: { cursor?: string; limit?: number } = {},
   ) {
     const take = Math.min(Math.max(options.limit ?? 40, 1), 100);
+
+    // A primeira página é "abrir a conversa": o histórico que a importação
+    // deixou guardado de lado vira mensagem agora (ver HistoricoGuardado).
+    if (!options.cursor) {
+      await abrirHistoricoGuardado(this.prisma, conversationId);
+    }
 
     const items = await this.prisma.db.message.findMany({
       where: { conversationId },
@@ -3781,14 +3782,7 @@ export class ConversationsService {
   async importarHistorico(entrada: {
     customerPhone: string;
     customerName?: string;
-    mensagens: {
-      daEmpresa: boolean;
-      content: string;
-      messageType?: MessageType;
-      metadata?: Prisma.InputJsonValue;
-      externalId?: string;
-      createdAt: Date;
-    }[];
+    mensagens: MensagemDoHistorico[];
   }): Promise<{ importadas: number; conversationId: string | null }> {
     // `conversationId` nulo é "nada mudou": quem chama usa isto pra saber
     // quais conversas avisar em tempo real (ver F02) sem ter que comparar
@@ -3847,31 +3841,85 @@ export class ConversationsService {
     if (novas.length === 0) return { importadas: 0, conversationId: null };
 
     /*
-     * Só a CAPA da conversa: as mensagens mais recentes, não os anos todos.
+     * Só a CAPA da conversa vira mensagem; o resto fica guardado de lado.
      *
      * O aparelho manda o histórico inteiro que tiver — num número de
      * empresa, são anos de conversa com centenas de clientes. Gravar tudo
-     * deixava a primeira conexão lenta (milhares de linhas por lote) e a
-     * lista pesada, pra um passado que quase ninguém abre no painel. O que
-     * importa pra continuar o atendimento são as últimas trocas; o resto
-     * continua no celular, e a conversa avisa isso no topo (ver o painel).
+     * deixava a primeira conexão lenta e a lista pesada, pra um passado
+     * que quase ninguém abre no painel.
+     *
+     * Agora vai pra tabela de mensagens só a mais recente (o que a lista
+     * mostra), e as últimas trocas antes dela ficam num bloco por conversa
+     * (ver HistoricoGuardado), que vira mensagem quando alguém abre a
+     * conversa. O que passa do teto continua no celular, e a conversa
+     * avisa isso no topo (ver o painel).
      *
      * O teto vale por conversa, somando o que já foi gravado: se ela já
      * tem as mais recentes, só entra o que for MAIS NOVO que elas.
      */
+    const [limiteDaCapa, ultimaGravada, guardado] = await Promise.all([
+      this.prisma.db.message.findFirst({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: 'desc' },
+        skip: LIMITE_DO_HISTORICO_IMPORTADO - 1,
+        select: { createdAt: true },
+      }),
+      this.prisma.db.message.findFirst({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      this.prisma.db.historicoGuardado.findUnique({
+        where: { conversationId: conversation.id },
+        select: { mensagens: true },
+      }),
+    ]);
+
     const maisNovasPrimeiro = [...novas].sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
     );
-    const limiteDaCapa = await this.prisma.db.message.findFirst({
-      where: { conversationId: conversation.id },
-      orderBy: { createdAt: 'desc' },
-      skip: LIMITE_DO_HISTORICO_IMPORTADO - 1,
-      select: { createdAt: true },
-    });
-    const daCapa = maisNovasPrimeiro
-      .slice(0, LIMITE_DO_HISTORICO_IMPORTADO)
-      .filter((m) => !limiteDaCapa || m.createdAt > limiteDaCapa.createdAt);
-    if (daCapa.length === 0) return { importadas: 0, conversationId: null };
+    const cabe = (m: MensagemDoHistorico) =>
+      !limiteDaCapa || m.createdAt > limiteDaCapa.createdAt;
+
+    // A capa: a mais nova do lote, se for mais nova que tudo que a conversa
+    // já mostra. Se não for, a lista já tem uma capa melhor que ela.
+    const candidata = maisNovasPrimeiro[0];
+    const capa =
+      candidata &&
+      cabe(candidata) &&
+      (!ultimaGravada || candidata.createdAt > ultimaGravada.createdAt)
+        ? candidata
+        : null;
+
+    // O bloco guardado: o que já estava nele mais o que chegou agora, sem
+    // repetir, das mais novas pras mais velhas e até o teto. A cópia que
+    // chegou agora vem primeiro — ela pode trazer o endereço da mídia que
+    // a anterior não tinha.
+    const jaGuardadas = guardado ? lerGuardadas(guardado.mensagens) : [];
+    const vistas = new Set<string>();
+    const bloco: MensagemDoHistorico[] = [];
+    for (const m of [
+      ...maisNovasPrimeiro.filter((m) => m !== capa),
+      ...jaGuardadas,
+    ]) {
+      if (m.externalId) {
+        if (vistas.has(m.externalId)) continue;
+        vistas.add(m.externalId);
+      }
+      bloco.push(m);
+    }
+    bloco.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const guardar = bloco
+      .slice(0, LIMITE_DO_HISTORICO_IMPORTADO - 1)
+      .filter(cabe);
+    const idsJaGuardados = new Set(jaGuardadas.map((m) => m.externalId));
+    const guardadasAgora = guardar.filter(
+      (m) => !jaGuardadas.includes(m) && !idsJaGuardados.has(m.externalId),
+    );
+
+    if (!capa && guardadasAgora.length === 0) {
+      return { importadas: 0, conversationId: null };
+    }
 
     /*
      * `skipDuplicates` é a última linha de defesa, e a única que não é uma
@@ -3883,22 +3931,28 @@ export class ConversationsService {
      * caso raro — era o que duplicava a conversa inteira na reconexão.
      * Aqui quem decide é o índice único do banco.
      */
-    const gravadas = await this.prisma.db.message.createMany({
-      skipDuplicates: true,
-      data: daCapa.map((m) => ({
-        tenantId: this.prisma.tenantId,
-        conversationId: conversation.id,
-        senderType: m.daEmpresa ? ('AGENT' as const) : ('CUSTOMER' as const),
-        content: m.content,
-        messageType: m.messageType ?? 'TEXT',
-        metadata: m.metadata,
-        mediaId: mediaIdDe(m.metadata),
-        externalId: m.externalId,
-        // Já entregue: quem entregou foi o WhatsApp do celular, semanas atrás.
-        status: 'SENT' as const,
-        createdAt: m.createdAt,
-      })),
-    });
+    const gravadas = capa
+      ? await this.prisma.db.message.createMany({
+          skipDuplicates: true,
+          data: [linhaDoHistorico(this.prisma.tenantId, conversation.id, capa)],
+        })
+      : { count: 0 };
+
+    if (guardar.length > 0) {
+      const dados = {
+        mensagens: paraGuardar(guardar),
+        maisRecenteEm: guardar[0].createdAt,
+      };
+      await this.prisma.db.historicoGuardado.upsert({
+        where: { conversationId: conversation.id },
+        create: {
+          conversationId: conversation.id,
+          tenantId: this.prisma.tenantId,
+          ...dados,
+        },
+        update: dados,
+      });
+    }
 
     await this.prisma.db.conversation.update({
       where: { id: conversation.id },
@@ -3910,11 +3964,12 @@ export class ConversationsService {
       },
     });
 
-    // O que o BANCO gravou, e não o que tentamos gravar: é este número que
-    // vira a contagem de "trazidas até agora" na tela, e contar as puladas
-    // fazia o painel anunciar milhares de mensagens que não existiam.
+    // O que o BANCO gravou (a capa e o que entrou no bloco), e não o que
+    // tentamos gravar: é este número que vira a contagem de "trazidas até
+    // agora" na tela, e contar as puladas fazia o painel anunciar milhares
+    // de mensagens que não existiam.
     return {
-      importadas: gravadas?.count ?? daCapa.length,
+      importadas: (gravadas?.count ?? 0) + guardadasAgora.length,
       conversationId: conversation.id,
     };
   }

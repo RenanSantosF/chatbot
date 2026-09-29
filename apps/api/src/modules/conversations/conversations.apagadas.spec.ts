@@ -34,6 +34,11 @@ function montar(dados: {
         findMany: jest.fn().mockResolvedValue([conversa]),
         findFirst: jest.fn().mockResolvedValue(conversa),
       },
+      historicoGuardado: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       message: {
         findMany: jest.fn().mockResolvedValue(dados.mensagens ?? []),
       },

@@ -3,6 +3,7 @@ import type { AiTone } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { CollectionService } from '../collection/collection.service';
+import { abrirHistoricoGuardado } from '../conversations/historico-guardado';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import {
   dentroDoExpediente,
@@ -389,6 +390,11 @@ export class AiContextBuilder {
   }
 
   async build(conversationId: string): Promise<AiConversationContext> {
+    // O cliente voltou a escrever numa conversa que veio do aparelho e
+    // ninguém abriu ainda: sem isto, a IA leria só a última mensagem de
+    // antes e responderia sem saber do que se falava (ver
+    // HistoricoGuardado).
+    await abrirHistoricoGuardado(this.tenantPrisma, conversationId);
     const desde = await this.inicioDoAtendimentoAtual(conversationId);
 
     const messages = await this.tenantPrisma.db.message.findMany({

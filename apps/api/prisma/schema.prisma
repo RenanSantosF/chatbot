@@ -30,13 +30,13 @@ enum UserStatus {
 }
 
 model Tenant {
-  id        String       @id @default(uuid())
-  name      String
-  slug      String       @unique
-  logo      String?
-  timezone  String       @default("America/Sao_Paulo")
-  language  String       @default("pt-BR")
-  status    TenantStatus @default(TRIAL)
+  id          String        @id @default(uuid())
+  name        String
+  slug        String        @unique
+  logo        String?
+  timezone    String        @default("America/Sao_Paulo")
+  language    String        @default("pt-BR")
+  status      TenantStatus  @default(TRIAL)
   /// O que a empresa contou sobre si na primeira entrada.
   ///
   /// Fora do formulário de cadastro de propósito. Cada campo a mais na
@@ -52,7 +52,7 @@ model Tenant {
   ///
   /// Json porque a lista de perguntas vai mudar — e mudar pergunta de
   /// pesquisa não deveria custar migração de banco.
-  profile   Json?
+  profile     Json?
   /// Quando a primeira configuração foi concluída (ou dispensada).
   onboardedAt DateTime?
   /// Quem entrega as mensagens desta empresa (ver CanalProvedor).
@@ -62,35 +62,36 @@ model Tenant {
   /// nem número na Cloud API. Guardar a escolha lá seria guardá-la num
   /// lugar que, justamente pra metade dos casos, não existe.
   canal       CanalProvedor @default(META_CLOUD)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  users              User[]
-  customers          Customer[]
-  conversations      Conversation[]
-  messages           Message[]
-  aiSettings         AiSettings?
-  aiInstructions     AiInstruction[]
-  knowledgeDocuments KnowledgeDocument[]
-  knowledgeChunks    KnowledgeChunk[]
-  aiTools            AiTool[]
-  tasks              Task[]
-  queues             Queue[]
-  quickReplies       QuickReply[]
-  tags               Tag[]
-  conversationTags   ConversationTag[]
-  queueMembers       QueueMember[]
-  routingRules       RoutingRule[]
-  rolePermissions    RolePermission[]
-  collectionFields   CollectionField[]
-  customerNotes      CustomerNote[]
-  retention          RetentionSettings?
-  billing            BillingAccount?
-  inboxSettings      InboxSettings?
-  whatsappSettings   WhatsAppSettings?
-  evolutionSettings  EvolutionSettings?
-  auditLogs          AuditLog[]
-  pushSubscriptions  PushSubscription[]
+  users               User[]
+  customers           Customer[]
+  conversations       Conversation[]
+  messages            Message[]
+  aiSettings          AiSettings?
+  aiInstructions      AiInstruction[]
+  knowledgeDocuments  KnowledgeDocument[]
+  knowledgeChunks     KnowledgeChunk[]
+  aiTools             AiTool[]
+  tasks               Task[]
+  queues              Queue[]
+  quickReplies        QuickReply[]
+  tags                Tag[]
+  conversationTags    ConversationTag[]
+  queueMembers        QueueMember[]
+  routingRules        RoutingRule[]
+  rolePermissions     RolePermission[]
+  collectionFields    CollectionField[]
+  customerNotes       CustomerNote[]
+  retention           RetentionSettings?
+  billing             BillingAccount?
+  inboxSettings       InboxSettings?
+  whatsappSettings    WhatsAppSettings?
+  evolutionSettings   EvolutionSettings?
+  auditLogs           AuditLog[]
+  historicosGuardados HistoricoGuardado[]
+  pushSubscriptions   PushSubscription[]
 
   @@map("tenants")
 }
@@ -161,7 +162,7 @@ model AuditLog {
   /// Montada na gravação e não na leitura: a frase depende de dados que
   /// podem mudar ou sumir depois (nome de fila, nome de colaborador), e
   /// remontá-la meses depois produziria um histórico que muda sozinho.
-  resumo String
+  resumo         String
 
   /// O estado que a ação mudou ou destruiu, cru.
   ///
@@ -215,26 +216,30 @@ enum WhatsAppOnboarding {
 }
 
 model WhatsAppSettings {
-  id                   String   @id @default(uuid())
-  tenantId             String   @unique
+  id                       String             @id @default(uuid())
+  tenantId                 String             @unique
   // ID do número na Cloud API da Meta — chega em todo webhook recebido
   // (value.metadata.phone_number_id) e é como identificamos de qual tenant
   // é uma mensagem antes mesmo de saber o tenantId, já que o webhook é
   // único pra plataforma inteira. Por isso é globalmente único, não só
   // único por tenant.
-  phoneNumberId        String   @unique
-  displayPhoneNumber   String?
-  wabaId               String?
-  accessTokenEncrypted String
+  phoneNumberId            String             @unique
+  displayPhoneNumber       String?
+  wabaId                   String?
+  accessTokenEncrypted     String
   // Opcional desde a entrada por Embedded Signup: nesse caminho quem assina
   // os webhooks é o app da plataforma, com um segredo só, guardado no
   // ambiente. Preenchido apenas por quem conectou o número na mão, com app
   // próprio no Meta Developers.
-  appSecretEncrypted   String?
-  onboarding           WhatsAppOnboarding @default(MANUAL)
-  /** Business portfolio do cliente, devolvido pelo Embedded Signup. */
-  businessId           String?
-  /** PIN da verificação em duas etapas, definido por nós ao registrar. */
+  appSecretEncrypted       String?
+  onboarding               WhatsAppOnboarding @default(MANUAL)
+  /**
+   * Business portfolio do cliente, devolvido pelo Embedded Signup.
+   */
+  businessId               String?
+  /**
+   * PIN da verificação em duas etapas, definido por nós ao registrar.
+   */
   registrationPinEncrypted String?
 
   // --- Coexistência (número no aplicativo do celular E na Cloud API).
@@ -246,18 +251,22 @@ model WhatsAppSettings {
   //
   // A presença de qualquer eco/contato/histórico é o que prova que a
   // coexistência está ativa; não existe endpoint pra perguntar isso.
-  coexistenceSeenAt    DateTime?
-  /** 0 a 100. Só do histórico anterior ao onboarding. */
-  historyProgress      Int       @default(0)
-  historySyncedAt      DateTime?
-  historyMessages      Int       @default(0)
-  /** Motivo de o histórico não vir (ex.: a empresa desligou no aplicativo). */
-  historyError         String?
-  contactsSyncedAt     DateTime?
-  contactsCount        Int       @default(0)
+  coexistenceSeenAt DateTime?
+  /**
+   * 0 a 100. Só do histórico anterior ao onboarding.
+   */
+  historyProgress   Int       @default(0)
+  historySyncedAt   DateTime?
+  historyMessages   Int       @default(0)
+  /**
+   * Motivo de o histórico não vir (ex.: a empresa desligou no aplicativo).
+   */
+  historyError      String?
+  contactsSyncedAt  DateTime?
+  contactsCount     Int       @default(0)
 
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -394,7 +403,7 @@ model User {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignedConversations Conversation[]
   queueMemberships      QueueMember[]
   routingRules          RoutingRule[]
@@ -435,7 +444,7 @@ model Customer {
   /// conversa faz sentido num grupo também. O que MUDA é decidido por
   /// esta coluna: a IA nunca responde, o relógio de espera não corre, a
   /// fila de pendentes não conta, e a lista de Clientes não mostra.
-  isGroup       Boolean        @default(false)
+  isGroup Boolean @default(false)
 
   /// A foto de perfil do WhatsApp — uma URL do CDN do WhatsApp, que EXPIRA
   /// em alguns dias. Por isso é renovada quando o cliente volta a escrever
@@ -486,14 +495,14 @@ enum TranscricaoDeAudio {
 }
 
 model InboxSettings {
-  id               String   @id @default(uuid())
-  tenantId         String   @unique
+  id       String @id @default(uuid())
+  tenantId String @unique
 
   /// Ver TranscricaoDeAudio. O padrão deixa a escolha com quem atende:
   /// ligar tudo sem avisar cobraria do dono uma chamada ao modelo por
   /// áudio recebido, e desligar esconderia um recurso que ele nem saberia
   /// que existe.
-  transcricaoDeAudio TranscricaoDeAudio @default(SOB_DEMANDA)
+  transcricaoDeAudio    TranscricaoDeAudio @default(SOB_DEMANDA)
   // Confirmação de leitura: quando desligada, abrir a conversa no painel
   // não acende o tique azul no aparelho do cliente. É escolha da empresa —
   // tem negócio que prefere não revelar que leu e ainda não respondeu.
@@ -508,13 +517,13 @@ model InboxSettings {
   /// Desligado por padrão: mandar texto em nome da empresa é coisa que
   /// ela precisa escolher, e um texto genérico saindo sem ninguém saber
   /// seria pior que o silêncio.
-  greetingEnabled  Boolean  @default(false)
-  greetingMessage  String   @default("Olá! Recebemos sua mensagem e um atendente vai falar com você em instantes.")
-  sendReadReceipts Boolean  @default(true)
+  greetingEnabled       Boolean            @default(false)
+  greetingMessage       String             @default("Olá! Recebemos sua mensagem e um atendente vai falar com você em instantes.")
+  sendReadReceipts      Boolean            @default(true)
   // Aviso automático ao resolver: sem isso o cliente fica sem saber que o
   // atendimento foi encerrado e continua esperando resposta.
-  notifyOnResolve  Boolean  @default(true)
-  resolveMessage   String   @default("Atendimento encerrado por aqui. Se precisar de mais alguma coisa, é só mandar mensagem que a gente volta a te atender.")
+  notifyOnResolve       Boolean            @default(true)
+  resolveMessage        String             @default("Atendimento encerrado por aqui. Se precisar de mais alguma coisa, é só mandar mensagem que a gente volta a te atender.")
   // Agrupar conversas do mesmo cliente: quando ligado, quem volta a
   // escrever depois de um assunto resolvido cai na MESMA conversa, com o
   // histórico anterior à vista, em vez de abrir um card novo do zero.
@@ -524,12 +533,12 @@ model InboxSettings {
   /// atendimento automaticamente — é o que a maioria espera, porque o
   /// cliente do outro lado não vê "encerrado", vê uma conversa de WhatsApp.
   /// Desligado, o compositor fica travado e é preciso reabrir de propósito.
-  allowSendWhenResolved Boolean @default(true)
+  allowSendWhenResolved Boolean            @default(true)
 
-  groupByCustomer  Boolean  @default(true)
+  groupByCustomer  Boolean         @default(true)
   // Janela em horas pro reagrupamento. Passou disso, o assunto é outro e
   // a conversa nova começa limpa.
-  groupWindowHours Int      @default(72)
+  groupWindowHours Int             @default(72)
   /// Encerra sozinho o que ficou parado.
   ///
   /// DESLIGADO por padrão — decisão explícita, pedida depois de a empresa
@@ -543,8 +552,8 @@ model InboxSettings {
   /// O padrão de 20 horas (`autoCloseHours`, abaixo) encerra com folga antes
   /// das 24, enquanto ainda dá tempo de alguém reabrir de graça — vale pra
   /// quem ligar o recurso.
-  autoCloseIdle    Boolean  @default(false)
-  autoCloseHours   Int      @default(20)
+  autoCloseIdle    Boolean         @default(false)
+  autoCloseHours   Int             @default(20)
   /// Avisa o cliente antes de encerrar por inatividade.
   ///
   /// Sem o aviso, a conversa some do lado de cá e o cliente fica achando
@@ -555,13 +564,13 @@ model InboxSettings {
   /// Só é enviado dentro da janela de 24h (ver AutoCloseService): fora
   /// dela a Meta recusa texto livre, e insistir seria pagar por um aviso
   /// de despedida.
-  autoCloseNotify  Boolean  @default(true)
-  autoCloseMessage String   @default("Olá! Percebemos que faz um tempo que você não interage nesta conversa e, para manter nosso atendimento organizado, vamos encerrá-la por aqui. Se precisar de ajuda novamente, é só nos chamar. Será um prazer atender você!")
+  autoCloseNotify  Boolean         @default(true)
+  autoCloseMessage String          @default("Olá! Percebemos que faz um tempo que você não interage nesta conversa e, para manter nosso atendimento organizado, vamos encerrá-la por aqui. Se precisar de ajuda novamente, é só nos chamar. Será um prazer atender você!")
   // Assina a mensagem com o nome de quem respondeu ("*Renan:*" em negrito,
   // antes do texto). Desligado por padrão porque é decisão de imagem: tem
   // empresa que quer que o cliente saiba com quem falou, e tem empresa que
   // prefere falar como uma voz só.
-  showAgentName    Boolean  @default(false)
+  showAgentName    Boolean         @default(false)
   // Quem enxerga o quê no Inbox. ALL: todo mundo vê tudo, que é o certo pra
   // equipe pequena. OWN_QUEUES: cada um vê só os setores de que participa —
   // o financeiro não abre conversa do jurídico. Dono e admin veem tudo nos
@@ -586,8 +595,8 @@ model InboxSettings {
   /// A leitura passa sempre por `lerExpediente` (horario-comercial.ts):
   /// coluna Json não tem garantia de forma, e a validação mora num lugar só.
   businessHours    Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -681,8 +690,8 @@ model Conversation {
   /// direcionamento automático (regra ou trava da IA) cria conversa nesse
   /// estado: a máquina sugere, a pessoa aceita. Quem assume pelo botão já
   /// entra aceito, porque a escolha foi dela.
-  assignmentAccepted Boolean             @default(true)
-  lastMessageAt     DateTime?
+  assignmentAccepted Boolean   @default(true)
+  lastMessageAt      DateTime?
 
   /// Desde quando o CLIENTE está esperando resposta.
   ///
@@ -694,17 +703,18 @@ model Conversation {
   /// Marca a primeira mensagem do cliente que ainda não teve resposta da
   /// empresa, e volta a ser nulo quando alguém (ou a IA) responde. Nulo
   /// significa "a bola não está com a gente".
-  waitingSince      DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  waitingSince DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  assignedUser User?     @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
-  queue        Queue?    @relation(fields: [queueId], references: [id], onDelete: SetNull)
-  messages     Message[]
-  tasks        Task[]
-  tags         ConversationTag[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedUser      User?              @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  queue             Queue?             @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  messages          Message[]
+  tasks             Task[]
+  tags              ConversationTag[]
+  historicoGuardado HistoricoGuardado?
 
   @@index([tenantId, status])
   // Ordenação padrão da lista do Inbox (mais recente primeiro) —
@@ -800,6 +810,22 @@ model Message {
   replyTo      Message?     @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies      Message[]    @relation("MessageReply")
 
+  /// A mesma mensagem do WhatsApp não entra duas vezes — regra do BANCO,
+  /// e não mais só uma conferência antes de gravar.
+  ///
+  /// A conferência continua lá (ela evita o trabalho), mas ela é ler e
+  /// depois escrever: dois lotes do histórico chegando no mesmo segundo
+  /// liam "não tem" ao mesmo tempo e gravavam os dois. Com o aparelho
+  /// despejando milhares de mensagens em lotes que se sobrepõem, isso não
+  /// é caso raro — é o que aconteceu na reconexão, com a conversa inteira
+  /// aparecendo em dobro.
+  ///
+  /// Composto com o tenant porque o id externo só é único dentro da
+  /// empresa (duas empresas podem falar com o mesmo cliente), e é assim
+  /// que toda busca chega até aqui — a extensão de isolamento já fixa o
+  /// tenant. Substitui o índice que existia só por `externalId`: este
+  /// serve às mesmas buscas.
+  @@unique([tenantId, externalId])
   @@index([tenantId])
   @@index([conversationId, createdAt])
   /// A citação, indexada — e isto NÃO é sobre buscar resposta na tela.
@@ -817,22 +843,6 @@ model Message {
   /// bastante pra dar impasse entre duas transações — e o que fazia a
   /// varredura do prazo de guarda arrastar sem ninguém ver.
   @@index([replyToId])
-  /// A mesma mensagem do WhatsApp não entra duas vezes — regra do BANCO,
-  /// e não mais só uma conferência antes de gravar.
-  ///
-  /// A conferência continua lá (ela evita o trabalho), mas ela é ler e
-  /// depois escrever: dois lotes do histórico chegando no mesmo segundo
-  /// liam "não tem" ao mesmo tempo e gravavam os dois. Com o aparelho
-  /// despejando milhares de mensagens em lotes que se sobrepõem, isso não
-  /// é caso raro — é o que aconteceu na reconexão, com a conversa inteira
-  /// aparecendo em dobro.
-  ///
-  /// Composto com o tenant porque o id externo só é único dentro da
-  /// empresa (duas empresas podem falar com o mesmo cliente), e é assim
-  /// que toda busca chega até aqui — a extensão de isolamento já fixa o
-  /// tenant. Substitui o índice que existia só por `externalId`: este
-  /// serve às mesmas buscas.
-  @@unique([tenantId, externalId])
   // Composto e nesta ordem: a busca sempre chega com o tenant já fixado
   // pela extensão de isolamento, então o filtro mais seletivo vem primeiro.
   @@index([tenantId, mediaId])
@@ -1189,18 +1199,18 @@ model ConversationTag {
 }
 
 model QuickReply {
-  id        String   @id @default(uuid())
-  tenantId  String
-  shortcut  String
+  id         String   @id @default(uuid())
+  tenantId   String
+  shortcut   String
   /// Rótulo curto pra lista. Vazio, a própria primeira linha do texto serve.
-  title     String?
-  content   String
+  title      String?
+  content    String
   /// Quantas vezes já foi usada. Ordena a lista pelo que a equipe de fato
   /// usa, em vez de por ordem de cadastro — depois de uma semana, o atalho
   /// certo é o primeiro sem ninguém ter organizado nada.
-  usageCount Int     @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1276,23 +1286,23 @@ model BillingAccount {
   /// calcula esse número a partir do preço real do modelo). Um valor por
   /// conta, e não uma constante fixa no código, porque planos diferentes
   /// (quando o Stripe entrar) vão incluir quantidades diferentes.
-  aiMonthlyMessageLimit Int @default(3000)
+  aiMonthlyMessageLimit     Int       @default(3000)
   /// Respostas da IA já contadas no período corrente.
-  aiRepliesUsed         Int @default(0)
+  aiRepliesUsed             Int       @default(0)
   /// Somados só pra visibilidade/depuração de custo — a trava usa
   /// `aiRepliesUsed`, não os tokens.
-  aiInputTokensUsed     BigInt @default(0)
-  aiOutputTokensUsed    BigInt @default(0)
+  aiInputTokensUsed         BigInt    @default(0)
+  aiOutputTokensUsed        BigInt    @default(0)
   /// Início do período corrente. Comparado com "agora" a cada leitura —
   /// virou o mês, os contadores acima zeram sozinhos na próxima mensagem,
   /// sem rotina agendada nenhuma (mesma ideia de `historicoIniciadoEm` no
   /// canal do WhatsApp).
-  aiUsagePeriodStart    DateTime?
+  aiUsagePeriodStart        DateTime?
   /// Respostas extras compradas avulsas pra este período, além do que o
   /// plano já inclui (ver BillingService.criarCheckoutExtra) — pra quem
   /// bate no teto do mês não precisar esperar o mês virar. Some junto com
   /// o resto do período quando o mês muda (ver AiUsageService).
-  aiExtraMessagesThisPeriod Int @default(0)
+  aiExtraMessagesThisPeriod Int       @default(0)
 
   /// Quando a assinatura foi vista pela primeira vez fora de "active"
   /// (atraso de pagamento ou cancelamento), numa conta que já tinha
@@ -1333,8 +1343,8 @@ model PushSubscription {
   endpoint String @unique
   /// As duas chaves que cifram o conteúdo do aviso ponta a ponta. Sem elas
   /// o serviço de push entregaria um envelope que ninguém abre.
-  p256dh String
-  auth   String
+  p256dh   String
+  auth     String
 
   /// Pra dar nome ao aparelho na tela de quem quiser revisar as inscrições.
   userAgent String?
@@ -1348,4 +1358,31 @@ model PushSubscription {
   @@index([tenantId])
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+/// O resto do histórico importado de uma conversa, guardado de lado até
+/// alguém abri-la.
+///
+/// A importação do aparelho grava só a CAPA de cada conversa (a mensagem
+/// mais recente) na tabela de mensagens; as outras trocas recentes ficam
+/// aqui, num bloco só. Numa conta com quinhentas conversas no celular,
+/// isso troca vinte mil linhas indexadas por quinhentas — e a maioria
+/// daquelas conversas ninguém nunca abre no painel.
+///
+/// Quem abre a conversa (ou a IA, ao ler o contexto) transforma o bloco
+/// em mensagens de verdade e apaga a linha (ver `abrirHistoricoGuardado`).
+model HistoricoGuardado {
+  conversationId String   @id
+  tenantId       String
+  /// Lista de `{ externalId, daEmpresa, content, messageType, metadata, createdAt }`.
+  mensagens      Json
+  /// A mais nova do bloco — o que o prazo de guarda compara.
+  maisRecenteEm  DateTime
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, maisRecenteEm])
+  @@map("historicos_guardados")
 }
