@@ -126,7 +126,7 @@ function NotificationsButton() {
  * discreto de propósito: nada está errado, só não está em dia ainda.
  */
 function ConnectionBadge() {
-  const { connected, sincronizando } = useRealtime();
+  const { connected, sincronizando, historico } = useRealtime();
 
   if (!connected) {
     return (
@@ -134,6 +134,32 @@ function ConnectionBadge() {
         <Bell className="size-3" />
         Reconectando
       </Badge>
+    );
+  }
+
+  /*
+   * As conversas do aparelho chegando (primeira conexão por QR code, ou
+   * reconexão). Era uma faixa amarela de lado a lado no topo, e ocupava a
+   * tela justo no momento em que a pessoa quer ver as conversas
+   * aparecendo. Nada está errado — só chegando —, então fala baixo, no
+   * mesmo lugar e no mesmo tom do "Sincronizando". O número de mensagens
+   * fica no título, pra quem quiser saber.
+   */
+  if (historico?.importando) {
+    const progresso = Math.min(99, Math.round(historico.progresso ?? 0));
+    return (
+      <span
+        role="status"
+        title={
+          historico.mensagens > 0
+            ? `${historico.mensagens.toLocaleString("pt-BR")} mensagens até agora. As conversas vão aparecendo sozinhas.`
+            : "As conversas vão aparecendo sozinhas."
+        }
+        className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground animate-in fade-in"
+      >
+        <Spinner className="size-3" />
+        Trazendo conversas{progresso > 0 ? ` · ${progresso}%` : ""}
+      </span>
     );
   }
 
@@ -186,36 +212,6 @@ function CanalCaido() {
       <Link href="/dashboard/settings/whatsapp" className="font-medium underline underline-offset-2">
         Reconectar
       </Link>
-    </div>
-  );
-}
-
-/**
- * As conversas do aparelho estão a caminho.
- *
- * Fica na faixa do topo, e não escondida na tela de Configurações do
- * WhatsApp, porque quem precisa dessa informação está no Inbox: sem ela, o
- * painel parece simplesmente vazio ou incompleto, e a pessoa vai procurar
- * defeito numa conversa que ainda está chegando.
- *
- * Não é alarme — nada está errado, só demorando —, então usa a cor de
- * aviso e não a de erro, e não pede ação nenhuma.
- */
-function HistoricoChegando() {
-  const { historico } = useRealtime();
-  if (!historico?.importando) return null;
-
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs">
-      <Spinner className="size-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
-      <span className="font-medium text-amber-800 dark:text-amber-300">
-        Trazendo as conversas do aparelho.
-      </span>
-      <span className="text-amber-800/80 dark:text-amber-300/80">
-        {historico.mensagens > 0
-          ? `${historico.mensagens.toLocaleString("pt-BR")} mensagens até agora — pode levar alguns minutos.`
-          : "Isso pode levar alguns minutos. Elas vão aparecendo sozinhas."}
-      </span>
     </div>
   );
 }
@@ -448,7 +444,6 @@ function Shell({
         </header>
         <CobrancaVencida cobranca={cobranca} role={user.role} />
         <CanalCaido />
-        <HistoricoChegando />
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
             <span className="text-amber-800 dark:text-amber-300">

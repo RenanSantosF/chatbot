@@ -8,6 +8,7 @@ import {
   MessagesSquare,
   Paperclip,
   Search,
+  Smartphone,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -1092,6 +1093,18 @@ export function ChatPanel({
               {carregandoAnteriores ? "Carregando…" : "Carregar mensagens anteriores"}
             </Button>
           </div>
+        ) : conversation.messages.length > 0 ? (
+          /*
+           * O começo do que está no painel — e o aviso de onde está o resto.
+           *
+           * Da conexão pelo aparelho vêm só as mensagens mais recentes de
+           * cada conversa (ver importarHistorico na API). Sem este aviso,
+           * chegar ao topo parecia defeito: "cadê a conversa de mês passado?".
+           */
+          <p className="mx-auto mb-2 flex max-w-xs items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-center text-[11px] text-muted-foreground shadow-xs">
+            <Smartphone className="size-3 shrink-0" />
+            Mensagens mais antigas, se houver, ficam no seu celular.
+          </p>
         ) : null}
         {conversation.messages.map((message: ConversationMessage, index) => {
           const previous = conversation.messages[index - 1];

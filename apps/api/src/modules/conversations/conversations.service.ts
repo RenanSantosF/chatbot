@@ -45,6 +45,16 @@ import { AVISO_DE_INDISPONIBILIDADE } from '../ai/ai-indisponivel';
  * opcional pra deixar essa intenção explícita no tipo, e não só na
  * convenção.
  */
+
+/**
+ * Quantas mensagens de cada conversa a importação do aparelho grava.
+ *
+ * O suficiente pra retomar qualquer atendimento — as últimas trocas, com
+ * contexto de sobra pra IA (que lê bem menos que isso, ver
+ * LIMITE_DO_HISTORICO). O resto fica no celular (ver `importarHistorico`).
+ */
+export const LIMITE_DO_HISTORICO_IMPORTADO = 40;
+
 export interface ConversationViewer {
   userId: string;
   role: UserRole;
@@ -3837,6 +3847,33 @@ export class ConversationsService {
     if (novas.length === 0) return { importadas: 0, conversationId: null };
 
     /*
+     * Só a CAPA da conversa: as mensagens mais recentes, não os anos todos.
+     *
+     * O aparelho manda o histórico inteiro que tiver — num número de
+     * empresa, são anos de conversa com centenas de clientes. Gravar tudo
+     * deixava a primeira conexão lenta (milhares de linhas por lote) e a
+     * lista pesada, pra um passado que quase ninguém abre no painel. O que
+     * importa pra continuar o atendimento são as últimas trocas; o resto
+     * continua no celular, e a conversa avisa isso no topo (ver o painel).
+     *
+     * O teto vale por conversa, somando o que já foi gravado: se ela já
+     * tem as mais recentes, só entra o que for MAIS NOVO que elas.
+     */
+    const maisNovasPrimeiro = [...novas].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+    const limiteDaCapa = await this.prisma.db.message.findFirst({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: 'desc' },
+      skip: LIMITE_DO_HISTORICO_IMPORTADO - 1,
+      select: { createdAt: true },
+    });
+    const daCapa = maisNovasPrimeiro
+      .slice(0, LIMITE_DO_HISTORICO_IMPORTADO)
+      .filter((m) => !limiteDaCapa || m.createdAt > limiteDaCapa.createdAt);
+    if (daCapa.length === 0) return { importadas: 0, conversationId: null };
+
+    /*
      * `skipDuplicates` é a última linha de defesa, e a única que não é uma
      * corrida.
      *
@@ -3848,7 +3885,7 @@ export class ConversationsService {
      */
     const gravadas = await this.prisma.db.message.createMany({
       skipDuplicates: true,
-      data: novas.map((m) => ({
+      data: daCapa.map((m) => ({
         tenantId: this.prisma.tenantId,
         conversationId: conversation.id,
         senderType: m.daEmpresa ? ('AGENT' as const) : ('CUSTOMER' as const),
@@ -3877,7 +3914,7 @@ export class ConversationsService {
     // vira a contagem de "trazidas até agora" na tela, e contar as puladas
     // fazia o painel anunciar milhares de mensagens que não existiam.
     return {
-      importadas: gravadas?.count ?? novas.length,
+      importadas: gravadas?.count ?? daCapa.length,
       conversationId: conversation.id,
     };
   }

@@ -1,4 +1,7 @@
-import { ConversationsService } from './conversations.service';
+import {
+  ConversationsService,
+  LIMITE_DO_HISTORICO_IMPORTADO,
+} from './conversations.service';
 
 /**
  * As conversas que já estavam no aparelho, sem virem em dobro.
@@ -14,9 +17,13 @@ import { ConversationsService } from './conversations.service';
  */
 function montar(
   jaGravadas: (string | { externalId: string; metadata?: unknown })[] = [],
+  /** A 40ª mensagem mais recente que a conversa já tem, se tiver 40. */
+  corteDaCapa: Date | null = null,
 ) {
-  const criadas: { data: Record<string, unknown>[]; skipDuplicates?: boolean }[] =
-    [];
+  const criadas: {
+    data: Record<string, unknown>[];
+    skipDuplicates?: boolean;
+  }[] = [];
 
   const db = {
     // A busca da conversa acontece dentro de uma transação com trava por
@@ -32,13 +39,18 @@ function montar(
       update: jest.fn().mockResolvedValue({ id: 'conversa-1' }),
     },
     message: {
-      findMany: jest.fn().mockResolvedValue(
-        jaGravadas.map((m, i) =>
-          typeof m === 'string'
-            ? { id: `msg-${i}`, externalId: m, metadata: null }
-            : { id: `msg-${i}`, metadata: null, ...m },
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(corteDaCapa ? { createdAt: corteDaCapa } : null),
+      findMany: jest
+        .fn()
+        .mockResolvedValue(
+          jaGravadas.map((m, i) =>
+            typeof m === 'string'
+              ? { id: `msg-${i}`, externalId: m, metadata: null }
+              : { id: `msg-${i}`, metadata: null, ...m },
+          ),
         ),
-      ),
       update: jest.fn().mockResolvedValue({}),
       createMany: jest.fn().mockImplementation((args) => {
         criadas.push(args);
@@ -216,5 +228,39 @@ describe('importação do histórico', () => {
     });
 
     expect(gravadas.importadas).toBe(1);
+  });
+
+  it('grava só a capa: as mais recentes da conversa, não o histórico todo', async () => {
+    const { service, criadas } = montar();
+    const mensagens = Array.from({ length: 100 }, (_, i) => ({
+      ...linha(`chave-${i}`),
+      createdAt: new Date(Date.UTC(2026, 0, 1) + i * 60_000),
+    }));
+
+    await service.importarHistorico({
+      customerPhone: '5527999998888',
+      mensagens,
+    });
+
+    const gravadas = criadas[0].data.map((m) => m.externalId);
+    expect(gravadas).toHaveLength(LIMITE_DO_HISTORICO_IMPORTADO);
+    // As mais novas (de 60 a 99), e nenhuma das antigas.
+    expect(gravadas).toContain('chave-99');
+    expect(gravadas).not.toContain('chave-0');
+  });
+
+  it('conversa que já tem a capa só recebe o que for mais novo que ela', async () => {
+    const corte = new Date('2026-08-19T12:00:00Z');
+    const { service, criadas } = montar([], corte);
+
+    await service.importarHistorico({
+      customerPhone: '5527999998888',
+      mensagens: [
+        { ...linha('antiga'), createdAt: new Date('2026-08-01T12:00:00Z') },
+        { ...linha('nova'), createdAt: new Date('2026-08-20T12:00:00Z') },
+      ],
+    });
+
+    expect(criadas[0].data.map((m) => m.externalId)).toEqual(['nova']);
   });
 });
