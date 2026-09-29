@@ -21,7 +21,10 @@ export type TipoDeEvento =
   | 'assinatura_cancelada'
   | 'pagamento_pendente'
   | 'pacote_iniciado'
-  | 'pacote_pago';
+  | 'pacote_pago'
+  | 'liberacao_manual'
+  | 'liberacao_revogada'
+  | 'conta_apagada';
 
 /** Os que o navegador pode mandar sem estar logado. */
 export const EVENTOS_DO_NAVEGADOR: TipoDeEvento[] = [

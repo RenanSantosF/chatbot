@@ -7,19 +7,31 @@ import {
 import Stripe from 'stripe';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { CacheCurto } from '../../common/cache/cache-curto';
+import { emailsDaPlataforma } from '../plataforma/plataforma.guard';
 import { RegistroDeEventos } from '../plataforma/registro-de-eventos.service';
+import {
+  decidirAcesso,
+  type ContaParaAcesso,
+  type DecisaoDeAcesso,
+  type MotivoDoAcesso,
+} from './acesso';
 
 /**
- * Dois dias entre a assinatura ficar em atraso e o acesso ser cortado.
+ * Se uma pessoa da empresa é dona da plataforma — um minuto de validade.
  *
- * Curto o bastante pra não virar um mês de uso de graça, longo o
- * bastante pra dar tempo de trocar um cartão vencido sem que a empresa
- * perca atendimentos no meio do caminho — o Stripe já tenta cobrar de
- * novo automaticamente antes de chegar aqui, então quem chega neste
- * relógio é quem realmente precisa agir.
+ * `status()` roda em toda requisição (ver BillingGuard); sem isto seria
+ * mais uma ida ao banco por clique pra uma resposta que só muda quando
+ * alguém mexe na variável de ambiente (e aí o processo reinicia).
  */
-const DIAS_DE_CARENCIA = 2;
-const CARENCIA_MS = DIAS_DE_CARENCIA * 24 * 60 * 60 * 1000;
+const DA_PLATAFORMA = new CacheCurto<boolean>(60_000);
+
+/**
+ * O Checkout do Stripe só aceita adiar a primeira cobrança se ela cair a
+ * pelo menos 48 horas de agora. Uma hora de folga por cima, pra o relógio
+ * entre este servidor e o dele não recusar a sessão.
+ */
+const MINIMO_PRO_ADIAMENTO_NO_CHECKOUT_MS = 49 * 60 * 60 * 1000;
 
 /**
  * Quantas respostas o pacote avulso acrescenta, e por quanto.
@@ -34,9 +46,8 @@ const CARENCIA_MS = DIAS_DE_CARENCIA * 24 * 60 * 60 * 1000;
 const MENSAGENS_POR_PACOTE_EXTRA = 1000;
 
 /**
- * O status de quem não está sendo cobrado agora — seja porque o
- * interruptor de desenvolvimento está ligado, seja porque a consulta ao
- * banco falhou (ver `status`, os dois lugares que devolvem isto).
+ * O status de quando a consulta ao banco falhou (ver `status`): destrava
+ * em vez de derrubar o painel de quem está em dia.
  */
 const LIBERADO = {
   assinaturaAtiva: false,
@@ -45,6 +56,8 @@ const LIBERADO = {
   emCarencia: false,
   vencidoDesde: null,
   bloqueiaEm: null,
+  liberadoAte: null,
+  motivo: 'assinatura' as MotivoDoAcesso,
 } as const;
 
 /**
@@ -118,22 +131,18 @@ export class BillingService {
    * dia, seria pior do que deixar passar por um instante.
    */
   async status() {
-    // Interruptor temporário de desenvolvimento: com a variável ligada,
-    // nenhuma conta fica bloqueada por falta de assinatura — pensado pra
-    // testar o resto do sistema sem precisar manter uma assinatura Stripe
-    // válida o tempo todo. Tirar do Railway assim que a cobrança for
-    // exigida de verdade; sem a variável (o padrão), o bloqueio continua
-    // valendo normalmente.
-    if (process.env.BILLING_ENFORCEMENT === 'off') {
-      return LIBERADO;
-    }
-
+    // O interruptor que liberava TODAS as contas (BILLING_ENFORCEMENT=off)
+    // não existe mais: quem fica liberado de graça agora é só a empresa
+    // do dono da plataforma e quem ele liberou à mão (ver decidirAcesso).
     try {
-      const conta = await this.contaAtual();
+      const [conta, daPlataforma] = await Promise.all([
+        this.contaAtual(),
+        this.ehDaPlataforma(this.prisma.tenantId),
+      ]);
       return {
         assinaturaAtiva: Boolean(conta.stripeSubscriptionId),
         planLabel: conta.planLabel,
-        ...this.statusDeAcesso(conta),
+        ...decidirAcesso(conta, { daPlataforma }),
       };
     } catch (erro) {
       this.logger.error(
@@ -144,54 +153,25 @@ export class BillingService {
     }
   }
 
-  /**
-   * Se esta empresa pode usar o sistema agora, e por quê.
-   *
-   * Função pura sobre os dois campos que decidem tudo — sem consulta ao
-   * banco aqui dentro — pra o mesmo cálculo servir tanto o guard que
-   * bloqueia requisição (BillingGuard) quanto a tela que mostra o aviso
-   * (AuthController.me), sem duplicar a régua em dois lugares.
-   *
-   * Uma conta que nunca assinou (`assinaturaVencidaEm` nulo e sem
-   * assinatura) fica bloqueada direto, sem carência — carência é o prazo
-   * pra quem já pagava resolver um problema de cobrança, não um período
-   * de teste grátis disfarçado.
-   */
-  statusDeAcesso(conta: {
-    stripeSubscriptionId: string | null;
-    assinaturaVencidaEm: Date | null;
-  }): {
-    bloqueado: boolean;
-    emCarencia: boolean;
-    vencidoDesde: number | null;
-    bloqueiaEm: number | null;
-  } {
-    if (conta.stripeSubscriptionId) {
-      return {
-        bloqueado: false,
-        emCarencia: false,
-        vencidoDesde: null,
-        bloqueiaEm: null,
-      };
-    }
+  /** Alguém desta empresa está em PLATFORM_ADMIN_EMAILS? */
+  private async ehDaPlataforma(tenantId: string): Promise<boolean> {
+    const lista = emailsDaPlataforma();
+    if (lista.length === 0) return false;
 
-    if (!conta.assinaturaVencidaEm) {
-      return {
-        bloqueado: true,
-        emCarencia: false,
-        vencidoDesde: null,
-        bloqueiaEm: null,
-      };
-    }
+    const chave = `${tenantId}|${lista.join(',')}`;
+    const guardado = DA_PLATAFORMA.get(chave);
+    if (guardado !== undefined) return guardado;
 
-    const bloqueiaEm = conta.assinaturaVencidaEm.getTime() + CARENCIA_MS;
-    const bloqueado = Date.now() >= bloqueiaEm;
-    return {
-      bloqueado,
-      emCarencia: !bloqueado,
-      vencidoDesde: conta.assinaturaVencidaEm.getTime(),
-      bloqueiaEm,
-    };
+    const total = await this.global.client.user.count({
+      where: { tenantId, email: { in: lista, mode: 'insensitive' } },
+    });
+    DA_PLATAFORMA.set(chave, total > 0);
+    return total > 0;
+  }
+
+  /** Mantido pra quem já chamava por aqui; a régua mora em decidirAcesso. */
+  statusDeAcesso(conta: ContaParaAcesso): DecisaoDeAcesso {
+    return decidirAcesso(conta);
   }
 
   /**
@@ -231,9 +211,21 @@ export class BillingService {
           select: { email: true },
         });
 
+    // Quem assina DURANTE uma liberação manual (teste, folga) não paga em
+    // dobro: a primeira cobrança fica pro dia em que a liberação acaba.
+    const primeiraCobranca =
+      conta.liberadoAte &&
+      conta.liberadoAte.getTime() - Date.now() >=
+        MINIMO_PRO_ADIAMENTO_NO_CHECKOUT_MS
+        ? Math.floor(conta.liberadoAte.getTime() / 1000)
+        : null;
+
     const sessao = await this.stripe().checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: precoId, quantity: 1 }],
+      ...(primeiraCobranca
+        ? { subscription_data: { trial_end: primeiraCobranca } }
+        : {}),
       // É como o webhook liga o evento de volta a ESTA empresa (ver
       // processarEvento) — o Stripe não sabe nada sobre tenant.
       client_reference_id: tenantId,

@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { ContasDaPlataforma } from './contas-da-plataforma.service';
 import { PlataformaController } from './plataforma.controller';
 import { PlataformaService } from './plataforma.service';
 import { RegistroDeErros } from './registro-de-erros.service';
@@ -15,7 +16,12 @@ import { RegistroDeEventos } from './registro-de-eventos.service';
 @Global()
 @Module({
   controllers: [PlataformaController],
-  providers: [PlataformaService, RegistroDeEventos, RegistroDeErros],
+  providers: [
+    PlataformaService,
+    ContasDaPlataforma,
+    RegistroDeEventos,
+    RegistroDeErros,
+  ],
   exports: [RegistroDeEventos, RegistroDeErros],
 })
 export class PlataformaModule {}

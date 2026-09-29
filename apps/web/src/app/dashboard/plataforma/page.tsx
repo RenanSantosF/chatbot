@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Package,
   Search,
+  Settings2,
   Smartphone,
   Sparkles,
   UserMinus,
@@ -22,6 +23,8 @@ import { BarChart } from "@/components/charts/bar-chart";
 import { LineChart } from "@/components/charts/line-chart";
 import { StatTile } from "@/components/charts/stat-tile";
 import { PageHeader } from "@/components/page-header";
+import { GerenciarConta } from "@/components/plataforma/gerenciar-conta";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,13 +33,26 @@ import { SITE_URL } from "@/lib/site";
 import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 
-type SituacaoDaCobranca = "pagante" | "carencia" | "cancelada" | "pendente" | "sem_assinatura";
+type SituacaoDaCobranca =
+  | "pagante"
+  | "liberada"
+  | "plataforma"
+  | "carencia"
+  | "cancelada"
+  | "pendente"
+  | "sem_assinatura";
 
 interface Relatorio {
   periodo: { dias: number; desde: string; ate: string };
   resumo: {
     contas: Record<SituacaoDaCobranca, number> & { total: number; novas: number };
-    receita: { mrr: number; precoMensal: number; pacotesExtras: number; cancelamentos: number };
+    receita: {
+      mrr: number;
+      assinantes: number;
+      precoMensal: number;
+      pacotesExtras: number;
+      cancelamentos: number;
+    };
     uso: {
       usuarios: number;
       ativosDia: number;
@@ -82,6 +98,10 @@ interface Conta {
   dono: { nome: string; email: string } | null;
   origem: string | null;
   cobranca: SituacaoDaCobranca;
+  liberadoAte: string | null;
+  liberadoNota: string | null;
+  temAssinatura: boolean;
+  daPlataforma: boolean;
   usuarios: number;
   whatsapp: string | null;
   conversas30d: number;
@@ -114,6 +134,8 @@ type Aba = (typeof ABAS)[number]["chave"];
 
 const COBRANCA: Record<SituacaoDaCobranca, { rotulo: string; classe: string }> = {
   pagante: { rotulo: "Pagante", classe: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
+  liberada: { rotulo: "Liberada", classe: "bg-sky-500/15 text-sky-700 dark:text-sky-400" },
+  plataforma: { rotulo: "Master", classe: "bg-violet-500/15 text-violet-700 dark:text-violet-400" },
   carencia: { rotulo: "Em carência", classe: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
   pendente: { rotulo: "Pagamento pendente", classe: "bg-destructive/15 text-destructive" },
   cancelada: { rotulo: "Cancelada", classe: "bg-muted text-muted-foreground" },
@@ -313,13 +335,17 @@ function VisaoGeral({ relatorio }: { relatorio: Relatorio | null }) {
         {
           label: "Receita mensal (MRR)",
           value: r ? reais(r.receita.mrr) : "",
-          hint: r ? `${r.contas.pagante} pagantes × ${reais(r.receita.precoMensal)}` : undefined,
+          hint: r ? `${r.receita.assinantes} assinantes × ${reais(r.receita.precoMensal)}` : undefined,
           icon: Banknote,
         },
         {
           label: "Contas pagantes",
-          value: r ? inteiro(r.contas.pagante) : "",
-          hint: r ? `de ${inteiro(r.contas.total)} contas no total` : undefined,
+          // Quem assina no Stripe — inclusive quem está com dias de folga
+          // liberados à mão (aparece como "Liberada" na lista, mas paga).
+          value: r ? inteiro(r.receita.assinantes) : "",
+          hint: r
+            ? `de ${inteiro(r.contas.total)} contas${r.contas.liberada ? ` · ${inteiro(r.contas.liberada)} liberadas à mão` : ""}`
+            : undefined,
           icon: CreditCard,
         },
         {
@@ -662,6 +688,9 @@ function Origem({ relatorio }: { relatorio: Relatorio | null }) {
 function Contas() {
   const [busca, setBusca] = useState("");
   const [contas, setContas] = useState<Conta[] | null>(null);
+  const [gerenciando, setGerenciando] = useState<Conta | null>(null);
+  // Sobe a cada mudança feita pela tela de gerenciar — recarrega a lista.
+  const [versao, setVersao] = useState(0);
 
   useEffect(() => {
     const espera = setTimeout(() => {
@@ -670,7 +699,7 @@ function Contas() {
         .catch(() => toast.error("Não deu pra carregar as contas."));
     }, 300);
     return () => clearTimeout(espera);
-  }, [busca]);
+  }, [busca, versao]);
 
   return (
     <Card>
@@ -696,7 +725,7 @@ function Contas() {
         ) : (
           // A tabela rola por dentro no celular — a página não.
           <div className="-mx-4 overflow-x-auto px-4">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[940px] text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground">
                   <th className="pb-2 font-normal">Empresa</th>
@@ -707,6 +736,9 @@ function Contas() {
                   <th className="pb-2 pr-3 text-right font-normal">IA no mês</th>
                   <th className="pb-2 font-normal">Último acesso</th>
                   <th className="pb-2 font-normal">Criada</th>
+                  <th className="pb-2 font-normal">
+                    <span className="sr-only">Ações</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -728,6 +760,15 @@ function Contas() {
                       >
                         {COBRANCA[conta.cobranca].rotulo}
                       </span>
+                      {conta.cobranca === "liberada" && conta.liberadoAte ? (
+                        <p
+                          className="mt-1 max-w-40 truncate text-xs text-muted-foreground"
+                          title={conta.liberadoNota ?? undefined}
+                        >
+                          até {data(conta.liberadoAte)}
+                          {conta.liberadoNota ? ` · ${conta.liberadoNota}` : ""}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="py-2.5 pr-3 whitespace-nowrap">
                       {conta.whatsapp === "CONECTADO" ? (
@@ -747,6 +788,12 @@ function Contas() {
                     </td>
                     <td className="py-2.5 whitespace-nowrap">{ha(conta.ultimoAcesso)}</td>
                     <td className="py-2.5 whitespace-nowrap text-muted-foreground">{data(conta.criadaEm)}</td>
+                    <td className="py-1.5 pl-2 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => setGerenciando(conta)}>
+                        <Settings2 />
+                        Gerenciar
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -754,6 +801,11 @@ function Contas() {
           </div>
         )}
       </CardContent>
+      <GerenciarConta
+        conta={gerenciando}
+        onFechar={() => setGerenciando(null)}
+        onMudou={() => setVersao((v) => v + 1)}
+      />
     </Card>
   );
 }

@@ -1325,6 +1325,14 @@ model BillingAccount {
   /// carência é pra quem já pagava e parou, não pra quem nunca pagou.
   assinaturaVencidaEm DateTime?
 
+  /// Acesso liberado à mão pelo dono da plataforma até esta data — teste,
+  /// pagamento feito por fora, ou dias de folga. Enquanto vale, a conta usa
+  /// o sistema mesmo sem assinatura ou com o pagamento atrasado (ver
+  /// decidirAcesso). Nulo: nenhuma liberação.
+  liberadoAte  DateTime?
+  /// Por que foi liberado — só pra quem administra lembrar depois.
+  liberadoNota String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

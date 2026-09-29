@@ -14,6 +14,29 @@ import { ApiError } from "@/lib/api-error";
 interface StatusDaAssinatura {
   assinaturaAtiva: boolean;
   planLabel: string;
+  liberadoAte?: number | null;
+  motivo?: string;
+}
+
+/** A frase de cima do cartão: o que vale agora pra esta empresa. */
+function descricao(status: StatusDaAssinatura): string {
+  if (status.motivo === "plataforma") return "Conta da plataforma — uso liberado.";
+  if (status.motivo === "liberado" && status.liberadoAte) {
+    const ate = new Date(status.liberadoAte).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "long",
+    });
+    // Sem assinatura: o Checkout já agenda a primeira cobrança pro fim
+    // da liberação (ver criarCheckout na API), então assinar agora não
+    // cobra os dias que já foram dados.
+    // (O Stripe só aceita agendar com 48 h de antecedência; mais perto
+    // disso, a cobrança é na hora.)
+    if (status.assinaturaAtiva) return `Plano: ${status.planLabel}. Acesso liberado até ${ate}.`;
+    return status.liberadoAte - Date.now() > 2 * 24 * 60 * 60 * 1000
+      ? `Acesso liberado até ${ate}. Assine quando quiser — a primeira cobrança só acontece quando a liberação acabar.`
+      : `Acesso liberado até ${ate}. Assine pra continuar usando depois disso.`;
+  }
+  return status.assinaturaAtiva ? `Plano: ${status.planLabel}.` : "Sem assinatura ativa.";
 }
 
 /**
@@ -85,9 +108,7 @@ export function SubscriptionCard() {
           <CreditCard className="size-4" />
           Assinatura
         </CardTitle>
-        <CardDescription>
-          {status.assinaturaAtiva ? `Plano: ${status.planLabel}.` : "Sem assinatura ativa."}
-        </CardDescription>
+        <CardDescription>{descricao(status)}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
         <Button size="sm" disabled={indo} onClick={() => void (status.assinaturaAtiva ? gerenciar() : assinar())}>

@@ -63,6 +63,10 @@ export interface EstadoDaCobranca {
   vencidoDesde: number | null;
   /** Epoch ms — quando o acesso será cortado, se ninguém regularizar. */
   bloqueiaEm: number | null;
+  /** Epoch ms — até quando a conta tem dias liberados à mão pela plataforma. */
+  liberadoAte?: number | null;
+  /** Por que a conta pode (ou não) usar o sistema agora. */
+  motivo?: "plataforma" | "liberado" | "assinatura" | "carencia" | "bloqueado";
 }
 
 export interface MeResponse {

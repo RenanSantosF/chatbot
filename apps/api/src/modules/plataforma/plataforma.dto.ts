@@ -1,13 +1,16 @@
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import { MAXIMO_DE_DIAS } from './contas-da-plataforma.service';
 import { EVENTOS_DO_NAVEGADOR } from './registro-de-eventos.service';
 
 /** Um passo anônimo, mandado pela landing ou pela tela de cadastro. */
@@ -54,4 +57,29 @@ export class ErroDoNavegadorDto {
   @IsInt()
   @Min(0)
   status?: number;
+}
+
+/** Dias de acesso dados pelo dono da plataforma a uma conta. */
+export class LiberarDiasDto {
+  @IsInt()
+  @Min(1)
+  @Max(MAXIMO_DE_DIAS)
+  dias!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  nota?: string;
+
+  /** Empurra também a próxima cobrança do Stripe (quando há assinatura). */
+  @IsOptional()
+  @IsBoolean()
+  adiarCobranca?: boolean;
+}
+
+/** O nome da empresa, digitado — a prova de que é essa a conta a apagar. */
+export class ApagarContaDto {
+  @IsString()
+  @MaxLength(200)
+  confirmacao!: string;
 }

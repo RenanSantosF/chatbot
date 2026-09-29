@@ -199,6 +199,8 @@ describe('BillingService.statusDeAcesso', () => {
       emCarencia: false,
       vencidoDesde: null,
       bloqueiaEm: null,
+      liberadoAte: null,
+      motivo: 'assinatura',
     });
   });
 
@@ -212,6 +214,8 @@ describe('BillingService.statusDeAcesso', () => {
       emCarencia: false,
       vencidoDesde: null,
       bloqueiaEm: null,
+      liberadoAte: null,
+      motivo: 'bloqueado',
     });
   });
 
@@ -261,36 +265,85 @@ describe('BillingService.status', () => {
 
     const resultado = await service.status();
 
-    expect(resultado).toEqual({
-      assinaturaAtiva: false,
-      planLabel: 'Grátis',
-      bloqueado: false,
-      emCarencia: false,
-      vencidoDesde: null,
-      bloqueiaEm: null,
-    });
+    expect(resultado).toEqual(
+      expect.objectContaining({ bloqueado: false, emCarencia: false }),
+    );
   });
 
-  it('com BILLING_ENFORCEMENT=off, libera sem consultar o banco', async () => {
+  it('BILLING_ENFORCEMENT=off não libera mais ninguém', async () => {
+    // O interruptor que liberava TODAS as contas foi retirado: agora só a
+    // empresa do dono da plataforma e as liberadas à mão passam de graça.
     const antes = process.env.BILLING_ENFORCEMENT;
     process.env.BILLING_ENFORCEMENT = 'off';
     try {
-      const { service, prisma } = montar(null);
+      const { service } = montar({
+        stripeSubscriptionId: null,
+        planLabel: 'Grátis',
+        assinaturaVencidaEm: null,
+      });
 
       const resultado = await service.status();
 
-      expect(resultado).toEqual({
-        assinaturaAtiva: false,
-        planLabel: 'Grátis',
-        bloqueado: false,
-        emCarencia: false,
-        vencidoDesde: null,
-        bloqueiaEm: null,
-      });
-      expect(prisma.db.billingAccount.findFirst).not.toHaveBeenCalled();
+      expect(resultado.bloqueado).toBe(true);
     } finally {
       process.env.BILLING_ENFORCEMENT = antes;
     }
+  });
+
+  it('a empresa do dono da plataforma fica liberada, sem assinatura', async () => {
+    const antes = process.env.PLATFORM_ADMIN_EMAILS;
+    process.env.PLATFORM_ADMIN_EMAILS = 'dono@plataforma.com';
+    try {
+      const { service, global } = montar({
+        stripeSubscriptionId: null,
+        planLabel: 'Grátis',
+        assinaturaVencidaEm: null,
+      });
+      Object.assign(global.client.user, { count: jest.fn().mockResolvedValue(1) });
+
+      const resultado = await service.status();
+
+      expect(resultado).toEqual(
+        expect.objectContaining({ bloqueado: false, motivo: 'plataforma' }),
+      );
+    } finally {
+      process.env.PLATFORM_ADMIN_EMAILS = antes;
+    }
+  });
+});
+
+describe('BillingService.criarCheckout durante uma liberação', () => {
+  const antes = { ...process.env };
+  beforeEach(() => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123';
+    process.env.STRIPE_PRICE_ID = 'price_123';
+    sessionsCreate.mockReset();
+    sessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/x' });
+  });
+  afterEach(() => {
+    process.env = { ...antes };
+  });
+
+  it('a primeira cobrança fica pro fim da liberação — não paga em dobro', async () => {
+    const liberadoAte = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const { service } = montar({ stripeCustomerId: null, liberadoAte });
+
+    await service.criarCheckout();
+
+    const [args] = sessionsCreate.mock.calls[0];
+    expect(args.subscription_data).toEqual({
+      trial_end: Math.floor(liberadoAte.getTime() / 1000),
+    });
+  });
+
+  it('liberação acabando em menos de 48h: cobra normal (o Stripe não aceita adiar tão perto)', async () => {
+    const liberadoAte = new Date(Date.now() + 12 * 60 * 60 * 1000);
+    const { service } = montar({ stripeCustomerId: null, liberadoAte });
+
+    await service.criarCheckout();
+
+    const [args] = sessionsCreate.mock.calls[0];
+    expect(args.subscription_data).toBeUndefined();
   });
 });
 

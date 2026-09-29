@@ -14,13 +14,16 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
  * tela poderia conceder. A lista vem do servidor (`PLATFORM_ADMIN_EMAILS`,
  * separados por vírgula), e só quem tem acesso ao Railway muda.
  */
-export function ehDaPlataforma(email: string | null | undefined): boolean {
-  if (!email) return false;
-  const lista = (process.env.PLATFORM_ADMIN_EMAILS ?? '')
+export function emailsDaPlataforma(): string[] {
+  return (process.env.PLATFORM_ADMIN_EMAILS ?? '')
     .split(',')
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
-  return lista.includes(email.trim().toLowerCase());
+}
+
+export function ehDaPlataforma(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return emailsDaPlataforma().includes(email.trim().toLowerCase());
 }
 
 @Injectable()

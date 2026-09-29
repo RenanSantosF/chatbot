@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { decidirAcesso } from '../billing/acesso';
+import { emailsDaPlataforma } from './plataforma.guard';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
-/** Mesma carência do BillingService: dois dias pra resolver a cobrança. */
-const CARENCIA_MS = 2 * DIA_MS;
 
 /** O preço do plano, pra estimar a receita recorrente (MRR). */
 function precoMensal(): number {
@@ -25,28 +25,38 @@ export const ORIGENS: Record<string, string> = {
 };
 
 export type SituacaoDaCobranca =
-  'pagante' | 'carencia' | 'cancelada' | 'pendente' | 'sem_assinatura';
+  | 'plataforma'
+  | 'liberada'
+  | 'pagante'
+  | 'carencia'
+  | 'cancelada'
+  | 'pendente'
+  | 'sem_assinatura';
 
-/** A mesma régua do BillingService, lida de fora, pra todas as contas. */
+/**
+ * A situação de cada conta, lida da MESMA régua que decide o acesso
+ * (decidirAcesso) — o painel nunca mostra "liberada" pra uma conta que o
+ * guard está bloqueando, nem o contrário.
+ */
 export function situacaoDaCobranca(
   conta:
     | {
         stripeSubscriptionId: string | null;
         planLabel: string;
         assinaturaVencidaEm: Date | null;
+        liberadoAte?: Date | null;
       }
     | null
     | undefined,
-  agora = Date.now(),
+  { daPlataforma = false, agora = Date.now() } = {},
 ): SituacaoDaCobranca {
-  if (!conta) return 'sem_assinatura';
-  if (conta.stripeSubscriptionId) return 'pagante';
-  if (conta.assinaturaVencidaEm) {
-    if (agora < conta.assinaturaVencidaEm.getTime() + CARENCIA_MS)
-      return 'carencia';
-    return conta.planLabel === 'Cancelada' ? 'cancelada' : 'pendente';
-  }
-  return conta.planLabel === 'Cancelada' ? 'cancelada' : 'sem_assinatura';
+  const { motivo } = decidirAcesso(conta, { daPlataforma, agora });
+  if (motivo === 'plataforma') return 'plataforma';
+  if (motivo === 'liberado') return 'liberada';
+  if (motivo === 'assinatura') return 'pagante';
+  if (motivo === 'carencia') return 'carencia';
+  if (conta?.planLabel === 'Cancelada') return 'cancelada';
+  return conta?.assinaturaVencidaEm ? 'pendente' : 'sem_assinatura';
 }
 
 /** Já assinou alguma vez (mesmo que hoje esteja cancelada ou atrasada). */
@@ -75,6 +85,17 @@ export class PlataformaService {
 
   private get db() {
     return this.prisma.client;
+  }
+
+  /** As empresas em que alguém é dono da plataforma (PLATFORM_ADMIN_EMAILS). */
+  private async empresasDaPlataforma(): Promise<Set<string>> {
+    const lista = emailsDaPlataforma();
+    if (lista.length === 0) return new Set();
+    const donos = await this.db.user.findMany({
+      where: { email: { in: lista, mode: 'insensitive' } },
+      select: { tenantId: true },
+    });
+    return new Set(donos.map((d) => d.tenantId));
   }
 
   /** Quantos visitantes/pessoas/empresas distintos fizeram um passo. */
@@ -149,6 +170,7 @@ export class PlataformaService {
           stripeCustomerId: true,
           planLabel: true,
           assinaturaVencidaEm: true,
+          liberadoAte: true,
         },
       }),
       this.db.user.count({ where: { status: 'ACTIVE' } }),
@@ -170,18 +192,26 @@ export class PlataformaService {
       }),
     ]);
 
+    const daPlataforma = await this.empresasDaPlataforma();
     const porSituacao: Record<SituacaoDaCobranca, number> = {
+      plataforma: 0,
+      liberada: 0,
       pagante: 0,
       carencia: 0,
       cancelada: 0,
       pendente: 0,
       sem_assinatura: 0,
     };
+    // Receita é quem tem assinatura no Stripe — inclusive quem também
+    // ganhou dias de folga (aparece como "liberada", mas continua pagando).
     const pagantes = new Set<string>();
     for (const conta of cobrancas) {
-      const situacao = situacaoDaCobranca(conta, agora.getTime());
+      const situacao = situacaoDaCobranca(conta, {
+        daPlataforma: daPlataforma.has(conta.tenantId),
+        agora: agora.getTime(),
+      });
       porSituacao[situacao] += 1;
-      if (situacao === 'pagante') pagantes.add(conta.tenantId);
+      if (conta.stripeSubscriptionId) pagantes.add(conta.tenantId);
     }
     // Conta sem linha de cobrança nunca abriu o pagamento.
     porSituacao.sem_assinatura += Math.max(0, contasTotal - cobrancas.length);
@@ -200,7 +230,8 @@ export class PlataformaService {
     return {
       contas: { total: contasTotal, novas: contasNovas, ...porSituacao },
       receita: {
-        mrr: porSituacao.pagante * precoMensal(),
+        mrr: pagantes.size * precoMensal(),
+        assinantes: pagantes.size,
         precoMensal: precoMensal(),
         pacotesExtras: pacotes,
         cancelamentos,
@@ -450,6 +481,8 @@ export class PlataformaService {
             stripeSubscriptionId: true,
             planLabel: true,
             assinaturaVencidaEm: true,
+            liberadoAte: true,
+            liberadoNota: true,
             aiRepliesUsed: true,
             aiMonthlyMessageLimit: true,
             aiExtraMessagesThisPeriod: true,
@@ -473,6 +506,7 @@ export class PlataformaService {
     const conversasPorConta = new Map(
       conversas.map((c) => [c.tenantId, c._count._all]),
     );
+    const daPlataforma = await this.empresasDaPlataforma();
 
     return tenants.map((t) => {
       const dono = t.users.find((u) => u.role === 'OWNER') ?? t.users[0];
@@ -487,7 +521,13 @@ export class PlataformaService {
         origem: t.comoConheceu
           ? (ORIGENS[t.comoConheceu] ?? t.comoConheceu)
           : null,
-        cobranca: situacaoDaCobranca(t.billing),
+        cobranca: situacaoDaCobranca(t.billing, {
+          daPlataforma: daPlataforma.has(t.id),
+        }),
+        liberadoAte: t.billing?.liberadoAte ?? null,
+        liberadoNota: t.billing?.liberadoNota ?? null,
+        temAssinatura: Boolean(t.billing?.stripeSubscriptionId),
+        daPlataforma: daPlataforma.has(t.id),
         usuarios: t.users.length,
         whatsapp: t.evolutionSettings?.estado ?? null,
         conversas30d: conversasPorConta.get(t.id) ?? 0,

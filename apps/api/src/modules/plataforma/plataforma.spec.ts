@@ -47,7 +47,7 @@ describe('situação da cobrança de cada conta', () => {
 
   it('com assinatura é pagante', () => {
     expect(
-      situacaoDaCobranca(conta({ stripeSubscriptionId: 'sub_1' }), agora),
+      situacaoDaCobranca(conta({ stripeSubscriptionId: 'sub_1' }), { agora }),
     ).toBe('pagante');
   });
 
@@ -55,25 +55,56 @@ describe('situação da cobrança de cada conta', () => {
     const ontem = new Date(agora - 24 * 3600 * 1000);
     const semana = new Date(agora - 7 * 24 * 3600 * 1000);
     expect(
-      situacaoDaCobranca(conta({ assinaturaVencidaEm: ontem }), agora),
+      situacaoDaCobranca(conta({ assinaturaVencidaEm: ontem }), { agora }),
     ).toBe('carencia');
     expect(
       situacaoDaCobranca(
         conta({ assinaturaVencidaEm: semana, planLabel: 'Pagamento pendente' }),
-        agora,
+        { agora },
       ),
     ).toBe('pendente');
     expect(
       situacaoDaCobranca(
         conta({ assinaturaVencidaEm: semana, planLabel: 'Cancelada' }),
-        agora,
+        { agora },
       ),
     ).toBe('cancelada');
   });
 
   it('nunca assinou', () => {
-    expect(situacaoDaCobranca(conta({}), agora)).toBe('sem_assinatura');
-    expect(situacaoDaCobranca(null, agora)).toBe('sem_assinatura');
+    expect(situacaoDaCobranca(conta({}), { agora })).toBe('sem_assinatura');
+    expect(situacaoDaCobranca(null, { agora })).toBe('sem_assinatura');
+  });
+
+  it('liberação manual vale mais que o Stripe enquanto dura', () => {
+    const daqui10Dias = new Date(agora + 10 * 24 * 3600 * 1000);
+    const semana = new Date(agora - 7 * 24 * 3600 * 1000);
+    expect(
+      situacaoDaCobranca(conta({ liberadoAte: daqui10Dias }), { agora }),
+    ).toBe('liberada');
+    expect(
+      situacaoDaCobranca(
+        conta({ stripeSubscriptionId: 'sub_1', liberadoAte: daqui10Dias }),
+        { agora },
+      ),
+    ).toBe('liberada');
+    // Liberação vencida volta pro que o Stripe diz.
+    expect(
+      situacaoDaCobranca(
+        conta({
+          liberadoAte: semana,
+          assinaturaVencidaEm: semana,
+          planLabel: 'Pagamento pendente',
+        }),
+        { agora },
+      ),
+    ).toBe('pendente');
+  });
+
+  it('conta de master é da plataforma, com ou sem assinatura', () => {
+    expect(situacaoDaCobranca(conta({}), { agora, daPlataforma: true })).toBe(
+      'plataforma',
+    );
   });
 });
 
