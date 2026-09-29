@@ -38,6 +38,7 @@ import { MessageBubble } from "./message-bubble";
 import { QuickReplyPicker, termoDoAtalho } from "./quick-reply-picker";
 import { TagChip, TagPicker } from "./tag-picker";
 import { resumoDaMensagem } from "@/lib/mensagem";
+import { ondeComecamAsNaoLidas } from "@/lib/nao-lidas";
 import { AttachmentComposer } from "./attachment-composer";
 import { CAMPO_DE_MENSAGEM } from "./campo-de-mensagem";
 import { EmojiPicker } from "./emoji-picker";
@@ -110,6 +111,30 @@ function UnreadDivider({ count }: { count: number }) {
       </span>
     </div>
   );
+}
+
+/**
+ * Até onde cada conversa já foi vista nesta aba (epoch ms da última
+ * mensagem que esteve na tela com o rodapé à vista).
+ *
+ * Fora do componente porque o painel pode nascer de novo com a conversa
+ * já aberta — e aí o contador de não lidas do servidor ainda pode trazer
+ * a mensagem que a pessoa viu chegar na frente dela, se a leitura não
+ * tiver sido registrada a tempo. A tarja nunca marca nada daqui pra trás.
+ *
+ * Só memória, sem sessionStorage: o painel também é desenhado no servidor,
+ * que não enxerga o armazenamento do navegador — ler dali no primeiro
+ * render faria a tarja do servidor e a do navegador divergirem. Depois de
+ * recarregar, vale o contador do servidor, que a leitura já zerou.
+ */
+const VISTO_ATE = new Map<string, number>();
+
+function vistoAte(conversationId: string): number {
+  return VISTO_ATE.get(conversationId) ?? 0;
+}
+
+function marcarVisto(conversationId: string, ate: number) {
+  if (ate > vistoAte(conversationId)) VISTO_ATE.set(conversationId, ate);
 }
 
 /**
@@ -681,48 +706,27 @@ export function ChatPanel({
   const [abertoEm] = useState(() => Date.now());
 
   /**
-   * Quantas mensagens estavam por ler quando esta conversa foi aberta.
+   * A tarja "não lidas": onde ela entra e quantas conta.
    *
-   * Congelado no primeiro render (o painel é remontado a cada troca de
-   * conversa, então "primeiro render" é sempre "esta abertura"). Tem que
-   * ser congelado: assim que o rodapé aparece o contador zera no servidor,
-   * e um marcador que sumisse junto não serviria pra nada — ele existe
-   * justamente pra dizer "você parou de ler aqui" enquanto a pessoa lê.
-   */
-  //
-  // "Primeiro render" com a conversa, e não do painel: quando ela ainda
-  // está carregando, o painel nasce vazio, e congelar ali daria sempre
-  // zero — a tarja nunca apareceria justamente na conversa que tinha
-  // mensagem nova.
-  const [naoLidasCongeladas, setNaoLidasCongeladas] = useState<number | null>(() =>
-    conversation ? conversation.unreadCount : null,
-  );
-  if (naoLidasCongeladas === null && conversation) {
-    setNaoLidasCongeladas(conversation.unreadCount);
-  }
-  const naoLidasAoAbrir = naoLidasCongeladas ?? 0;
-
-  /**
-   * Id da primeira mensagem por ler, que é onde a tarja entra.
+   * Congelada INTEIRA no primeiro render com a conversa — a posição
+   * também, não só o número. Antes só o número ficava parado e a posição
+   * era recalculada a cada mensagem, contando do fim: quem abria a
+   * conversa com 1 não lida via a tarja pular pra cima de cada mensagem
+   * nova do cliente, chegando na frente dela com a conversa aberta.
    *
-   * O contador do servidor conta mensagens de cliente, então a conta é
-   * feita de trás pra frente pulando as nossas: numa troca "cliente,
-   * empresa, cliente" com duas não lidas, a tarja precisa ficar antes da
-   * primeira das duas do cliente, não três mensagens acima.
+   * "Primeiro render" com a conversa, e não do painel: quando ela ainda
+   * está carregando, o painel nasce vazio, e congelar ali daria sempre
+   * zero. E tem que ser congelada: assim que o rodapé aparece o contador
+   * zera no servidor, e um marcador que sumisse junto não serviria pra
+   * nada — ele existe pra dizer "você parou de ler aqui" enquanto a
+   * pessoa lê.
    */
-  const primeiraNaoLida = useMemo(() => {
-    if (!conversation || naoLidasAoAbrir === 0) return null;
-    let restantes = naoLidasAoAbrir;
-    for (let i = conversation.messages.length - 1; i >= 0; i -= 1) {
-      const mensagem = conversation.messages[i];
-      if (mensagem.senderType !== "CUSTOMER") continue;
-      restantes -= 1;
-      if (restantes === 0) return mensagem.id;
-    }
-    // Menos mensagens carregadas que não lidas: a conversa foi aberta numa
-    // página antiga do histórico. Marcar a primeira da página seria mentira.
-    return null;
-  }, [conversation, naoLidasAoAbrir]);
+  const tarjaDe = (conversa: ConversationDetail) =>
+    ondeComecamAsNaoLidas(conversa.messages, conversa.unreadCount, vistoAte(conversa.id));
+  const [tarja, setTarja] = useState(() => (conversation ? tarjaDe(conversation) : null));
+  if (tarja === null && conversation) setTarja(tarjaDe(conversation));
+  const primeiraNaoLida = tarja?.primeiraNaoLida ?? null;
+  const naoLidasAoAbrir = tarja?.naoLidasAoAbrir ?? 0;
 
   useEffect(() => {
     if (!currentMatchId) return;
@@ -823,6 +827,16 @@ export function ChatPanel({
     observer.observe(fim);
     return () => observer.disconnect();
   }, [conversation?.id, onRead, conversation]);
+
+  // Com o rodapé à vista e a aba na frente, o que está na tela foi visto —
+  // inclusive o que chega depois, com o rodapé parado no lugar (o
+  // observador acima só dispara quando o rodapé entra ou sai de vista).
+  const ultimaMensagemEm = conversation?.messages.at(-1)?.createdAt;
+  useEffect(() => {
+    if (!conversation?.id || !ultimaMensagemEm || !pertoDoFim) return;
+    if (document.visibilityState !== "visible") return;
+    marcarVisto(conversation.id, new Date(ultimaMensagemEm).getTime());
+  }, [conversation?.id, ultimaMensagemEm, pertoDoFim]);
 
   /*
    * A conversa acompanha quando a área dela encolhe.
