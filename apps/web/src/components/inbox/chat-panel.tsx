@@ -231,6 +231,19 @@ export function ChatPanel({
   const [needle, setNeedle] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [forwarding, setForwarding] = useState<ConversationMessage | null>(null);
+  /*
+   * Reagir com uma função que não muda de identidade: a do Inbox é
+   * recriada a cada render, e isso bastava pra furar a memorização de
+   * todos os balões (ver MessageBubble). A mais nova é lida no clique.
+   */
+  const onReactAtual = useRef(onReact);
+  useEffect(() => {
+    onReactAtual.current = onReact;
+  }, [onReact]);
+  const reagir = useCallback(
+    (messageId: string, emoji: string) => onReactAtual.current(messageId, emoji),
+    [],
+  );
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   // O rodapé da conversa está à vista? Decide se mensagem nova arrasta a
@@ -1184,7 +1197,7 @@ export function ChatPanel({
                 highlight={needle.trim()}
                 isCurrentMatch={message.id === currentMatchId}
                 onReply={onReply}
-                onReact={onReact}
+                onReact={reagir}
                 onForward={setForwarding}
                 onDelete={setApagando}
               />

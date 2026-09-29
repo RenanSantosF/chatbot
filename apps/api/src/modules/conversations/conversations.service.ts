@@ -1061,7 +1061,11 @@ export class ConversationsService {
    * da conversa aparece de verdade na área visível. O contador vem intacto
    * daqui justamente pra ela conseguir desenhar o marcador antes disso.
    */
-  async getById(id: string, viewer?: ConversationViewer) {
+  async getById(
+    id: string,
+    viewer?: ConversationViewer,
+    pagina: { limit?: number } = {},
+  ) {
     const recorte = await this.recorteDeVisibilidade(viewer);
     const conversation = await this.prisma.db.conversation.findFirst({
       where: { id, ...recorte },
@@ -1077,7 +1081,7 @@ export class ConversationsService {
     // `paginarMensagens` e não `listMessages`: a conversa acabou de ser
     // lida acima, então perguntar de novo ao banco se ela existe é uma ida
     // e volta jogada fora bem no caminho de abrir a conversa.
-    const messages = await this.paginarMensagens(id);
+    const messages = await this.paginarMensagens(id, pagina);
 
     return {
       ...conversation,

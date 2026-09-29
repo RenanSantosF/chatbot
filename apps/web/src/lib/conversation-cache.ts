@@ -8,6 +8,11 @@ export interface CachedConversation {
   fetchedAt: number;
   /** Em qual conexão do tempo real foi guardada (ver `conexao`). */
   conexao: number;
+  /**
+   * Trazida só porque apareceu na lista (ver `descartarPrevias`), e não
+   * porque alguém a abriu, passou o mouse ou recebeu mensagem.
+   */
+  previa?: boolean;
 }
 
 /**
@@ -36,6 +41,25 @@ const cache = new Map<string, CachedConversation>();
 
 /** Teto pra a aba aberta o dia todo não virar um vazamento de memória. */
 const MAX_ENTRIES = 30;
+
+/**
+ * Teto de mensagens por conversa guardada.
+ *
+ * Uma conversa fechada continua recebendo pelo tempo real (ver
+ * `anexarMensagem`) — num número movimentado, com o painel aberto o dia
+ * inteiro, são centenas por conversa. Passando disso, saem as mais antigas
+ * e o cursor passa a apontar pra elas: rolar pra cima busca de novo no
+ * servidor, do ponto exato em que a memória cortou.
+ */
+const MAX_MENSAGENS = 150;
+
+function aparar(entry: CachedConversation) {
+  const { messages } = entry.detail;
+  if (messages.length <= MAX_MENSAGENS) return;
+  const mantidas = messages.slice(messages.length - MAX_MENSAGENS);
+  entry.detail = { ...entry.detail, messages: mantidas };
+  entry.messagesCursor = mantidas[0]?.id ?? entry.messagesCursor;
+}
 
 /**
  * De quem é o que está guardado agora.
@@ -73,10 +97,15 @@ export const conversationCache = {
     entry: Omit<CachedConversation, "fetchedAt" | "conexao">,
   ) {
     garantirSessao(chaveDaSessao);
+    // Uma prévia não rebaixa o que já estava guardado por inteiro: a
+    // entrada é renovada, mas continua fora do descarte das prévias.
+    if (entry.previa && cache.get(id)?.previa === false) {
+      entry = { ...entry, previa: false };
+    }
     // Reinsere pra a chave ir pro fim da ordem de iteração do Map, que é a
     // ordem de inserção — assim o descarte abaixo tira sempre a mais antiga.
     cache.delete(id);
-    cache.set(id, { ...entry, fetchedAt: Date.now(), conexao });
+    cache.set(id, { previa: false, ...entry, fetchedAt: Date.now(), conexao });
 
     if (cache.size > MAX_ENTRIES) {
       const oldest = cache.keys().next().value;
@@ -133,6 +162,22 @@ export const conversationCache = {
     const entry = cache.get(id);
     if (!entry || entry.detail.messages.some((m) => m.id === message.id)) return;
     entry.detail = { ...entry.detail, messages: [...entry.detail.messages, message] };
+    aparar(entry);
+  },
+
+  /**
+   * Esquece as prévias que saíram da tela.
+   *
+   * O pré-carregamento da lista traz o começo de cada conversa VISÍVEL; a
+   * que rolou pra fora sai da memória, e volta a ser buscada se reaparecer.
+   * Assim a memória acompanha o que está na tela, e não tudo que já passou
+   * por ela — que num dia de trabalho seriam centenas de conversas.
+   */
+  descartarPrevias(chaveDaSessao: string, manter: Set<string>) {
+    garantirSessao(chaveDaSessao);
+    for (const [id, entry] of cache) {
+      if (entry.previa && !manter.has(id)) cache.delete(id);
+    }
   },
 
   /** Status (tiques) ou conteúdo de uma mensagem já guardada. */

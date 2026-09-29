@@ -108,3 +108,63 @@ describe("conversationCache", () => {
     expect(conversationCache.get(SESSAO_BRUNO, "conversa-1")).toBeUndefined();
   });
 });
+
+describe("prévias da lista", () => {
+  const mensagem = (id: string) =>
+    ({ id, content: id }) as unknown as ConversationDetail["messages"][number];
+
+  it("a prévia que saiu da tela sai da memória; a aberta fica", () => {
+    conversationCache.set(SESSAO_ANA, "vista", {
+      detail: conversaFalsa("vista"),
+      messagesCursor: null,
+      previa: true,
+    });
+    conversationCache.set(SESSAO_ANA, "rolou-pra-fora", {
+      detail: conversaFalsa("rolou-pra-fora"),
+      messagesCursor: null,
+      previa: true,
+    });
+    conversationCache.set(SESSAO_ANA, "aberta-antes", {
+      detail: conversaFalsa("aberta-antes"),
+      messagesCursor: null,
+    });
+
+    conversationCache.descartarPrevias(SESSAO_ANA, new Set(["vista"]));
+
+    expect(conversationCache.get(SESSAO_ANA, "vista")).toBeDefined();
+    expect(conversationCache.get(SESSAO_ANA, "rolou-pra-fora")).toBeUndefined();
+    expect(conversationCache.get(SESSAO_ANA, "aberta-antes")).toBeDefined();
+  });
+
+  it("uma prévia não rebaixa a conversa que já estava guardada inteira", () => {
+    conversationCache.set(SESSAO_ANA, "c1", {
+      detail: conversaFalsa("c1"),
+      messagesCursor: null,
+    });
+    conversationCache.set(SESSAO_ANA, "c1", {
+      detail: conversaFalsa("c1"),
+      messagesCursor: null,
+      previa: true,
+    });
+
+    conversationCache.descartarPrevias(SESSAO_ANA, new Set());
+
+    expect(conversationCache.get(SESSAO_ANA, "c1")).toBeDefined();
+  });
+
+  it("a conversa que recebe mensagem o dia todo não cresce sem fim", () => {
+    conversationCache.set(SESSAO_ANA, "c1", {
+      detail: conversaFalsa("c1"),
+      messagesCursor: null,
+    });
+    for (let i = 0; i < 400; i += 1) {
+      conversationCache.anexarMensagem(SESSAO_ANA, "c1", mensagem(`m${i}`));
+    }
+
+    const guardada = conversationCache.get(SESSAO_ANA, "c1");
+    expect(guardada?.detail.messages).toHaveLength(150);
+    expect(guardada?.detail.messages.at(-1)?.id).toBe("m399");
+    // Rolar pra cima continua de onde a memória cortou.
+    expect(guardada?.messagesCursor).toBe("m250");
+  });
+});

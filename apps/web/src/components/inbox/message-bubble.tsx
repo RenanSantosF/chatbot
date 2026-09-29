@@ -8,7 +8,7 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MessageAttachment } from "./message-attachment";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
@@ -212,7 +212,13 @@ function larguraDaHora(message: ConversationMessage, fromCustomer: boolean) {
   return largura;
 }
 
-export function MessageBubble({
+/**
+ * Memorizado: a conversa aberta é redesenhada a cada mensagem nova, tique
+ * de entrega ou tecla no campo de texto — e sem isto cada uma dessas
+ * redesenhava TODOS os balões da conversa, o que numa conversa longa
+ * aberta o dia inteiro é o que faz o digitar começar a atrasar.
+ */
+export const MessageBubble = memo(function MessageBubble({
   message,
   inicioDoGrupo = true,
   animar = false,
@@ -543,4 +549,4 @@ export function MessageBubble({
       ) : null}
     </div>
   );
-}
+});

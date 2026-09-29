@@ -201,6 +201,10 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    */
   const conexaoInicialPendente = useRef<boolean | null>(null);
   const conversationsRef = useRef<ConversationSummary[]>([]);
+  /** Uma animação de reordenar por vez (ver `onConversationUpdated`). */
+  const transicaoEmCurso = useRef(false);
+  const ultimaTransicao = useRef(0);
+  const ultimoEventoDaLista = useRef(0);
   const { socket, unreadCounts, clearUnread, setActiveConversationId, sincronizar } =
     useRealtime();
 
@@ -361,9 +365,24 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    * coisa.
    */
   const contagemAgendada = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /*
+   * Espera a rajada acabar — mas não pra sempre.
+   *
+   * Só o "espera 400ms de silêncio" deixava os números das abas parados
+   * justamente na hora de pico: com mensagem chegando a cada 300ms em
+   * alguma conversa, o silêncio nunca vinha. Agora, passados 2s desde o
+   * primeiro evento da rajada, a contagem sai de qualquer jeito.
+   */
+  const primeiraDaRajada = useRef<number | null>(null);
   const agendarContagem = useCallback(() => {
     if (contagemAgendada.current) clearTimeout(contagemAgendada.current);
-    contagemAgendada.current = setTimeout(() => loadCounts(), 400);
+    const agora = Date.now();
+    primeiraDaRajada.current ??= agora;
+    const espera = Math.max(0, Math.min(400, primeiraDaRajada.current + 2000 - agora));
+    contagemAgendada.current = setTimeout(() => {
+      primeiraDaRajada.current = null;
+      loadCounts();
+    }, espera);
   }, [loadCounts]);
 
   useEffect(
@@ -750,8 +769,14 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
   const chegouDuranteABusca = useRef(new Set<string>());
   const esperasDePreCarga = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
+  /** Chamado quando uma busca termina e libera vaga (ver a fila das visíveis). */
+  const aoLiberarVaga = useRef<(() => void) | null>(null);
+
   const preCarregar = useCallback(
-    (id: string, { adiar = false }: { adiar?: boolean } = {}) => {
+    (
+      id: string,
+      { adiar = false, previa = false }: { adiar?: boolean; previa?: boolean } = {},
+    ) => {
       const executar = () => {
         esperasDePreCarga.current.delete(id);
         if (
@@ -765,7 +790,9 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         preCarregando.current.add(id);
         chegouDuranteABusca.current.delete(id);
         apiFetch<ConversationDetail & { messagesCursor: string | null }>(
-          `/conversations/${id}`,
+          // A prévia da lista traz só o começo da conversa: é o que aparece
+          // na tela ao abrir, e o resto vem pela rolagem, como sempre.
+          previa ? `/conversations/${id}?limit=20` : `/conversations/${id}`,
         )
           .then((conversa) => {
             // Aberta enquanto a busca corria: quem manda agora é o
@@ -780,10 +807,14 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
             conversationCache.set(chaveDaSessao, id, {
               detail: conversa,
               messagesCursor: conversa.messagesCursor,
+              previa,
             });
           })
           .catch(() => {})
-          .finally(() => preCarregando.current.delete(id));
+          .finally(() => {
+            preCarregando.current.delete(id);
+            aoLiberarVaga.current?.();
+          });
       };
 
       if (!adiar) {
@@ -803,6 +834,54 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       for (const espera of esperasDePreCarga.current.values()) clearTimeout(espera);
     },
     [],
+  );
+
+  /*
+   * As conversas que estão NA TELA, trazidas em segundo plano.
+   *
+   * A lista avisa quais linhas ficaram visíveis (ver `onVisiveis` na
+   * ConversationList); cada uma tem o começo da conversa buscado, uma por
+   * vez, pra abrir sem espera quando for clicada. Só o texto das mensagens
+   * vem nessa busca — foto, áudio e vídeo só são baixados quando o balão
+   * aparece de fato numa conversa aberta.
+   *
+   * Uma vaga só, e não as duas do pré-carregamento: esta é a aposta mais
+   * fraca de todas (a pessoa pode nunca clicar), e a outra vaga fica livre
+   * pro que tem mais chance — o mouse parado sobre uma linha, a mensagem
+   * nova. O que sai da tela sai também da memória (ver
+   * `conversationCache.descartarPrevias`).
+   */
+  const visiveis = useRef(new Set<string>());
+  const filaDeVisiveis = useRef<string[]>([]);
+
+  const drenarVisiveis = useCallback(() => {
+    while (preCarregando.current.size === 0 && filaDeVisiveis.current.length > 0) {
+      const id = filaDeVisiveis.current.shift() as string;
+      if (!visiveis.current.has(id)) continue;
+      if (conversationCache.emDia(chaveDaSessao, id)) continue;
+      preCarregar(id, { previa: true });
+    }
+  }, [chaveDaSessao, preCarregar]);
+
+  useEffect(() => {
+    aoLiberarVaga.current = drenarVisiveis;
+    return () => {
+      aoLiberarVaga.current = null;
+    };
+  }, [drenarVisiveis]);
+
+  const preCarregarVisiveis = useCallback(
+    (ids: string[]) => {
+      visiveis.current = new Set(ids);
+      const manter = new Set(ids);
+      if (selectedIdRef.current) manter.add(selectedIdRef.current);
+      conversationCache.descartarPrevias(chaveDaSessao, manter);
+      // Uma tela de lista tem umas dez conversas; mais que isso é rolagem
+      // rápida, e buscar tudo que passou seria trabalho jogado fora.
+      filaDeVisiveis.current = ids.slice(0, 12);
+      drenarVisiveis();
+    },
+    [chaveDaSessao, drenarVisiveis],
   );
 
   /**
@@ -984,13 +1063,58 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       const reorder = () =>
         setConversations((prev) => {
           const rest = prev.filter((item) => item.id !== updated.id);
-          if (!pertence) return rest;
+          // Não estava e continua não estando: nada muda na lista, e
+          // devolver o mesmo array poupa redesenhar tudo.
+          if (!pertence) return rest.length === prev.length ? prev : rest;
           return ordenarConversas([updated, ...rest], filtersRef.current.ordem);
         });
 
-      if (typeof document.startViewTransition === "function") {
+      /*
+       * A animação só quando a conversa MUDA DE LUGAR.
+       *
+       * Todo evento passava por aqui com animação — inclusive o tique de
+       * entrega e a mensagem nova na conversa que já está no topo, que não
+       * movem nada. Num número movimentado são vários eventos por segundo,
+       * e cada transição fotografa a lista inteira e segura os cliques
+       * enquanto roda: era o painel "engasgando" em horário de pico.
+       *
+       * E só com o movimento calmo: o evento anterior tem de ter vindo
+       * há mais de 2s. Medido com 25 eventos por segundo (build de
+       * produção): com animação em todo evento, 21 travadas de 50-95ms em
+       * dez segundos e o digitar atrasando; limitando a uma a cada 1,5s,
+       * ainda 13; assim, nenhuma. No pico a lista só se atualiza — que é
+       * quando ninguém conseguiria acompanhar o deslize mesmo.
+       */
+      const agora = Date.now();
+      const calmo = agora - ultimoEventoDaLista.current > 2000;
+      ultimoEventoDaLista.current = agora;
+      const atual = conversationsRef.current;
+      const posicaoAntes = atual.findIndex((item) => item.id === updated.id);
+      const posicaoDepois = pertence
+        ? ordenarConversas(
+            [updated, ...atual.filter((item) => item.id !== updated.id)],
+            filtersRef.current.ordem,
+          ).findIndex((item) => item.id === updated.id)
+        : -1;
+      const mudaDeLugar = posicaoAntes !== posicaoDepois;
+
+      if (
+        mudaDeLugar &&
+        !transicaoEmCurso.current &&
+        calmo &&
+        agora - ultimaTransicao.current > 1500 &&
+        document.visibilityState === "visible" &&
+        typeof document.startViewTransition === "function"
+      ) {
         try {
           const transicao = document.startViewTransition(() => flushSync(reorder));
+          transicaoEmCurso.current = true;
+          ultimaTransicao.current = agora;
+          transicao.finished
+            .finally(() => {
+              transicaoEmCurso.current = false;
+            })
+            .catch(() => {});
           // Trava de segurança: em rajada de eventos essa API tem bugs
           // conhecidos (Chrome) em que a transição nunca termina, deixando
           // a foto da tela ANTERIOR por cima de tudo — nenhum clique passa
@@ -1540,6 +1664,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
           onLoadMore={loadMore}
           onSelect={abrirConversa}
           onPreCarregar={preCarregar}
+          onVisiveis={preCarregarVisiveis}
           relogio={relogio}
           saindo={saindoDaLista}
         />

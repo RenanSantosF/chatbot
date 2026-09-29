@@ -198,11 +198,18 @@ export class ConversationsController {
   }
 
   @Get(':id')
-  getById(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.conversationsService.getById(id, {
-      userId: user.userId,
-      role: user.role,
-    });
+  getById(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    // Página menor pro pré-carregamento das conversas visíveis na lista
+    // (ver o Inbox): o começo da conversa, e o resto na abertura.
+    @Query('limit') limit?: string,
+  ) {
+    return this.conversationsService.getById(
+      id,
+      { userId: user.userId, role: user.role },
+      limit ? { limit: Number(limit) || undefined } : undefined,
+    );
   }
 
   /** Páginas anteriores do histórico — usado pela rolagem infinita pra cima. */
