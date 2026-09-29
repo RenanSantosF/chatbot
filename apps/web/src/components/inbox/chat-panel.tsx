@@ -1324,10 +1324,19 @@ export function ChatPanel({
         <AttachmentComposer
           file={pendingFile}
           sending={false}
-          onCancel={() => setPendingFile(null)}
+          caption={draft}
+          onCaptionChange={setDraft}
+          onCancel={() => {
+            setPendingFile(null);
+            // De volta ao campo de mensagem, com o texto que estava na
+            // legenda — e o cursor nele, pra continuar escrevendo.
+            requestAnimationFrame(() => composerRef.current?.focus());
+          }}
           onSend={(caption) => {
             const file = pendingFile;
             setPendingFile(null);
+            // O texto foi junto como legenda: o campo volta vazio.
+            setDraft("");
             void onSendFile(file, caption);
           }}
         />

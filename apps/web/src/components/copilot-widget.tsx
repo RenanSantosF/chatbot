@@ -1,6 +1,7 @@
 "use client";
 
 import { Sparkles, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,10 @@ export function CopilotWidget() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  // No Inbox, o canto de baixo é o do botão de enviar e do microfone (a
+  // coluna da direita só aparece em tela bem larga): o botão flutuante
+  // sobe pra não ficar em cima deles.
+  const noInbox = usePathname()?.startsWith("/dashboard/inbox") ?? false;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -104,7 +109,13 @@ export function CopilotWidget() {
         onClick={() => setOpen(true)}
         aria-label="Abrir assistente do painel"
         title="Assistente — pergunte ou peça uma mudança"
-        className="fixed right-5 bottom-5 z-40 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
+        className={cn(
+          "fixed right-5 bottom-5 z-40 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95",
+          noInbox && "bottom-24 xl:bottom-5",
+          // Com um anexo sendo preparado, o botão sai do caminho: ali ficam
+          // o X de descartar e o de enviar, e ele ficava por cima dos dois.
+          "[body:has([data-anexo-aberto])_&]:hidden",
+        )}
       >
         <Sparkles className="size-5" />
       </button>
