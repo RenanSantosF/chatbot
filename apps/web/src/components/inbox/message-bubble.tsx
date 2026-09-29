@@ -263,6 +263,8 @@ export const MessageBubble = memo(function MessageBubble({
   onReact,
   onForward,
   onDelete,
+  autorDaCitada = "Cliente",
+  onIrParaCitada,
 }: {
   message: ConversationMessage;
   /**
@@ -285,6 +287,10 @@ export const MessageBubble = memo(function MessageBubble({
   onReact?: (messageId: string, emoji: string) => Promise<void>;
   onForward?: (message: ConversationMessage) => void;
   onDelete?: (message: ConversationMessage) => void;
+  /** Quem escreveu a mensagem citada — o nome do contato como está salvo, ou "Você". */
+  autorDaCitada?: string;
+  /** Clique na citação: leva até a mensagem original. */
+  onIrParaCitada?: (messageId: string) => void;
 }) {
   // Apagada: sobra a tarja. Ocupa o mesmo lugar na linha do tempo, porque
   // sumir por completo faria a conversa mentir sobre o que aconteceu — quem
@@ -498,27 +504,33 @@ export const MessageBubble = memo(function MessageBubble({
       ) : null}
 
       {message.replyTo ? (
-        <div
+        // Botão: clicar leva até a original (ver irParaMensagem no
+        // ChatPanel). Citação de mensagem apagada também leva — a tarja
+        // "Mensagem apagada" continua no lugar dela na conversa.
+        <button
+          type="button"
+          onClick={() => message.replyTo && onIrParaCitada?.(message.replyTo.id)}
+          disabled={!onIrParaCitada}
+          title="Ir para a mensagem"
           className={cn(
-            "mb-1 rounded-md border-l-2 px-2 py-1 text-xs",
+            "mb-1 min-w-0 cursor-pointer rounded-md border-l-2 px-2 py-1 text-left text-xs transition-colors disabled:cursor-default",
             foto && "mb-0.5",
             fromCustomer
-              ? "border-primary/60 bg-black/5 dark:bg-white/10"
-              : "border-primary-foreground/60 bg-black/10",
+              ? "border-primary/60 bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+              : "border-primary-foreground/60 bg-black/10 hover:bg-black/15",
           )}
         >
-          <p className="font-medium opacity-80">
-            {message.replyTo.senderType === "CUSTOMER" ? "Cliente" : "Você"}
-          </p>
+          {/* `span` em bloco, e não `p`: parágrafo dentro de botão é HTML inválido. */}
+          <span className="block truncate font-medium opacity-80">{autorDaCitada}</span>
           {/* Citação de mensagem apagada não mostra o texto — o conteúdo
               nem vem mais da API (ver `esconderApagada`), e sem este ramo
               a tarjinha diria "Anexo" pra uma frase que foi apagada. */}
-          <p className={cn("line-clamp-2 opacity-70", message.replyTo.deletedAt && "italic")}>
+          <span className={cn("line-clamp-2 opacity-70", message.replyTo.deletedAt && "italic")}>
             {message.replyTo.deletedAt
               ? "Mensagem apagada"
               : resumoDaMensagem(message.replyTo.content, message.replyTo.messageType)}
-          </p>
-        </div>
+          </span>
+        </button>
       ) : null}
 
       {message.messageType !== "TEXT" && !unica ? <MessageAttachment message={message} /> : null}

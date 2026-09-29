@@ -453,6 +453,61 @@ export function ChatPanel({
   }, [carregandoAnteriores, onLoadOlder]);
 
   /*
+   * Clique numa citação: rola até a mensagem original e acende a linha,
+   * como no WhatsApp.
+   *
+   * A original pode estar antes da página carregada — aí o histórico sobe
+   * página a página até ela aparecer (com um teto, pra uma citação de
+   * meses atrás não baixar a conversa inteira sem a pessoa perceber).
+   *
+   * Identidade fixa (lê tudo por refs): é passada a todos os balões, e uma
+   * função nova a cada render furaria a memorização deles.
+   */
+  const hasOlderRef = useRef(hasOlder);
+  const carregarAnterioresRef = useRef(carregarAnteriores);
+  useEffect(() => {
+    hasOlderRef.current = hasOlder;
+    carregarAnterioresRef.current = carregarAnteriores;
+  }, [hasOlder, carregarAnteriores]);
+  const [destacada, setDestacada] = useState<string | null>(null);
+  const destaqueRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (destaqueRef.current) clearTimeout(destaqueRef.current);
+    },
+    [],
+  );
+
+  const irParaMensagem = useCallback(async (messageId: string) => {
+    const achar = () =>
+      scrollAreaRef.current?.querySelector<HTMLElement>(
+        `[data-message-id="${CSS.escape(messageId)}"]`,
+      ) ?? null;
+    // Duas pinturas: a página nova entra no estado, a tela redesenha, e
+    // só então o balão existe pra ser achado (e os refs, atualizados).
+    const duasPinturas = () =>
+      new Promise<void>((pronto) => requestAnimationFrame(() => requestAnimationFrame(() => pronto())));
+
+    let alvo = achar();
+    for (let pagina = 0; !alvo && hasOlderRef.current && pagina < 10; pagina++) {
+      await carregarAnterioresRef.current();
+      await duasPinturas();
+      alvo = achar();
+    }
+    if (!alvo) {
+      toast("A mensagem original não está mais nesta conversa.");
+      return;
+    }
+
+    alvo.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Tira e põe de novo: clicar duas vezes na mesma citação reacende.
+    if (destaqueRef.current) clearTimeout(destaqueRef.current);
+    setDestacada(null);
+    requestAnimationFrame(() => setDestacada(messageId));
+    destaqueRef.current = setTimeout(() => setDestacada(null), 1900);
+  }, []);
+
+  /*
    * O histórico sobe sozinho quando a rolagem chega no topo.
    *
    * Antes só havia o botão, e ele bastava quando uma conversa tinha
@@ -800,6 +855,31 @@ export function ChatPanel({
     if (conteudoRef.current) observador.observe(conteudoRef.current);
     return () => observador.disconnect();
   }, [conversation?.id, conversation]);
+
+  /*
+   * Quem escreveu a mensagem citada, pro rótulo da citação: o nome do
+   * contato como está salvo — "Cliente" não dizia nada que a cor do balão
+   * já não dissesse. Num grupo, o participante (quando a original está
+   * carregada, que é onde o nome dele mora); do lado da empresa, "Você",
+   * como no WhatsApp.
+   */
+  const ehGrupo = Boolean(conversation?.customer.isGroup);
+  const mensagensDaConversa = conversation?.messages;
+  const participantePorMensagem = useMemo(() => {
+    const mapa = new Map<string, string>();
+    if (!ehGrupo || !mensagensDaConversa) return mapa;
+    for (const mensagem of mensagensDaConversa) {
+      const participante = mensagem.metadata?.participante;
+      if (participante) mapa.set(mensagem.id, participante);
+    }
+    return mapa;
+  }, [ehGrupo, mensagensDaConversa]);
+
+  const nomeDoContato = conversation?.customer.name || conversation?.customer.phone || "Cliente";
+  function autorDaCitada(citada: { id: string; senderType: string }) {
+    if (citada.senderType !== "CUSTOMER") return "Você";
+    return participantePorMensagem.get(citada.id) ?? nomeDoContato;
+  }
 
   if (!conversation) {
     return (
@@ -1206,6 +1286,7 @@ export function ChatPanel({
                   // e apaga. Sem ele, o duplo clique só enche a barrinha de
                   // citação lá embaixo — longe de onde o olho estava.
                   linhaPiscando === message.id && "bg-foreground/[0.06]",
+                  destacada === message.id && "mensagem-destacada",
                 )}
               >
               <MessageBubble
@@ -1218,6 +1299,8 @@ export function ChatPanel({
                 onReact={reagir}
                 onForward={setForwarding}
                 onDelete={setApagando}
+                autorDaCitada={message.replyTo ? autorDaCitada(message.replyTo) : undefined}
+                onIrParaCitada={irParaMensagem}
               />
               </div>
             </div>
@@ -1322,7 +1405,7 @@ export function ChatPanel({
             <div className="flex items-center gap-2 bg-card px-3 pt-3">
               <div className="min-w-0 flex-1 rounded-lg border-l-4 border-primary bg-muted px-3 py-1.5 dark:bg-input/40">
                 <p className="text-[12px] font-semibold text-primary">
-                  {respostaExibida.senderType === "CUSTOMER" ? "Cliente" : "Você"}
+                  {autorDaCitada(respostaExibida)}
                 </p>
                 <p className="line-clamp-2 text-xs text-muted-foreground">
                   {resumoDaMensagem(respostaExibida.content, respostaExibida.messageType)}

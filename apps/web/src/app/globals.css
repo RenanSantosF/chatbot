@@ -439,6 +439,24 @@ button:disabled,
   animation: bolha-entrando 180ms ease-out;
 }
 
+/* A mensagem citada, quando se clica na citação: a linha acende e apaga
+   devagar, como no WhatsApp. Acende rápido (o olho precisa achar onde a
+   tela parou) e segura um instante antes de sumir — com a rolagem suave
+   ainda terminando, um piscar curto passaria despercebido. */
+@keyframes mensagem-destacada {
+  0%,
+  45% {
+    background-color: color-mix(in oklab, var(--primary) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.mensagem-destacada {
+  animation: mensagem-destacada 1.8s ease-out;
+}
+
 /**
  * Emoji desenhado pela fonte de emoji do sistema, não pela fonte do texto.
  *
@@ -551,10 +569,16 @@ button:disabled,
   }
 
   .bolha-nova,
+  .mensagem-destacada,
   .reacoes-abrindo,
   .emoji-entrando,
   ::view-transition-group(*) {
     animation: none;
+  }
+
+  /* Sem a animação, o destaque fica parado até o timeout tirar a classe. */
+  .mensagem-destacada {
+    background-color: color-mix(in oklab, var(--primary) 16%, transparent);
   }
 
   /* Sem movimento, mas a linha ainda precisa sair da tela — senão ela
