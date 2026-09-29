@@ -1688,6 +1688,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
                   size="icon"
                   variant="ghost"
                   aria-label="Nova conversa"
+                  data-tour="nova-conversa"
                   title="Nova conversa"
                   className="size-10 shrink-0 rounded-lg"
                 >
@@ -1750,7 +1751,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       />
       </div>
       {telaLarga ? (
-        <div className="hidden overflow-y-auto border-l xl:block">
+        <div data-tour="painel-cliente" className="hidden overflow-y-auto border-l xl:block">
           <CustomerPanel conversation={detail} />
         </div>
       ) : null}

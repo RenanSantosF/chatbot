@@ -108,6 +108,7 @@ export function CopilotWidget() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Abrir assistente do painel"
+        data-tour="assistente"
         title="Assistente — pergunte ou peça uma mudança"
         className={cn(
           "fixed right-5 bottom-5 z-40 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95",

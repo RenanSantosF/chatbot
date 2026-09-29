@@ -2,6 +2,7 @@
 
 import {
   Bell,
+  CircleHelp,
   BellRing,
   CalendarClock,
   ChartNoAxesColumn,
@@ -47,6 +48,8 @@ import { conversationCache } from "@/lib/conversation-cache";
 import { inboxListCache } from "@/lib/inbox-list-cache";
 import { ApiError } from "@/lib/api-error";
 import { avisoDeFimDaLiberacao } from "@/lib/liberacao";
+import { iniciarTour } from "@/lib/tour";
+import { TourGuiado } from "@/components/tour/tour-guiado";
 import { cn } from "@/lib/utils";
 import type {
   EstadoDaCobranca,
@@ -66,12 +69,29 @@ const NAV_ITEMS: {
   label: string;
   icon: typeof MessageCircleMore;
   roles?: UserRole[];
+  /** Âncora do tour guiado (ver TourGuiado). */
+  tour?: string;
 }[] = [
   // O Inbox é a raiz do painel: é onde se trabalha o dia inteiro, e é o
   // que abre ao entrar.
-  { href: "/dashboard", label: "Conversas", icon: MessageCircleMore },
-  { href: "/dashboard/visao-geral", label: "Visão geral", icon: ChartNoAxesColumn },
-  { href: "/dashboard/customers", label: "Clientes", icon: Users },
+  {
+    href: "/dashboard",
+    label: "Conversas",
+    icon: MessageCircleMore,
+    tour: "nav-conversas",
+  },
+  {
+    href: "/dashboard/visao-geral",
+    label: "Visão geral",
+    icon: ChartNoAxesColumn,
+    tour: "nav-visao",
+  },
+  {
+    href: "/dashboard/customers",
+    label: "Clientes",
+    icon: Users,
+    tour: "nav-clientes",
+  },
 ];
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -220,7 +240,10 @@ function CanalCaido() {
       <span className="text-destructive/80">
         {canal.lastError ?? "As mensagens enviadas agora não vão chegar."}
       </span>
-      <Link href="/dashboard/settings/whatsapp" className="font-medium underline underline-offset-2">
+      <Link
+        href="/dashboard/settings/whatsapp"
+        className="font-medium underline underline-offset-2"
+      >
         Reconectar
       </Link>
     </div>
@@ -238,7 +261,8 @@ function formatarTempoRestante(ms: number): string {
   const partes: string[] = [];
   if (dias > 0) partes.push(`${dias} dia${dias === 1 ? "" : "s"}`);
   if (horas > 0) partes.push(`${horas} hora${horas === 1 ? "" : "s"}`);
-  if (dias === 0 && minutos > 0) partes.push(`${minutos} minuto${minutos === 1 ? "" : "s"}`);
+  if (dias === 0 && minutos > 0)
+    partes.push(`${minutos} minuto${minutos === 1 ? "" : "s"}`);
   if (partes.length === 0) return "menos de um minuto";
   return partes.slice(0, 2).join(" e ");
 }
@@ -252,7 +276,13 @@ function formatarTempoRestante(ms: number): string {
  * traduz a diferença pro relógio do navegador a cada minuto, nunca decide
  * sozinho quando bloquear (isso é o BillingGuard, no servidor).
  */
-function CobrancaVencida({ cobranca, role }: { cobranca: EstadoDaCobranca; role: UserRole }) {
+function CobrancaVencida({
+  cobranca,
+  role,
+}: {
+  cobranca: EstadoDaCobranca;
+  role: UserRole;
+}) {
   const [agora, setAgora] = useState(() => Date.now());
   const [indo, setIndo] = useState(false);
 
@@ -267,10 +297,16 @@ function CobrancaVencida({ cobranca, role }: { cobranca: EstadoDaCobranca; role:
   async function regularizar() {
     setIndo(true);
     try {
-      const { url } = await apiFetch<{ url: string }>("/billing/checkout", { method: "POST" });
+      const { url } = await apiFetch<{ url: string }>("/billing/checkout", {
+        method: "POST",
+      });
       window.location.href = url;
     } catch (erro) {
-      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra abrir o pagamento.");
+      toast.error(
+        erro instanceof ApiError
+          ? erro.message
+          : "Não deu pra abrir o pagamento.",
+      );
       setIndo(false);
     }
   }
@@ -283,7 +319,8 @@ function CobrancaVencida({ cobranca, role }: { cobranca: EstadoDaCobranca; role:
       <TriangleAlert className="size-3.5 shrink-0" />
       <span className="font-medium">Assinatura vencida.</span>
       <span className="text-destructive/80">
-        O acesso será bloqueado em {formatarTempoRestante(cobranca.bloqueiaEm - agora)}.
+        O acesso será bloqueado em{" "}
+        {formatarTempoRestante(cobranca.bloqueiaEm - agora)}.
       </span>
       {role === "OWNER" ? (
         <button
@@ -308,7 +345,13 @@ function CobrancaVencida({ cobranca, role }: { cobranca: EstadoDaCobranca; role:
  * bloqueado, que é o pior momento pra pedir um cartão. Âmbar enquanto há
  * folga; vermelho no último dia.
  */
-function LiberacaoAcabando({ cobranca, role }: { cobranca: EstadoDaCobranca; role: UserRole }) {
+function LiberacaoAcabando({
+  cobranca,
+  role,
+}: {
+  cobranca: EstadoDaCobranca;
+  role: UserRole;
+}) {
   const [agora, setAgora] = useState(() => Date.now());
   const [indo, setIndo] = useState(false);
   const aviso = avisoDeFimDaLiberacao(cobranca, agora);
@@ -325,10 +368,16 @@ function LiberacaoAcabando({ cobranca, role }: { cobranca: EstadoDaCobranca; rol
   async function assinar() {
     setIndo(true);
     try {
-      const { url } = await apiFetch<{ url: string }>("/billing/checkout", { method: "POST" });
+      const { url } = await apiFetch<{ url: string }>("/billing/checkout", {
+        method: "POST",
+      });
       window.location.href = url;
     } catch (erro) {
-      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra abrir o pagamento.");
+      toast.error(
+        erro instanceof ApiError
+          ? erro.message
+          : "Não deu pra abrir o pagamento.",
+      );
       setIndo(false);
     }
   }
@@ -351,7 +400,8 @@ function LiberacaoAcabando({ cobranca, role }: { cobranca: EstadoDaCobranca; rol
     >
       <CalendarClock className="size-3.5 shrink-0" />
       <span className="font-medium">
-        Seu acesso liberado termina em {formatarTempoRestante(aviso.restante)} ({dia}).
+        Seu acesso liberado termina em {formatarTempoRestante(aviso.restante)} (
+        {dia}).
       </span>
       <span className="opacity-80">
         {role !== "OWNER"
@@ -391,8 +441,13 @@ const TEMAS = [
  * continua existindo, porque é nela que mora o botão do menu.
  */
 function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
-  const { connected, sincronizando, historico, notifPermission, enableNotifications } =
-    useRealtime();
+  const {
+    connected,
+    sincronizando,
+    historico,
+    notifPermission,
+    enableNotifications,
+  } = useRealtime();
   const { theme, setTheme } = useTheme();
   const [montado, setMontado] = useState(false);
   useEffect(() => {
@@ -406,7 +461,9 @@ function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
   const proximo = TEMAS[(TEMAS.indexOf(atual) + 1) % TEMAS.length];
   const IconeDoTema = montado ? atual.icone : Monitor;
 
-  const progresso = historico?.importando ? Math.min(99, Math.round(historico.progresso ?? 0)) : null;
+  const progresso = historico?.importando
+    ? Math.min(99, Math.round(historico.progresso ?? 0))
+    : null;
 
   return (
     <SidebarMenu>
@@ -431,7 +488,14 @@ function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
           >
             {/* Um anel que enche: o quanto já chegou, sem texto nenhum. */}
             <svg viewBox="0 0 20 20" className="size-5 -rotate-90" aria-hidden>
-              <circle cx="10" cy="10" r="8" fill="none" strokeWidth="2.5" className="stroke-muted" />
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                strokeWidth="2.5"
+                className="stroke-muted"
+              />
               <circle
                 cx="10"
                 cy="10"
@@ -441,7 +505,9 @@ function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
                 strokeLinecap="round"
                 className="stroke-primary transition-[stroke-dashoffset] duration-700"
                 strokeDasharray={2 * Math.PI * 8}
-                strokeDashoffset={2 * Math.PI * 8 * (1 - Math.max(progresso, 4) / 100)}
+                strokeDashoffset={
+                  2 * Math.PI * 8 * (1 - Math.max(progresso, 4) / 100)
+                }
               />
             </svg>
             <span>Trazendo conversas</span>
@@ -449,7 +515,10 @@ function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
         </SidebarMenuItem>
       ) : sincronizando ? (
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="Sincronizando" className="cursor-default hover:bg-transparent">
+          <SidebarMenuButton
+            tooltip="Sincronizando"
+            className="cursor-default hover:bg-transparent"
+          >
             <Spinner className="size-4" />
             <span>Sincronizando</span>
           </SidebarMenuButton>
@@ -458,7 +527,11 @@ function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
 
       {notifPermission === "default" ? (
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="Ativar avisos de mensagem nova" onClick={enableNotifications}>
+          <SidebarMenuButton
+            tooltip="Ativar avisos de mensagem nova"
+            onClick={enableNotifications}
+            data-tour="avisos"
+          >
             {/* O pontinho verde chama o olho: é o único item do pé que
                 pede uma ação, e some depois de respondido. */}
             <span className="relative flex">
@@ -472,17 +545,39 @@ function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
 
       <SidebarMenuItem>
         <SidebarMenuButton
-          tooltip={montado ? `Tema: ${atual.rotulo.toLowerCase()} — clique para ${proximo.rotulo.toLowerCase()}` : "Tema"}
+          tooltip="Tour do painel"
+          onClick={iniciarTour}
+          aria-label="Fazer o tour do painel"
+        >
+          <CircleHelp />
+          <span>Tour</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip={
+            montado
+              ? `Tema: ${atual.rotulo.toLowerCase()} — clique para ${proximo.rotulo.toLowerCase()}`
+              : "Tema"
+          }
           onClick={() => setTheme(proximo.valor)}
           aria-label="Trocar o tema"
         >
-          <IconeDoTema key={montado ? atual.valor : "carregando"} className="animate-in spin-in-45 fade-in duration-300" />
+          <IconeDoTema
+            key={montado ? atual.valor : "carregando"}
+            className="animate-in spin-in-45 fade-in duration-300"
+          />
           <span>Tema</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
 
       <SidebarMenuItem>
-        <SidebarMenuButton tooltip="Sair" onClick={onSair} aria-label="Sair da conta">
+        <SidebarMenuButton
+          tooltip="Sair"
+          onClick={onSair}
+          aria-label="Sair da conta"
+        >
           <LogOut />
           <span>Sair</span>
         </SidebarMenuButton>
@@ -497,7 +592,8 @@ function Nav({ role, plataforma }: { role: UserRole; plataforma: boolean }) {
   // Configurações abre sozinho quando você já está dentro de alguma seção
   // dela — assim o submenu não some justo quando ele é útil.
   const inSettings =
-    pathname.startsWith("/dashboard/settings") || pathname === "/dashboard/settings/knowledge";
+    pathname.startsWith("/dashboard/settings") ||
+    pathname === "/dashboard/settings/knowledge";
   const canConfigure = role === "OWNER" || role === "ADMIN";
 
   return (
@@ -508,6 +604,7 @@ function Nav({ role, plataforma }: { role: UserRole; plataforma: boolean }) {
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
               render={<Link href={item.href} />}
+              data-tour={item.tour}
               isActive={pathname === item.href}
               tooltip={item.label}
             >
@@ -527,6 +624,7 @@ function Nav({ role, plataforma }: { role: UserRole; plataforma: boolean }) {
         <SidebarMenuItem>
           <SidebarMenuButton
             render={<Link href="/dashboard/settings/whatsapp" />}
+            data-tour="nav-config"
             isActive={inSettings}
             tooltip="Configurações"
           >
@@ -613,13 +711,19 @@ function Shell({
                 size="lg"
               >
                 <Avatar className="size-7">
-                  <AvatarFallback className="text-xs">{initials(user.name)}</AvatarFallback>
+                  <AvatarFallback className="text-xs">
+                    {initials(user.name)}
+                  </AvatarFallback>
                 </Avatar>
                 {/* O menu vive recolhido; sem esconder o texto aqui, o nome
                     e o papel vazavam por baixo do avatar. */}
                 <div className="flex min-w-0 flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
-                  <span className="truncate text-sm font-medium">{user.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">{ROLE_LABEL[user.role]}</span>
+                  <span className="truncate text-sm font-medium">
+                    {user.name}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {ROLE_LABEL[user.role]}
+                  </span>
                 </div>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -671,7 +775,10 @@ function Shell({
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
             <span className="text-amber-800 dark:text-amber-300">
               Você entrou com uma senha temporária.{" "}
-              <Link href="/dashboard/profile" className="font-medium underline underline-offset-4">
+              <Link
+                href="/dashboard/profile"
+                className="font-medium underline underline-offset-4"
+              >
                 Defina sua própria senha
               </Link>{" "}
               pra ninguém mais conhecer seu acesso.
@@ -707,6 +814,7 @@ function Shell({
           </div>
         </div>
         <CopilotWidget />
+        <TourGuiado />
       </SidebarInset>
     </SidebarProvider>
   );

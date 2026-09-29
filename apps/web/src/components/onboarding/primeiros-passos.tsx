@@ -1,5 +1,6 @@
 "use client";
 
+import { BotaoDoTour } from "@/components/tour/botao-do-tour";
 import { ArrowRight, Check, Rocket } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,8 +53,11 @@ export function PrimeirosPassos({
             {concluidos} de {passos.length}
           </span>
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="flex flex-wrap items-center justify-between gap-3">
           O caminho mais curto até a primeira conversa real chegando aqui.
+          {/* A lista diz O QUE falta fazer; o tour mostra ONDE fica cada
+              coisa na tela. Os dois juntos: um não substitui o outro. */}
+          <BotaoDoTour />
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-1.5">

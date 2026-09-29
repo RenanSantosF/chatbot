@@ -1053,7 +1053,7 @@ export function ChatPanel({
             "Resolver" ficava metade fora da tela, e ali não havia rolagem
             nenhuma pra alcançar o resto. Com ele fora, o `flex-wrap`
             finalmente pode fazer o que promete e quebrar a linha. */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div data-tour="acoes-conversa" className="flex flex-wrap items-center gap-1.5">
           <Button
             size="icon-sm"
             variant="ghost"
@@ -1481,7 +1481,7 @@ export function ChatPanel({
           );
         }}
       />
-      <form onSubmit={handleSubmit} className="flex items-end gap-2 bg-card p-3">
+      <form onSubmit={handleSubmit} data-tour="composer" className="flex items-end gap-2 bg-card p-3">
         <input
           ref={fileInputRef}
           type="file"

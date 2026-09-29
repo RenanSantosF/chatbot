@@ -298,7 +298,7 @@ export function InboxFilterBar({
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-1 px-3 pt-3 pb-2">
-        <div className="relative min-w-0 flex-1">
+        <div data-tour="busca" className="relative min-w-0 flex-1">
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={value.search}
@@ -402,6 +402,7 @@ export function InboxFilterBar({
       <div
         role="radiogroup"
         aria-label="Situação do atendimento"
+        data-tour="abas"
         className="flex items-stretch gap-0.5 overflow-x-auto border-b px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {ABAS.map((aba) => {

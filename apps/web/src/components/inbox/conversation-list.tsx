@@ -427,7 +427,7 @@ export function ConversationList({
   }
 
   return (
-    <div ref={areaRef} className="min-h-0 flex-1 overflow-y-auto">
+    <div ref={areaRef} data-tour="lista" className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col py-1.5">
       {conversations.map((conversation, indice) => (
         <LinhaDaConversa
