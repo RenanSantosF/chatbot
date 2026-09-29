@@ -39,6 +39,7 @@ import { QuickReplyPicker, termoDoAtalho } from "./quick-reply-picker";
 import { TagChip, TagPicker } from "./tag-picker";
 import { resumoDaMensagem } from "@/lib/mensagem";
 import { AttachmentComposer } from "./attachment-composer";
+import { CAMPO_DE_MENSAGEM } from "./campo-de-mensagem";
 import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
 import { VoiceRecorder } from "./voice-recorder";
@@ -174,7 +175,6 @@ function ChatLoading() {
 export function ChatPanel({
   conversation,
   loading,
-  sending,
   onSend,
   onRefresh,
   onResolve,
@@ -195,7 +195,8 @@ export function ChatPanel({
   conversation: ConversationDetail | null;
   /** Há conversa escolhida, mas os dados ainda estão vindo. */
   loading?: boolean;
-  sending: boolean;
+  /** Não trava mais nada (o envio é otimista); fica pra quem quiser mostrar andamento. */
+  sending?: boolean;
   onSend: (content: string) => Promise<void>;
   /** Recarrega a conversa depois de assumir/aceitar/recusar/transferir. */
   onRefresh: () => void;
@@ -1315,8 +1316,11 @@ export function ChatPanel({
       >
         <div className="overflow-hidden">
           {respostaExibida ? (
-            <div className="flex items-center gap-2 bg-muted/60 px-3 py-2">
-              <div className="min-w-0 flex-1 rounded-md border-l-4 border-primary bg-background/70 px-2.5 py-1.5">
+            // Na mesma superfície do compositor, com a citação no mesmo campo
+            // preenchido: antes era uma faixa de outra cor com um cartão de
+            // uma terceira, e a área de escrever parecia três peças soltas.
+            <div className="flex items-center gap-2 bg-card px-3 pt-3">
+              <div className="min-w-0 flex-1 rounded-lg border-l-4 border-primary bg-muted px-3 py-1.5 dark:bg-input/40">
                 <p className="text-[12px] font-semibold text-primary">
                   {respostaExibida.senderType === "CUSTOMER" ? "Cliente" : "Você"}
                 </p>
@@ -1399,13 +1403,16 @@ export function ChatPanel({
           variant="ghost"
           aria-label="Anexar arquivo"
           title="Anexar imagem, PDF, áudio ou vídeo"
-          disabled={composicaoTravada || sending}
+          // Só a conversa travada bloqueia. Anexo, emoji e microfone
+          // ficavam presos uns dois segundos depois de cada envio, à
+          // espera do servidor — e o envio é otimista, não há o que esperar.
+          disabled={composicaoTravada}
           onClick={() => fileInputRef.current?.click()}
         >
           <Paperclip className="size-4" />
         </Button>
         <EmojiPicker
-          disabled={composicaoTravada || sending}
+          disabled={composicaoTravada}
           onPick={(emoji) => setDraft((atual) => atual + emoji)}
           onPickFigurinha={(mediaId) => void reenviarFigurinha(mediaId)}
         />
@@ -1468,17 +1475,13 @@ export function ChatPanel({
           // foco de campo desabilitado). O envio é otimista — não há por
           // que esperar por ele pra continuar escrevendo.
           disabled={composicaoTravada}
-          // Foco sem o anel verde. Num campo que fica selecionado o dia
-          // inteiro, o realce da cor da marca vira um brilho constante no
-          // canto da tela; a borda um pouco mais firme já diz onde o cursor
-          // está, e o verde volta a significar alguma coisa quando aparece
-          // em outro lugar.
-          className="field-sizing-content max-h-36 min-h-9 w-full min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-[7px] text-base leading-snug shadow-xs outline-none transition-[color,border-color] placeholder:text-muted-foreground focus-visible:border-foreground/25 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30"
+          // Preenchido e sem moldura (ver CAMPO_DE_MENSAGEM).
+          className={CAMPO_DE_MENSAGEM}
         />
         {/* No canto onde estava o botão de enviar. O gravador se expande
             sobre o compositor enquanto grava, então precisa ser o último
             item da linha pra não empurrar o campo de texto. */}
-        <VoiceRecorder disabled={composicaoTravada || sending} onRecorded={onSendFile} />
+        <VoiceRecorder disabled={composicaoTravada} onRecorded={onSendFile} />
       </form>
       </>
       )}

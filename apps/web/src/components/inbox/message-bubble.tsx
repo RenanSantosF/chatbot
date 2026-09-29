@@ -391,7 +391,10 @@ export const MessageBubble = memo(function MessageBubble({
             // `focus-within` também segura a barra visível: sem ele, abrir
             // o seletor de reação e mover o mouse pra escolher fazia a
             // barra inteira sumir junto com ele.
-            "absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-full border bg-popover/95 p-0.5 opacity-0 shadow-[0_2px_10px_oklch(0_0_0/14%)] backdrop-blur-sm transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100",
+            "pointer-events-none absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-full border bg-popover/95 p-0.5 opacity-0 shadow-[0_2px_10px_oklch(0_0_0/14%)] backdrop-blur-sm transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 has-[[aria-expanded=true]]:pointer-events-auto has-[[aria-expanded=true]]:opacity-100",
+            // Invisível também não pode ser clicável: com os balões
+            // grudados, a barra (escondida) do balão de baixo ficava por
+            // cima do de cima e roubava o clique nele.
             fromCustomer ? "left-2" : "right-2",
           )}
         >

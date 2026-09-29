@@ -33,13 +33,35 @@ import type { MeResponse } from "@/lib/types";
 const RECURSOS = [
   { icone: Bot, titulo: "Responde sozinha, 24 horas por dia" },
   { icone: Route, titulo: "Passa pra equipe na hora certa" },
-  { icone: Users, titulo: "Vários atendentes no mesmo número" },
+  { icone: Users, titulo: "Atendentes ilimitados no mesmo número" },
   { icone: LayoutGrid, titulo: "Filas por setor, sem confusão" },
   { icone: Zap, titulo: "Respostas rápidas e padronizadas" },
   { icone: Archive, titulo: "Histórico e anexos que não somem" },
 ];
 
-const GARANTIAS = ["Sem trocar de número", "IA já inclusa", "Sem fidelidade"];
+/**
+ * O que ninguém pergunta e todo mundo compara.
+ *
+ * "Atendentes ilimitados" vem primeiro de propósito: é a diferença que o
+ * dono do negócio sente no bolso — o comum no mercado é cobrar por
+ * usuário, e a conta cresce a cada pessoa contratada. Aqui o preço é da
+ * empresa, não de cada cadeira.
+ */
+const GARANTIAS = [
+  "Atendentes ilimitados",
+  "Sem trocar de número",
+  "IA já inclusa",
+  "Sem fidelidade",
+];
+
+/** A equipe da faixa de destaque: rostos genéricos, cores da paleta. */
+const EQUIPE = [
+  { iniciais: "AN", cor: "bg-rose-100 text-rose-700" },
+  { iniciais: "BR", cor: "bg-sky-100 text-sky-700" },
+  { iniciais: "CA", cor: "bg-amber-100 text-amber-700" },
+  { iniciais: "DI", cor: "bg-violet-100 text-violet-700" },
+  { iniciais: "EL", cor: "bg-emerald-100 text-emerald-700" },
+];
 
 const PASSOS = [
   { titulo: "Conecte", texto: "Leia o QR code com o celular que já atende." },
@@ -63,8 +85,9 @@ const PRECO_MENSAL = "147";
  * este texto muda à mão; o limite de respostas vem do AiUsageService.
  */
 const PLANO_INCLUI = [
+  "Atendentes ilimitados, sem custo por usuário",
   "3.000 respostas de IA por mês",
-  "Atendentes e setores à vontade",
+  "Setores e filas à vontade",
   "Conexão por QR code, no seu número",
   "Etiquetas, filas e respostas rápidas",
   "Sem taxa de instalação",
@@ -86,6 +109,11 @@ const PERGUNTAS = [
     pergunta: "Quanto custa?",
     resposta:
       `R$ ${PRECO_MENSAL} por mês, com 3.000 respostas de IA inclusas, sem taxa de instalação e sem fidelidade. Precisou de mais no meio do mês? Compra um pacote extra na hora.`,
+  },
+  {
+    pergunta: "Tem limite de atendentes?",
+    resposta:
+      "Não. Coloque quantas pessoas quiser atendendo no mesmo número, cada uma com o próprio acesso, sem pagar nada a mais por isso. O plano é da empresa, não de cada usuário.",
   },
   {
     pergunta: "E se a IA não souber responder?",
@@ -294,6 +322,46 @@ export default async function Home() {
           </div>
         </section>
 
+        {/* O diferencial de preço, com seção própria: é o argumento que
+            decide a compra pra quem já pesquisou outros sistemas. */}
+        <section className="border-y bg-muted/40">
+          <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-5 py-16 md:grid-cols-[1.2fr_1fr]">
+            <div className="flex flex-col items-start gap-4">
+              <span className="text-xs font-semibold tracking-[0.14em] text-primary uppercase">
+                Sem cobrança por usuário
+              </span>
+              <h2 className="text-3xl font-bold tracking-tight text-balance sm:text-4xl">
+                Sua equipe inteira, sem pagar por atendente
+              </h2>
+              <p className="max-w-lg text-lg leading-relaxed text-muted-foreground text-pretty">
+                O comum é cobrar por cada pessoa que atende, e a conta sobe a cada
+                contratação. Aqui o preço é um só: coloque 2 ou 20 pessoas no mesmo
+                número, cada uma com o próprio acesso.
+              </p>
+            </div>
+
+            <div className="flex flex-col items-center gap-4 rounded-3xl border bg-card p-8 text-center shadow-[0_24px_60px_-30px_oklch(0_0_0/25%)]">
+              <div className="flex -space-x-3" aria-hidden>
+                {EQUIPE.map((pessoa) => (
+                  <span
+                    key={pessoa.iniciais}
+                    className={`flex size-12 items-center justify-center rounded-full text-sm font-semibold ring-4 ring-card ${pessoa.cor}`}
+                  >
+                    {pessoa.iniciais}
+                  </span>
+                ))}
+                <span className="flex size-12 items-center justify-center rounded-full bg-primary text-xl font-semibold text-primary-foreground ring-4 ring-card">
+                  ∞
+                </span>
+              </div>
+              <p className="text-2xl font-bold tracking-tight">Atendentes ilimitados</p>
+              <p className="text-sm text-muted-foreground">
+                Incluso no plano de R$ {PRECO_MENSAL}/mês
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section className="bg-primary text-primary-foreground">
           <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-6 px-5 py-16 text-center">
             <h2 className="max-w-2xl text-2xl font-bold tracking-tight text-balance sm:text-3xl">
@@ -328,7 +396,9 @@ export default async function Home() {
                 <span className="text-5xl font-bold tracking-tight">R$ {PRECO_MENSAL}</span>
                 <span className="text-muted-foreground">/mês</span>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">Sem fidelidade. Cancele quando quiser.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Preço único pra equipe toda. Sem fidelidade.
+              </p>
               <ul className="my-7 flex flex-col gap-3">
                 {PLANO_INCLUI.map((item) => (
                   <li key={item} className="flex items-center gap-2.5 text-[15px]">

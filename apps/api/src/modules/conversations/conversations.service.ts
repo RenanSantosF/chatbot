@@ -2147,8 +2147,24 @@ export class ConversationsService {
     },
     caption?: string,
     viewer?: ConversationViewer,
+    replyToId?: string,
   ) {
     const conversation = await this.requireConversation(conversationId, viewer);
+
+    /*
+     * A citação, como no texto (ver `persistMessage`).
+     *
+     * Marcar uma mensagem e mandar uma foto em resposta perdia a marca: o
+     * anexo saía solto, sem a tarjinha no celular do cliente nem aqui. A
+     * busca é presa à conversa — um id de outra conversa não vira citação.
+     */
+    const citada = replyToId
+      ? await this.prisma.db.message.findFirst({
+          where: { id: replyToId, conversationId },
+          select: { id: true, externalId: true },
+        })
+      : null;
+
     await this.reabrirSePreciso(conversationId, agentId);
     await this.assumirAoResponder(conversationId, agentId);
 
@@ -2187,7 +2203,7 @@ export class ConversationsService {
         // mensagem de voz, não arquivo de música anexado.
         voice: kind === 'audio' && jaEhOggOpus(toUpload.mimetype),
       },
-      { caption },
+      { caption, citando: citada?.externalId },
     );
 
     if (!externalId) {
@@ -2210,6 +2226,7 @@ export class ConversationsService {
         // ninguém e que o próprio anexo já mostra quando é documento.
         content: caption ?? '',
         messageType: MEDIA_MESSAGE_TYPE[kind],
+        replyToId: citada?.id,
         externalId,
         // O handle é opaco: na Meta é o id do upload, na Evolution é a
         // chave da mensagem. Quem baixa depois devolve isto ao canal e
@@ -2239,6 +2256,8 @@ export class ConversationsService {
               }),
         } as Prisma.InputJsonValue,
       },
+      // A tarjinha da citação vai junto na resposta e no tempo real.
+      include: messageInclude,
     });
 
     const updated = await this.prisma.db.conversation.update({

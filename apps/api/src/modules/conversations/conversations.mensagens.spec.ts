@@ -563,6 +563,54 @@ describe('relógio da espera (fila de atendimento)', () => {
 
     expect(atualizacoes[0].waitingSince).toBeNull();
   });
+
+  it('anexo marcado como resposta leva a citação junto', async () => {
+    // Marcar a mensagem do cliente e mandar uma foto em resposta saía
+    // solto: nem o celular dele nem o painel mostravam o que era respondido.
+    const { service, criadas } = montar();
+    const whatsapp = {
+      enviarMidia: jest
+        .fn()
+        .mockResolvedValue({ externalId: 'wamid.MIDIA', handle: 'media-1' }),
+      motivoDaUltimaFalha: null,
+    };
+    const db = (
+      service as unknown as {
+        prisma: { db: { message: { findFirst: jest.Mock } } };
+      }
+    ).prisma.db;
+    db.message.findFirst = jest
+      .fn()
+      .mockResolvedValue({ id: 'msg-cliente', externalId: 'wamid.CLIENTE' });
+    Object.assign(service as unknown as Record<string, unknown>, { whatsapp });
+
+    await service.sendAttachment(
+      'conversa-1',
+      'user-1',
+      {
+        buffer: Buffer.from('imagem'),
+        mimetype: 'image/png',
+        originalname: 'foto.png',
+        size: 6,
+      },
+      undefined,
+      undefined,
+      'msg-cliente',
+    );
+
+    // A busca é presa à conversa: id de outra não vira citação.
+    expect(db.message.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'msg-cliente', conversationId: 'conversa-1' },
+      }),
+    );
+    expect(whatsapp.enviarMidia).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ citando: 'wamid.CLIENTE' }),
+    );
+    expect(criadas.at(-1)?.replyToId).toBe('msg-cliente');
+  });
 });
 
 describe('entrega repetida do webhook', () => {

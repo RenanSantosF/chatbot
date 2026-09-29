@@ -503,6 +503,8 @@ export class ConversationsController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: RequestUser,
     @Body('caption') caption?: string,
+    // A mensagem que o anexo responde, quando a pessoa marcou uma antes.
+    @Body('replyToId') replyToId?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Nenhum arquivo enviado.');
@@ -513,6 +515,7 @@ export class ConversationsController {
       file,
       caption,
       { userId: user.userId, role: user.role },
+      replyToId || undefined,
     );
   }
 

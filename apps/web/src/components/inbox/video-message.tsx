@@ -1,7 +1,16 @@
 "use client";
 
-import { Download, Pause, Play, Video, Volume2, VolumeX } from "lucide-react";
-import { useRef, useState } from "react";
+import {
+  Download,
+  Maximize,
+  Minimize,
+  Pause,
+  Play,
+  Video,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 function relogio(segundos: number): string {
@@ -17,7 +26,8 @@ function relogio(segundos: number): string {
  * grudada num quadro preto, e um botão de tela cheia que tomava o monitor
  * inteiro — tudo o que a conversa não é. Aqui é o jeito do WhatsApp: o
  * primeiro quadro como capa, um botão de tocar no meio, a duração no
- * canto, e o vídeo toca ali mesmo, sem sair da conversa.
+ * canto, e o vídeo toca ali mesmo, sem sair da conversa. Tela cheia existe,
+ * mas só quando a pessoa pede, pelo botão da barra (ou duplo clique).
  *
  * A caixa tem proporção fixa desde o primeiro quadro (quadrada até o
  * vídeo dizer o tamanho dele, e limitada a uma faixa depois). Sem isso o
@@ -34,6 +44,21 @@ export function VideoMessage({
   onFalha: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const caixaRef = useRef<HTMLDivElement | null>(null);
+  const [telaCheia, setTelaCheia] = useState(false);
+
+  useEffect(() => {
+    const aoMudar = () => setTelaCheia(document.fullscreenElement === caixaRef.current);
+    document.addEventListener("fullscreenchange", aoMudar);
+    return () => document.removeEventListener("fullscreenchange", aoMudar);
+  }, []);
+
+  function alternarTelaCheia() {
+    // A CAIXA vai pra tela cheia, e não o <video>: assim a barra e os
+    // botões continuam sendo os nossos lá também.
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void caixaRef.current?.requestFullscreen().catch(() => {});
+  }
   const [proporcao, setProporcao] = useState(1);
   const [tocando, setTocando] = useState(false);
   const [jaTocou, setJaTocou] = useState(false);
@@ -63,8 +88,12 @@ export function VideoMessage({
 
   return (
     <div
-      style={{ aspectRatio: `1 / ${proporcao}` }}
-      className="group/video relative w-72 max-w-full overflow-hidden rounded-xl bg-black"
+      ref={caixaRef}
+      style={telaCheia ? undefined : { aspectRatio: `1 / ${proporcao}` }}
+      className={cn(
+        "group/video relative w-72 max-w-full overflow-hidden rounded-xl bg-black",
+        telaCheia && "size-full max-w-none rounded-none",
+      )}
     >
       <video
         ref={videoRef}
@@ -95,11 +124,12 @@ export function VideoMessage({
         onVolumeChange={(evento) => setMudo(evento.currentTarget.muted)}
         onError={onFalha}
         onClick={alternar}
+        onDoubleClick={alternarTelaCheia}
         className={cn(
           "absolute inset-0 size-full cursor-pointer",
           // Parado, a capa preenche a caixa como uma foto; tocando, o
           // vídeo aparece inteiro, sem corte.
-          jaTocou ? "object-contain" : "object-cover",
+          jaTocou || telaCheia ? "object-contain" : "object-cover",
         )}
       />
 
@@ -189,6 +219,15 @@ export function VideoMessage({
               className="flex size-7 items-center justify-center rounded-full transition-colors hover:bg-white/15"
             >
               {mudo ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={alternarTelaCheia}
+              aria-label={telaCheia ? "Sair da tela cheia" : "Tela cheia"}
+              title={telaCheia ? "Sair da tela cheia" : "Tela cheia"}
+              className="flex size-7 items-center justify-center rounded-full transition-colors hover:bg-white/15"
+            >
+              {telaCheia ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
             </button>
             <a
               href={url}

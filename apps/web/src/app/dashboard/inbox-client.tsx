@@ -1432,12 +1432,23 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       } as ConversationMessage["metadata"],
       status: "PENDING",
       reactions: null,
-      replyToId: null,
-      replyTo: null,
+      // A mensagem marcada pra responder vale pro anexo também — antes ela
+      // ficava de fora, e a foto saía solta.
+      replyToId: replyTo?.id ?? null,
+      replyTo: replyTo
+        ? {
+            id: replyTo.id,
+            content: replyTo.content,
+            senderType: replyTo.senderType,
+            messageType: replyTo.messageType,
+          }
+        : null,
       createdAt: new Date().toISOString(),
     };
 
+    const citada = replyTo?.id;
     setDetail((prev) => (prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev));
+    setReplyTo(null);
 
     // Sem travar o compositor: o upload pode levar segundos e prender o
     // botão de enviar fazia a tela parecer congelada. O andamento aparece
@@ -1446,6 +1457,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       const body = new FormData();
       body.append("file", file);
       if (caption) body.append("caption", caption);
+      if (citada) body.append("replyToId", citada);
       const salva = await apiFetch<ConversationMessage>(
         `/conversations/${selectedId}/attachments`,
         { method: "POST", body },
