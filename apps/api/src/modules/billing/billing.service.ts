@@ -1,7 +1,13 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { RegistroDeEventos } from '../plataforma/registro-de-eventos.service';
 
 /**
  * Dois dias entre a assinatura ficar em atraso e o acesso ser cortado.
@@ -60,6 +66,8 @@ export class BillingService {
   constructor(
     private readonly prisma: TenantPrismaService,
     private readonly global: PrismaService,
+    // Opcional só pra os testes montarem o serviço sem ele.
+    @Optional() private readonly eventos?: RegistroDeEventos,
   ) {}
 
   private stripe(): Stripe {
@@ -243,6 +251,8 @@ export class BillingService {
         'Não deu pra criar a sessão de pagamento agora. Tente de novo.',
       );
     }
+    // "Clicou em assinar" — o passo do funil entre criar a conta e pagar.
+    await this.eventos?.registrar('checkout_iniciado', { tenantId });
     return { url: sessao.url };
   }
 
@@ -285,6 +295,9 @@ export class BillingService {
         'Não deu pra criar a sessão de pagamento agora. Tente de novo.',
       );
     }
+    await this.eventos?.registrar('pacote_iniciado', {
+      tenantId: this.prisma.tenantId,
+    });
     return { url: sessao.url };
   }
 
@@ -371,6 +384,10 @@ export class BillingService {
           this.logger.log(
             `Pacote extra de ${MENSAGENS_POR_PACOTE_EXTRA} mensagens creditado pro tenant ${tenantId}.`,
           );
+          await this.eventos?.registrar('pacote_pago', {
+            tenantId,
+            chave: `pacote:${sessao.id}`,
+          });
           return;
         }
 
@@ -405,6 +422,10 @@ export class BillingService {
           },
         });
         this.logger.log(`Assinatura criada pro tenant ${tenantId}.`);
+        await this.eventos?.registrar('assinatura_ativa', {
+          tenantId,
+          chave: `assinatura:${subscriptionId}`,
+        });
         return;
       }
 
@@ -457,6 +478,19 @@ export class BillingService {
         this.logger.log(
           `Assinatura do tenant ${conta.tenantId} atualizada: ${assinatura.status}.`,
         );
+        // Uma vez por assinatura: o Stripe repete estes eventos a cada
+        // tentativa de cobrança, e o painel conta cancelamentos, não avisos.
+        if (cancelada) {
+          await this.eventos?.registrar('assinatura_cancelada', {
+            tenantId: conta.tenantId,
+            chave: `cancelada:${assinatura.id}`,
+          });
+        } else if (!emDia && !conta.assinaturaVencidaEm) {
+          await this.eventos?.registrar('pagamento_pendente', {
+            tenantId: conta.tenantId,
+            chave: `pendente:${assinatura.id}:${new Date().toISOString().slice(0, 10)}`,
+          });
+        }
         return;
       }
 

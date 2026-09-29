@@ -40,6 +40,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       tenant={session.tenant}
       canal={session.canal}
       cobranca={session.cobranca}
+      plataforma={session.plataforma ?? false}
     >
       {children}
     </DashboardShell>

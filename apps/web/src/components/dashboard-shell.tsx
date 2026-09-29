@@ -4,6 +4,7 @@ import {
   Bell,
   BellRing,
   ChartNoAxesColumn,
+  Gauge,
   MessageCircleMore,
   LogOut,
   Settings,
@@ -293,7 +294,7 @@ function CobrancaVencida({ cobranca, role }: { cobranca: EstadoDaCobranca; role:
   );
 }
 
-function Nav({ role }: { role: UserRole }) {
+function Nav({ role, plataforma }: { role: UserRole; plataforma: boolean }) {
   const pathname = usePathname();
   const { totalUnread } = useRealtime();
   // Configurações abre sozinho quando você já está dentro de alguma seção
@@ -337,6 +338,20 @@ function Nav({ role }: { role: UserRole }) {
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : null}
+
+      {/* Só pro dono da plataforma (ver PLATFORM_ADMIN_EMAILS na API). */}
+      {plataforma ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            render={<Link href="/dashboard/plataforma" />}
+            isActive={pathname.startsWith("/dashboard/plataforma")}
+            tooltip="Plataforma"
+          >
+            <Gauge />
+            <span>Plataforma</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
     </SidebarMenu>
   );
 }
@@ -345,11 +360,13 @@ function Shell({
   user,
   tenant,
   cobranca,
+  plataforma,
   children,
 }: {
   user: SessionUser;
   tenant: SessionTenant;
   cobranca: EstadoDaCobranca;
+  plataforma: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -384,7 +401,7 @@ function Shell({
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
-              <Nav role={user.role} />
+              <Nav role={user.role} plataforma={plataforma} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
@@ -498,6 +515,7 @@ export function DashboardShell(props: {
   tenant: SessionTenant;
   canal: EstadoDoCanalSessao;
   cobranca: EstadoDaCobranca;
+  plataforma: boolean;
   children: React.ReactNode;
 }) {
   return (

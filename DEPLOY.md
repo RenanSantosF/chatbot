@@ -69,6 +69,8 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `STRIPE_SECRET_KEY` | **obrigatória** — sem ela, ninguém consegue criar conta: o cadastro termina no Checkout, e sem chave o Checkout não abre. Chave secreta da sua conta Stripe (a mesma de outro sistema seu, se preferir) |
    | `STRIPE_PRICE_ID` | **obrigatória** — o id do preço (`price_...`) da assinatura mensal, criado no Dashboard do Stripe > Product catalog |
    | `STRIPE_TOPUP_PRICE_ID` | opcional — o id do preço (`price_...`) do pacote avulso de 1.000 respostas extras de IA. Sem ela, o botão "Comprar mensagens extras" mostra erro; o resto do sistema funciona igual |
+   | `PLATFORM_ADMIN_EMAILS` | o(s) e-mail(s) de quem vê o painel da plataforma (receita, funil, origem das contas, erros), separados por vírgula — ex.: `voce@empresa.com`. Sem ela, ninguém vê; o item "Plataforma" só aparece no menu pra esses e-mails |
+   | `PLANO_PRECO_MENSAL` | opcional — o preço do plano em reais, usado só pra estimar a receita mensal (MRR) no painel da plataforma. Padrão `147` |
    | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
    | `VAPID_SUBJECT` | um e-mail seu. **O `mailto:` na frente faz parte do valor** (`mailto:voce@seudominio.com`) — a norma pede uma URL, não um e-mail solto. Se você esquecer, o sistema completa sozinho e registra no log |

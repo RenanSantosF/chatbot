@@ -20,6 +20,21 @@ import type { RequestUser } from './auth.types';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { EstadoDoCanalService } from '../whatsapp/canal/estado-do-canal.service';
+import { ehDaPlataforma } from '../plataforma/plataforma.guard';
+import {
+  RegistroDeEventos,
+  dia,
+} from '../plataforma/registro-de-eventos.service';
+
+/**
+ * Quando cada pessoa teve o acesso registrado pela última vez.
+ *
+ * `/auth/me` roda a cada página aberta do painel; registrar em todas seria
+ * uma escrita no banco por clique. Uma vez por hora por pessoa basta pra
+ * "último acesso" e pra contar quem usou no dia.
+ */
+const acessoRegistradoEm = new Map<string, number>();
+const HORA_MS = 60 * 60 * 1000;
 
 const ACCESS_TOKEN_COOKIE = 'access_token';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -31,7 +46,27 @@ export class AuthController {
     private readonly prisma: PrismaService,
     private readonly estadoDoCanal: EstadoDoCanalService,
     private readonly billing: BillingService,
+    private readonly eventos: RegistroDeEventos,
   ) {}
+
+  /** O acesso ao painel, pro painel da plataforma. Não segura a resposta. */
+  private registrarAcesso(user: RequestUser) {
+    const agora = Date.now();
+    if (agora - (acessoRegistradoEm.get(user.userId) ?? 0) < HORA_MS) return;
+    acessoRegistradoEm.set(user.userId, agora);
+
+    void this.eventos.registrar('painel_acesso', {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      chave: `acesso:${user.userId}:${dia()}`,
+    });
+    void this.prisma.client.user
+      .update({
+        where: { id: user.userId },
+        data: { ultimoAcessoEm: new Date(agora) },
+      })
+      .catch(() => {});
+  }
 
   private setSessionCookie(res: Response, token: string) {
     res.cookie(ACCESS_TOKEN_COOKIE, token, {
@@ -132,6 +167,8 @@ export class AuthController {
       throw new UnauthorizedException();
     }
 
+    this.registrarAcesso(user);
+
     return {
       user: {
         id: user.userId,
@@ -146,6 +183,9 @@ export class AuthController {
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       canal,
       cobranca,
+      // Mostra o painel da plataforma no menu. A proteção de verdade é o
+      // PlataformaGuard na API; isto só decide se o item aparece.
+      plataforma: ehDaPlataforma(user.email),
     };
   }
 }

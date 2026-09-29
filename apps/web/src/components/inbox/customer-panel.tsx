@@ -15,26 +15,22 @@ import { Badge } from "@/components/ui/badge";
 import { AvatarDoCliente } from "@/components/avatar-do-cliente";
 import { EmptyState } from "@/components/empty-state";
 import { PRIORITY_META } from "@/lib/priority";
-import { descreverResponsavel } from "@/lib/atribuicao";
+import { COR_DA_SITUACAO, situacaoDoAtendimento } from "@/lib/situacao";
 import { cn } from "@/lib/utils";
-import type { AiMode, ConversationDetail, ConversationStatus } from "@/lib/types";
+import type { ConversationDetail } from "@/lib/types";
 import { CustomerNotes } from "./customer-notes";
 import { TasksSection } from "./tasks-section";
 
-const STATUS_LABEL: Record<ConversationStatus, string> = {
-  OPEN: "Aberta",
-  WAITING_CUSTOMER: "Aguardando cliente",
-  WAITING_AGENT: "Aguardando atendente",
-  RESOLVED: "Resolvida",
-  CLOSED: "Fechada",
-};
-
-const AI_MODE_LABEL: Record<AiMode, string> = {
-  AI_ACTIVE: "IA respondendo",
-  HUMAN_ACTIVE: "Com atendente",
-  AI_ASSIST: "IA sugerindo",
-  PAUSED: "Pausada",
-};
+/** "há 12 min", "há 3 h", "há 2 dias" — o tempo de espera de relance. */
+function ha(iso: string): string {
+  const minutos = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (minutos < 1) return "agora";
+  if (minutos < 60) return `há ${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return `há ${horas} h`;
+  const dias = Math.round(horas / 24);
+  return `há ${dias} ${dias === 1 ? "dia" : "dias"}`;
+}
 
 /** Seção com título discreto — o mesmo ritmo em todo o painel. */
 function Section({
@@ -66,13 +62,15 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function firstAndLast(iso: string | null | undefined) {
+/** Hoje mostra a hora; outro dia, a data — como na lista de conversas. */
+function quando(iso: string | null | undefined) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const data = new Date(iso);
+  const hoje = new Date();
+  if (data.toDateString() === hoje.toDateString()) {
+    return `Hoje, ${data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  }
+  return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 export function CustomerPanel({ conversation }: { conversation: ConversationDetail | null }) {
@@ -95,6 +93,8 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
   const media = messages.filter((m) => m.messageType === "IMAGE" || m.messageType === "VIDEO");
   const collected = conversation.collectedData ?? {};
   const remembered = customer.metadata ?? {};
+  const situacao = situacaoDoAtendimento(conversation);
+  const encerrada = situacao.tom === "fim";
 
   return (
     // `pb-24`: o botão flutuante do assistente fica no canto de baixo e
@@ -122,8 +122,9 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
           </a>
         </div>
         <div className="flex flex-wrap justify-center gap-1.5">
-          <Badge variant="secondary" className="font-normal">
-            {STATUS_LABEL[conversation.status]}
+          <Badge variant="secondary" className="gap-1.5 font-normal">
+            <span className={cn("size-1.5 rounded-full", COR_DA_SITUACAO[situacao.tom])} aria-hidden />
+            {situacao.rotulo}
           </Badge>
           <Badge variant="outline" className="gap-1 font-normal">
             <span className={cn("size-1.5 rounded-full", priority.dot)} aria-hidden />
@@ -153,38 +154,46 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
 
       <Section title="Atendimento" icon={Bot}>
         <div className="flex flex-col gap-1.5">
-          <InfoRow label="IA" value={AI_MODE_LABEL[conversation.aiMode]} />
-          {(() => {
-            // Duas linhas quando falta o aceite: quem lê precisa saber que
-            // a conversa ainda não tem dono de fato (ver descreverResponsavel).
-            const responsavel = descreverResponsavel(conversation);
-            return (
-              <>
-                <InfoRow
-                  label={responsavel.rotulo}
-                  value={
-                    responsavel.aguardandoAceite ? (
-                      <span className="text-amber-600 dark:text-amber-400">
-                        {responsavel.nome}
-                      </span>
-                    ) : (
-                      responsavel.nome
-                    )
-                  }
-                />
-                {responsavel.aguardandoAceite ? (
-                  <p className="text-right text-xs text-muted-foreground text-pretty">
-                    Ainda não aceitou — a conversa segue sem responsável até lá.
-                  </p>
-                ) : null}
-              </>
-            );
-          })()}
-          {conversation.queue ? <InfoRow label="Setor" value={conversation.queue.name} /> : null}
+          {/* Uma resposta pra "quem está cuidando disto?", no lugar de
+              "IA: Com atendente" + "Responsável" em linhas separadas, que
+              juntas não diziam nada de uma vez (ver situacaoDoAtendimento). */}
           <InfoRow
-            label="Última mensagem"
-            value={firstAndLast(conversation.lastMessageAt)}
+            label="Situação"
+            value={
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className={cn("size-2 shrink-0 rounded-full", COR_DA_SITUACAO[situacao.tom])}
+                  aria-hidden
+                />
+                {situacao.rotulo}
+              </span>
+            }
           />
+          {situacao.detalhe ? (
+            <p className="text-right text-xs text-muted-foreground text-pretty">
+              {situacao.detalhe}
+            </p>
+          ) : null}
+          {/* De quem é a vez — e há quanto tempo o cliente espera, quando é
+              da equipe. É o número que decide qual conversa atender antes. */}
+          {encerrada ? null : (
+            <InfoRow
+              label="Quem responde"
+              value={
+                conversation.status === "WAITING_CUSTOMER" ? (
+                  "O cliente"
+                ) : conversation.waitingSince ? (
+                  <span className="text-amber-600 dark:text-amber-400">
+                    A equipe · {ha(conversation.waitingSince)}
+                  </span>
+                ) : (
+                  "A equipe"
+                )
+              }
+            />
+          )}
+          {conversation.queue ? <InfoRow label="Setor" value={conversation.queue.name} /> : null}
+          <InfoRow label="Última mensagem" value={quando(conversation.lastMessageAt)} />
         </div>
       </Section>
 

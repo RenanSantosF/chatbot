@@ -70,6 +70,8 @@ export interface MeResponse {
   tenant: SessionTenant;
   canal: EstadoDoCanalSessao;
   cobranca: EstadoDaCobranca;
+  /** Dono da plataforma: vê o item "Plataforma" no menu. */
+  plataforma?: boolean;
 }
 
 export interface TeamMember {

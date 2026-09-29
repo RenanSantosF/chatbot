@@ -14,6 +14,7 @@ import Link from "next/link";
 import { Marca } from "@/components/marca";
 import { redirect } from "next/navigation";
 import { ConversaDemo } from "@/components/publico/conversa-demo";
+import { RastreioDaLanding } from "@/components/plataforma/rastreio-da-landing";
 import { apiFetchServer } from "@/lib/api-server";
 import { EMPRESA, SITE_DESCRIPTION, SITE_NAME, absoluto } from "@/lib/site";
 import type { MeResponse } from "@/lib/types";
@@ -164,6 +165,7 @@ export default async function Home() {
 
   return (
     <div className="flex flex-1 flex-col bg-background">
+      <RastreioDaLanding />
       {/*
         O que a página é, dito numa linguagem que o buscador entende.
         O texto visível continua sendo a fonte da verdade — isto só o

@@ -6,6 +6,10 @@ import { TenantsService } from '../tenants/tenants.service';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { JwtPayload, RequestUser } from './auth.types';
+import {
+  RegistroDeEventos,
+  utmLimpo,
+} from '../plataforma/registro-de-eventos.service';
 
 const PASSWORD_SALT_ROUNDS = 12;
 
@@ -30,6 +34,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly tenants: TenantsService,
     private readonly jwt: JwtService,
+    private readonly eventos: RegistroDeEventos,
   ) {}
 
   private issueToken(payload: JwtPayload): string {
@@ -71,6 +76,14 @@ export class AuthService {
           slug,
           timezone: dto.timezone ?? 'America/Sao_Paulo',
           status: 'TRIAL',
+          // De onde veio — pro painel da plataforma saber onde investir.
+          comoConheceu: dto.comoConheceu ?? null,
+          comoConheceuDetalhe:
+            dto.comoConheceu === 'outro'
+              ? dto.comoConheceuDetalhe?.trim() || null
+              : null,
+          utm: utmLimpo(dto.utm),
+          visitante: dto.visitante ?? null,
         },
       });
 
@@ -91,6 +104,14 @@ export class AuthService {
     });
 
     const accessToken = this.issueToken({ sub: user.id, tenantId: tenant.id, role: user.role });
+
+    await this.eventos.registrar('conta_criada', {
+      tenantId: tenant.id,
+      userId: user.id,
+      visitante: dto.visitante,
+      chave: `conta:${tenant.id}`,
+      dados: dto.comoConheceu ? { comoConheceu: dto.comoConheceu } : undefined,
+    });
 
     return {
       accessToken,

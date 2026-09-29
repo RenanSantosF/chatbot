@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,6 +15,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
+import {
+  campanhaGuardada,
+  guardarCampanha,
+  registrarPasso,
+  visitante,
+} from "@/lib/rastreio";
+import { cn } from "@/lib/utils";
+
+/**
+ * "Onde nos conheceu?" — uma pergunta, opcional, em botões de um clique.
+ *
+ * Cada campo a mais no cadastro derruba a conversão, então nada de lista
+ * suspensa nem obrigação: quem quiser responder toca num botão. É o que
+ * diz ao dono do produto onde investir (ver o painel da plataforma).
+ */
+const ORIGENS = [
+  { valor: "instagram", rotulo: "Instagram" },
+  { valor: "indicacao", rotulo: "Indicação" },
+  { valor: "google", rotulo: "Google" },
+  { valor: "youtube", rotulo: "YouTube" },
+  { valor: "tiktok", rotulo: "TikTok" },
+  { valor: "facebook", rotulo: "Facebook" },
+  { valor: "whatsapp", rotulo: "WhatsApp" },
+  { valor: "outro", rotulo: "Outro" },
+];
 
 export default function RegisterPage() {
   const [companyName, setCompanyName] = useState("");
@@ -23,6 +48,15 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [comoConheceu, setComoConheceu] = useState<string | null>(null);
+  const [comoConheceuDetalhe, setComoConheceuDetalhe] = useState("");
+
+  // O passo "abriu o cadastro" do funil — e a campanha, pra quem chegou
+  // direto aqui por um link de anúncio, sem passar pela landing.
+  useEffect(() => {
+    guardarCampanha();
+    registrarPasso("cadastro_aberto");
+  }, []);
 
   /**
    * A última etapa do cadastro é o pagamento — não existe uso sem assinar.
@@ -41,7 +75,18 @@ export default function RegisterPage() {
     try {
       await apiFetch("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ companyName, ownerName, email, password }),
+        body: JSON.stringify({
+          companyName,
+          ownerName,
+          email,
+          password,
+          ...(comoConheceu ? { comoConheceu } : {}),
+          ...(comoConheceu === "outro" && comoConheceuDetalhe.trim()
+            ? { comoConheceuDetalhe: comoConheceuDetalhe.trim() }
+            : {}),
+          utm: campanhaGuardada(),
+          visitante: visitante() ?? undefined,
+        }),
       });
       const { url } = await apiFetch<{ url: string }>("/billing/checkout", { method: "POST" });
       window.location.href = url;
@@ -107,6 +152,41 @@ export default function RegisterPage() {
               minLength={8}
             />
           </div>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-sm font-medium">
+              Onde conheceu a Inteliwa?{" "}
+              <span className="font-normal text-muted-foreground">(opcional)</span>
+            </legend>
+            <div className="flex flex-wrap gap-1.5">
+              {ORIGENS.map((origem) => (
+                <button
+                  key={origem.valor}
+                  type="button"
+                  aria-pressed={comoConheceu === origem.valor}
+                  onClick={() =>
+                    setComoConheceu((atual) => (atual === origem.valor ? null : origem.valor))
+                  }
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-[13px] transition-colors",
+                    comoConheceu === origem.valor
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "hover:bg-muted",
+                  )}
+                >
+                  {origem.rotulo}
+                </button>
+              ))}
+            </div>
+            {comoConheceu === "outro" ? (
+              <Input
+                aria-label="Onde nos conheceu"
+                placeholder="Conta pra gente onde"
+                value={comoConheceuDetalhe}
+                onChange={(e) => setComoConheceuDetalhe(e.target.value)}
+                maxLength={120}
+              />
+            ) : null}
+          </fieldset>
           {error ? (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}

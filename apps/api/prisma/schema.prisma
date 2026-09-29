@@ -30,13 +30,13 @@ enum UserStatus {
 }
 
 model Tenant {
-  id          String        @id @default(uuid())
-  name        String
-  slug        String        @unique
-  logo        String?
-  timezone    String        @default("America/Sao_Paulo")
-  language    String        @default("pt-BR")
-  status      TenantStatus  @default(TRIAL)
+  id                  String        @id @default(uuid())
+  name                String
+  slug                String        @unique
+  logo                String?
+  timezone            String        @default("America/Sao_Paulo")
+  language            String        @default("pt-BR")
+  status              TenantStatus  @default(TRIAL)
   /// O que a empresa contou sobre si na primeira entrada.
   ///
   /// Fora do formulário de cadastro de propósito. Cada campo a mais na
@@ -52,18 +52,28 @@ model Tenant {
   ///
   /// Json porque a lista de perguntas vai mudar — e mudar pergunta de
   /// pesquisa não deveria custar migração de banco.
-  profile     Json?
+  profile             Json?
   /// Quando a primeira configuração foi concluída (ou dispensada).
-  onboardedAt DateTime?
+  onboardedAt         DateTime?
+  /// Onde a empresa conheceu a plataforma — respondido no cadastro, pra o
+  /// dono do produto saber onde investir (ver o painel da plataforma).
+  comoConheceu        String?
+  /// O "outro" por extenso, quando a opção escolhida foi essa.
+  comoConheceuDetalhe String?
+  /// Os parâmetros de campanha (utm_*) com que a pessoa chegou na landing.
+  utm                 Json?
+  /// O visitante anônimo que virou esta conta — liga o funil de antes do
+  /// cadastro (visita, clique) ao de depois (ver EventoDaPlataforma).
+  visitante           String?
   /// Quem entrega as mensagens desta empresa (ver CanalProvedor).
   ///
   /// Mora aqui, e não na configuração do WhatsApp oficial, porque quem
   /// escolhe a Evolution nunca cria aquela linha — não tem token da Meta,
   /// nem número na Cloud API. Guardar a escolha lá seria guardá-la num
   /// lugar que, justamente pra metade dos casos, não existe.
-  canal       CanalProvedor @default(META_CLOUD)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  canal               CanalProvedor @default(META_CLOUD)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   users               User[]
   customers           Customer[]
@@ -400,6 +410,8 @@ model User {
   // pessoa a definir a própria senha, então a senha que o dono viu deixa
   // de valer e ninguém além do titular a conhece.
   mustChangePassword Boolean    @default(false)
+  /// Última vez que abriu o painel (atualizado no máximo de hora em hora).
+  ultimoAcessoEm     DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
@@ -1385,4 +1397,52 @@ model HistoricoGuardado {
 
   @@index([tenantId, maisRecenteEm])
   @@map("historicos_guardados")
+}
+
+/// Um passo de alguém pelo produto: da visita na landing ao acesso diário
+/// ao painel. É o que alimenta o funil do painel da plataforma.
+///
+/// Da PLATAFORMA, e não de uma empresa: não entra no isolamento por tenant
+/// (a visita na landing nem tem empresa ainda). Só o painel da plataforma
+/// lê isto.
+model EventoDaPlataforma {
+  id        String   @id @default(uuid())
+  tipo      String
+  /// O visitante anônimo (id gerado no navegador), quando é antes da conta.
+  visitante String?
+  tenantId  String?
+  userId    String?
+  /// Uma linha por chave: "acessou o painel hoje" conta uma vez por dia,
+  /// e não uma vez por página aberta.
+  chave     String?  @unique
+  dados     Json?
+  createdAt DateTime @default(now())
+
+  @@index([tipo, createdAt])
+  @@index([tenantId, tipo])
+  @@map("eventos_da_plataforma")
+}
+
+/// Erro inesperado, da API ou da tela, agrupado: o mesmo erro no mesmo
+/// lugar é UMA linha com a contagem, e não mil linhas iguais.
+model ErroDaPlataforma {
+  id          String   @id @default(uuid())
+  /// "api" ou "web".
+  origem      String
+  /// Origem + mensagem + rota, normalizadas (ids e números trocados por #).
+  assinatura  String   @unique
+  mensagem    String
+  pilha       String?
+  rota        String?
+  status      Int?
+  ocorrencias Int      @default(1)
+  /// A última empresa e pessoa em que aconteceu — pra dar pra investigar.
+  tenantId    String?
+  userId      String?
+  primeiraVez DateTime @default(now())
+  ultimaVez   DateTime @default(now())
+  resolvido   Boolean  @default(false)
+
+  @@index([ultimaVez])
+  @@map("erros_da_plataforma")
 }

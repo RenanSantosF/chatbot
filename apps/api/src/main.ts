@@ -1,9 +1,11 @@
 import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { FiltroDeErros } from './modules/plataforma/filtro-de-erros';
+import { RegistroDeErros } from './modules/plataforma/registro-de-erros.service';
 import { ffmpegDisponivel } from './modules/whatsapp/audio-container';
 
 async function bootstrap() {
@@ -59,6 +61,16 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   const port = process.env.PORT ?? 3001;
+  // Erros 5xx vão pro painel da plataforma (ver FiltroDeErros). Pelo
+  // `useGlobalFilters`, e não por APP_FILTER, de propósito: assim vale só
+  // pro HTTP, e o socket de tempo real segue com o tratamento dele.
+  app.useGlobalFilters(
+    new FiltroDeErros(
+      app.get(HttpAdapterHost).httpAdapter,
+      app.get(RegistroDeErros),
+    ),
+  );
+
   await app.listen(port);
 
   console.log(`API rodando em http://localhost:${port}/api`);

@@ -57,6 +57,13 @@ export default function PrivacidadePage() {
               <strong>Credenciais de integração</strong> — token do WhatsApp e chave da IA,
               guardados criptografados com AES-256-GCM. Nunca trafegam para o navegador.
             </>,
+            <>
+              <strong>Métricas de uso do site</strong> — um identificador aleatório guardado
+              no seu navegador, as páginas de cadastro visitadas e a campanha de origem do
+              link (utm), sem IP e sem cookies de terceiros. Servem só pra entender em que
+              passo as pessoas desistem de criar a conta. Também registramos erros técnicos
+              da tela, pra corrigi-los.
+            </>,
           ]}
         />
       </Secao>

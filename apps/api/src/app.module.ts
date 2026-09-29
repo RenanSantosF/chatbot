@@ -21,6 +21,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
+import { PlataformaModule } from './modules/plataforma/plataforma.module';
 import { QueuesModule } from './modules/queues/queues.module';
 import { QuickRepliesModule } from './modules/quick-replies/quick-replies.module';
 import { TagsModule } from './modules/tags/tags.module';
@@ -56,6 +57,7 @@ import { StorageModule } from './modules/storage/storage.module';
     StorageModule,
     CryptoModule,
     PrismaModule,
+    PlataformaModule,
     AuthModule,
     BillingModule,
     TenantsModule,
