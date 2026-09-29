@@ -7,6 +7,8 @@ export interface SessionUser {
   role: UserRole;
   /** Conta criada pelo dono cuja senha temporária ainda não foi trocada. */
   mustChangePassword?: boolean;
+  /** Já terminou ou pulou o tour guiado — guardado na conta, não no navegador. */
+  tourVisto?: boolean;
 }
 
 export interface SessionTenant {

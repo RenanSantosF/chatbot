@@ -17,6 +17,7 @@ import {
   useState,
 } from "react";
 import { Marca } from "@/components/marca";
+import { apiFetch } from "@/lib/api-client";
 import { useRealtime } from "@/components/realtime-provider";
 import { useSession } from "@/components/session-provider";
 import { primeiroNome } from "@/lib/cadastro";
@@ -233,13 +234,23 @@ export function TourGuiado() {
   useEffect(() => {
     if (
       pathname !== "/dashboard" ||
-      tourJaVisto(user.id) ||
+      tourJaVisto(user.id, user.tourVisto) ||
       window.innerWidth < 1024
     )
       return;
     const espera = setTimeout(comecar, 1500);
     return () => clearTimeout(espera);
-  }, [pathname, user.id, comecar]);
+  }, [pathname, user.id, user.tourVisto, comecar]);
+
+  // Quem viu o tour antes de ele ser guardado na conta (só no navegador):
+  // passa a marca pra conta, pra não aparecer de novo em outro lugar.
+  useEffect(() => {
+    if (!user.tourVisto && tourJaVisto(user.id, false)) {
+      void apiFetch("/auth/tour-visto", { method: "POST" }).catch(
+        () => undefined,
+      );
+    }
+  }, [user.id, user.tourVisto]);
 
   // A pedido (botão "Fazer o tour"), de qualquer tela: vai pras conversas
   // primeiro, que é onde o tour mora.

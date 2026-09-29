@@ -153,7 +153,7 @@ export class AuthController {
       this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } }),
       this.prisma.client.user.findUnique({
         where: { id: user.userId },
-        select: { name: true, mustChangePassword: true },
+        select: { name: true, mustChangePassword: true, tourVistoEm: true },
       }),
       // O estado do WhatsApp vem JUNTO com a sessão, e não só por evento
       // de tempo real. Sem isto, quem abria o painel com a sessão já caída
@@ -179,6 +179,7 @@ export class AuthController {
         email: user.email,
         role: user.role,
         mustChangePassword: account.mustChangePassword,
+        tourVisto: account.tourVistoEm !== null,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       canal,
@@ -187,5 +188,20 @@ export class AuthController {
       // PlataformaGuard na API; isto só decide se o item aparece.
       plataforma: ehDaPlataforma(user.email),
     };
+  }
+
+  /**
+   * A pessoa terminou ou pulou o tour guiado: não mostra mais, em nenhum
+   * navegador. Só grava a primeira vez — refazer o tour pelo botão de
+   * ajuda não mexe na data.
+   */
+  @BillingExempt()
+  @Post('tour-visto')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async tourVisto(@CurrentUser() user: RequestUser) {
+    await this.prisma.client.user.updateMany({
+      where: { id: user.userId, tourVistoEm: null },
+      data: { tourVistoEm: new Date() },
+    });
   }
 }

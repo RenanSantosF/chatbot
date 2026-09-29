@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/api-client";
+
 /**
  * As contas do tour guiado que não precisam de tela: onde o cartão de
  * explicação fica em relação ao que está sendo mostrado, e se o tour já
@@ -98,22 +100,34 @@ export function posicionarCartao(
 
 const CHAVE = "inteliwa:tour:";
 
-/** Esta pessoa já viu (ou pulou) o tour neste navegador? */
-export function tourJaVisto(userId: string): boolean {
+/**
+ * Esta pessoa já viu (ou pulou) o tour?
+ *
+ * Quem decide é a CONTA (`tourVisto`, vindo de /auth/me): trocar de
+ * navegador ou de computador não repete o tour. A marca no navegador só
+ * cobre o intervalo entre fechar o tour e a sessão ser lida de novo — sem
+ * ela, uma troca de tela logo depois de pular podia trazê-lo de volta.
+ */
+export function tourJaVisto(
+  userId: string,
+  naConta: boolean | undefined,
+): boolean {
+  if (naConta) return true;
   try {
     return localStorage.getItem(CHAVE + userId) !== null;
   } catch {
-    // Sem armazenamento (aba anônima, bloqueado): não insiste a cada tela.
-    return true;
+    return false;
   }
 }
 
+/** Grava na conta (e no navegador, pro intervalo até a sessão recarregar). */
 export function marcarTourVisto(userId: string, como: "concluido" | "pulado") {
   try {
     localStorage.setItem(CHAVE + userId, como);
   } catch {
-    // Sem armazenamento: o tour simplesmente pode aparecer de novo.
+    // Sem armazenamento: a conta basta.
   }
+  void apiFetch("/auth/tour-visto", { method: "POST" }).catch(() => undefined);
 }
 
 /** Pede o tour de qualquer lugar do painel (ex.: "Fazer o tour" nos primeiros passos). */

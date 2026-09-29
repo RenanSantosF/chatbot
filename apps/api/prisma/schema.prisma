@@ -412,6 +412,9 @@ model User {
   mustChangePassword Boolean    @default(false)
   /// Última vez que abriu o painel (atualizado no máximo de hora em hora).
   ultimoAcessoEm     DateTime?
+  /// Quando a pessoa terminou (ou pulou) o tour guiado do painel. Por
+  /// conta, e não por navegador: trocar de computador não repete o tour.
+  tourVistoEm        DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
