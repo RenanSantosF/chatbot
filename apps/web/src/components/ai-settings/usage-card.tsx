@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { useSession } from "@/components/session-provider";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 
@@ -27,6 +28,8 @@ interface LimiteDaIa {
  * teto" é antes de um cliente esperar resposta e não vir nenhuma.
  */
 export function UsageCard() {
+  const { user } = useSession();
+  const dono = user.role === "OWNER";
   const [uso, setUso] = useState<LimiteDaIa | null>(null);
   const [comprando, setComprando] = useState(false);
 
@@ -104,11 +107,25 @@ export function UsageCard() {
             style={{ width: `${percentual}%` }}
           />
         </div>
-        {perto ? (
-          <Button size="sm" variant="outline" disabled={comprando} onClick={() => void comprarPacoteExtra()}>
+        {/* Sempre à mão pro dono, e não só quando o limite aperta: quem
+            prevê um mês cheio (campanha, fim de ano) compra antes de a IA
+            parar. Pra quem não é dono o botão só daria erro de permissão —
+            no lugar dele vai o recado de a quem pedir. */}
+        {dono ? (
+          <Button
+            size="sm"
+            variant={perto ? "default" : "outline"}
+            disabled={comprando}
+            onClick={() => void comprarPacoteExtra()}
+            className="self-start"
+          >
             {comprando ? <Spinner className="size-3.5" /> : null}
             Comprar 1.000 respostas extras
           </Button>
+        ) : perto ? (
+          <p className="text-xs text-muted-foreground">
+            Pra comprar mais respostas, peça ao dono da conta.
+          </p>
         ) : null}
       </CardContent>
     </Card>

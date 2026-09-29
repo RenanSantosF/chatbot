@@ -16,6 +16,8 @@ function montar(
       executeTool: (nome: string, args: object) => Promise<unknown>;
     }) => Promise<{ content: string }>;
     semChave?: boolean;
+    /** Permissões que o papel TEM (o resto é negado). */
+    permite?: string[];
   } = {},
 ) {
   const generateReply = jest
@@ -42,14 +44,26 @@ function montar(
       }),
     } as never,
     { get: jest.fn().mockResolvedValue({}), update: jest.fn() } as never,
-    { generateReply } as never,
+    {
+      can: jest.fn((_role: string, chave: string) =>
+        Promise.resolve(
+          (
+            opcoes.permite ?? ['whatsapp.manage', 'ai.manage', 'metrics.view']
+          ).includes(chave),
+        ),
+      ),
+    } as never,
+    { generateReply },
   );
 
   return { service, generateReply };
 }
 
 const perguntar = (service: CopilotService) =>
-  service.ask([{ role: 'user' as const, content: 'Como está a fila hoje?' }]);
+  service.ask(
+    [{ role: 'user' as const, content: 'Como está a fila hoje?' }],
+    'OWNER',
+  );
 
 describe('o assistente do painel nunca devolve erro cru', () => {
   it('cota estourada vira a frase da cota, não uma exceção', async () => {
@@ -85,7 +99,9 @@ describe('o assistente do painel nunca devolve erro cru', () => {
   it('demora do provedor vira convite a tentar de novo', async () => {
     const { service } = montar({
       provedor: async () => {
-        throw new Error('O provedor de IA não respondeu em 25 segundos (copiloto).');
+        throw new Error(
+          'O provedor de IA não respondeu em 25 segundos (copiloto).',
+        );
       },
     });
 
@@ -129,9 +145,10 @@ describe('o balão nunca sai vazio', () => {
       },
     });
 
-    const resposta = await service.ask([
-      { role: 'user', content: 'desliga a confirmação de leitura' },
-    ]);
+    const resposta = await service.ask(
+      [{ role: 'user', content: 'desliga a confirmação de leitura' }],
+      'OWNER',
+    );
 
     expect(resposta.content).toMatch(/ajustei/i);
   });
@@ -150,6 +167,36 @@ describe('sem chave configurada', () => {
   it('continua sendo pedido inválido, não falha de IA', async () => {
     const { service } = montar({ semChave: true });
 
-    await expect(perguntar(service)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(perguntar(service)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+});
+
+describe('o assistente respeita as permissões de quem pergunta', () => {
+  it('atendente sem acesso à IA não recebe a ferramenta de mudar a IA', async () => {
+    const { service, generateReply } = montar({ permite: [] });
+    await service.ask([{ role: 'user', content: 'desliga a IA' }], 'AGENT');
+
+    const [[entrada]] = generateReply.mock.calls as [
+      [{ tools: { name: string }[] }],
+    ];
+    const nomes = entrada.tools.map((tool) => tool.name);
+    expect(nomes).toEqual(['lerConfiguracoes']);
+  });
+
+  it('e mesmo que o modelo tente, a execução é recusada', async () => {
+    let resultado: unknown;
+    const { service } = montar({
+      permite: [],
+      provedor: async ({ executeTool }) => {
+        resultado = await executeTool('ajustarIa', { active: false });
+        return { content: 'ok' };
+      },
+    });
+    await service.ask([{ role: 'user', content: 'desliga a IA' }], 'AGENT');
+    expect(resultado).toEqual({
+      error: 'Seu perfil não tem permissão para esta ação.',
+    });
   });
 });

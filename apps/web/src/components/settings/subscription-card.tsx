@@ -3,6 +3,7 @@
 import { CreditCard } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,11 +89,18 @@ export function SubscriptionCard() {
           {status.assinaturaAtiva ? `Plano: ${status.planLabel}.` : "Sem assinatura ativa."}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-wrap gap-2">
         <Button size="sm" disabled={indo} onClick={() => void (status.assinaturaAtiva ? gerenciar() : assinar())}>
           {indo ? <Spinner className="size-3.5" /> : null}
           {status.assinaturaAtiva ? "Gerenciar assinatura" : "Assinar agora"}
         </Button>
+        {/* O pacote avulso só existe pra quem já assina (é o cliente do
+            Stripe que paga) — ver criarCheckoutExtra na API. */}
+        {status.assinaturaAtiva ? (
+          <Button size="sm" variant="outline" render={<Link href="/dashboard/mensagens-extras" />}>
+            Comprar respostas extras
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );

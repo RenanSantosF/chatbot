@@ -12,11 +12,19 @@ export class TasksService {
     });
   }
 
-  async complete(id: string) {
+  async buscar(id: string) {
     const task = await this.prisma.db.task.findFirst({ where: { id } });
     if (!task) {
       throw new NotFoundException('Tarefa não encontrada.');
     }
-    return this.prisma.db.task.update({ where: { id }, data: { status: 'DONE' } });
+    return task;
+  }
+
+  async complete(id: string) {
+    await this.buscar(id);
+    return this.prisma.db.task.update({
+      where: { id },
+      data: { status: 'DONE' },
+    });
   }
 }

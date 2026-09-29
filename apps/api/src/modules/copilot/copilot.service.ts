@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiCredentialsResolver } from '../ai/providers/ai-credentials.resolver';
 import {
@@ -9,6 +14,26 @@ import {
 } from '../ai/providers/ai-provider.interface';
 import { porQueOCopilotoFalhou } from '../ai/ai-indisponivel';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
+import { LIMITE_DAS_INSTRUCOES_GERAIS } from '../ai/ai-context';
+import { PermissionsService } from '../permissions/permissions.service';
+import type { PermissionKey } from '../permissions/permissions.constants';
+import type { UserRole } from '../../../generated/prisma/client';
+
+/**
+ * A permissão que cada ferramenta exige — a MESMA da tela equivalente.
+ *
+ * O assistente não pode ser um atalho por cima das permissões: sem isto,
+ * um atendente sem acesso às configurações da IA pedia "desliga a IA" ou
+ * "troca as instruções" aqui, e o assistente fazia. Ferramenta que a
+ * pessoa não pode usar nem é oferecida ao modelo (e é recusada de novo na
+ * execução, por garantia).
+ */
+const PERMISSAO_DA_FERRAMENTA: Record<string, PermissionKey | null> = {
+  lerConfiguracoes: null,
+  ajustarAtendimento: 'whatsapp.manage',
+  ajustarIa: 'ai.manage',
+  resumirFila: 'metrics.view',
+};
 
 export interface CopilotTurn {
   role: 'user' | 'assistant';
@@ -33,6 +58,7 @@ export class CopilotService {
     private readonly prisma: TenantPrismaService,
     private readonly credentials: AiCredentialsResolver,
     private readonly inboxSettings: InboxSettingsService,
+    private readonly permissions: PermissionsService,
     @Inject(AI_PROVIDER) private readonly ai: AiProvider,
   ) {}
 
@@ -77,7 +103,11 @@ export class CopilotService {
     },
   ];
 
-  private async execute(name: string, args: Record<string, unknown>) {
+  private async execute(
+    name: string,
+    args: Record<string, unknown>,
+    podeGerirIa: boolean,
+  ) {
     switch (name) {
       case 'lerConfiguracoes': {
         const [inbox, ai] = await Promise.all([
@@ -92,7 +122,10 @@ export class CopilotService {
             iaAtiva: ai?.active ?? false,
             nomeDaIa: ai?.aiName ?? null,
             tomDaIa: ai?.tone ?? null,
-            instrucoesExtras: ai?.customInstructions ?? null,
+            // As instruções da IA são da tela que o papel dela não abre.
+            instrucoesExtras: podeGerirIa
+              ? (ai?.customInstructions ?? null)
+              : undefined,
           },
         };
       }
@@ -122,6 +155,12 @@ export class CopilotService {
         if (typeof args.active === 'boolean') patch.active = args.active;
         if (typeof args.aiName === 'string') patch.aiName = args.aiName;
         if (typeof args.customInstructions === 'string') {
+          // O mesmo teto da tela: estas instruções vão em toda resposta.
+          if (args.customInstructions.length > LIMITE_DAS_INSTRUCOES_GERAIS) {
+            return {
+              error: `As instruções gerais podem ter no máximo ${LIMITE_DAS_INSTRUCOES_GERAIS} caracteres.`,
+            };
+          }
           patch.customInstructions = args.customInstructions;
         }
         if (Object.keys(patch).length === 0) {
@@ -140,7 +179,9 @@ export class CopilotService {
             by: ['status'],
             _count: { _all: true },
           }),
-          this.prisma.db.conversation.count({ where: { assignedUserId: null } }),
+          this.prisma.db.conversation.count({
+            where: { assignedUserId: null },
+          }),
         ]);
         return {
           output: {
@@ -157,13 +198,22 @@ export class CopilotService {
     }
   }
 
-  async ask(history: CopilotTurn[]) {
+  async ask(history: CopilotTurn[], role: UserRole) {
     const resolution = await this.credentials.resolve();
     if (!resolution.credentials) {
       throw new BadRequestException(
         'A IA da plataforma está temporariamente indisponível — não dá pra usar o assistente agora.',
       );
     }
+
+    const permitidas = new Set<string>();
+    for (const tool of this.tools) {
+      const exigida = PERMISSAO_DA_FERRAMENTA[tool.name];
+      if (!exigida || (await this.permissions.can(role, exigida))) {
+        permitidas.add(tool.name);
+      }
+    }
+    const podeGerirIa = permitidas.has('ajustarIa');
 
     const messages: AiMessage[] = history.slice(-12).map((turn) => ({
       role: turn.role,
@@ -186,11 +236,15 @@ export class CopilotService {
         history: messages,
         apiKey: resolution.credentials.apiKey,
         model: resolution.credentials.model,
-        tools: this.tools,
+        tools: this.tools.filter((tool) => permitidas.has(tool.name)),
         executeTool: async (name, args) => {
-          if (name === 'ajustarAtendimento' || name === 'ajustarIa') mexeu = true;
+          if (!permitidas.has(name)) {
+            return { error: 'Seu perfil não tem permissão para esta ação.' };
+          }
+          if (name === 'ajustarAtendimento' || name === 'ajustarIa')
+            mexeu = true;
           try {
-            return await this.execute(name, args);
+            return await this.execute(name, args, podeGerirIa);
           } catch (error) {
             this.logger.warn(`Falha na ferramenta ${name}: ${String(error)}`);
             return { error: 'Não deu pra executar essa ação agora.' };
