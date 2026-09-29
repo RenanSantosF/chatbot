@@ -8,11 +8,15 @@ import {
   Gauge,
   MessageCircleMore,
   LogOut,
+  Monitor,
+  Moon,
+  Sun,
   Settings,
   TriangleAlert,
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { useTheme } from "next-themes";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -371,6 +375,122 @@ function LiberacaoAcabando({ cobranca, role }: { cobranca: EstadoDaCobranca; rol
   );
 }
 
+const TEMAS = [
+  { valor: "light", rotulo: "Claro", icone: Sun },
+  { valor: "dark", rotulo: "Escuro", icone: Moon },
+  { valor: "system", rotulo: "Igual ao sistema", icone: Monitor },
+] as const;
+
+/**
+ * O pé do trilho lateral: o que antes morava numa barra de 44px no topo.
+ *
+ * A barra não tinha conteúdo próprio — tema, avisos, sincronização e sair,
+ * encostados à direita de uma faixa vazia —, e no Inbox era uma fatia de
+ * tela a menos de conversa. Aqui fica como no WhatsApp Web: ícones no pé
+ * do trilho, com o nome no balão ao passar o mouse. No celular a barra
+ * continua existindo, porque é nela que mora o botão do menu.
+ */
+function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
+  const { connected, sincronizando, historico, notifPermission, enableNotifications } =
+    useRealtime();
+  const { theme, setTheme } = useTheme();
+  const [montado, setMontado] = useState(false);
+  useEffect(() => {
+    // O tema só é conhecido no navegador; antes de montar, o ícone seria um
+    // chute diferente do servidor (ver ThemeToggle).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMontado(true);
+  }, []);
+
+  const atual = TEMAS.find((t) => t.valor === theme) ?? TEMAS[2];
+  const proximo = TEMAS[(TEMAS.indexOf(atual) + 1) % TEMAS.length];
+  const IconeDoTema = montado ? atual.icone : Monitor;
+
+  const progresso = historico?.importando ? Math.min(99, Math.round(historico.progresso ?? 0)) : null;
+
+  return (
+    <SidebarMenu>
+      {!connected ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="Reconectando ao servidor — as mensagens aparecem assim que voltar"
+            className="cursor-default text-amber-500 hover:bg-transparent hover:text-amber-500"
+          >
+            <span className="relative flex size-4 items-center justify-center">
+              <span className="absolute size-2.5 animate-ping rounded-full bg-amber-500/60" />
+              <span className="size-2 rounded-full bg-amber-500" />
+            </span>
+            <span>Reconectando</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : progresso !== null ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip={`Trazendo conversas do celular${progresso > 0 ? ` · ${progresso}%` : ""}`}
+            className="cursor-default hover:bg-transparent"
+          >
+            {/* Um anel que enche: o quanto já chegou, sem texto nenhum. */}
+            <svg viewBox="0 0 20 20" className="size-5 -rotate-90" aria-hidden>
+              <circle cx="10" cy="10" r="8" fill="none" strokeWidth="2.5" className="stroke-muted" />
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                className="stroke-primary transition-[stroke-dashoffset] duration-700"
+                strokeDasharray={2 * Math.PI * 8}
+                strokeDashoffset={2 * Math.PI * 8 * (1 - Math.max(progresso, 4) / 100)}
+              />
+            </svg>
+            <span>Trazendo conversas</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : sincronizando ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Sincronizando" className="cursor-default hover:bg-transparent">
+            <Spinner className="size-4" />
+            <span>Sincronizando</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
+
+      {notifPermission === "default" ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Ativar avisos de mensagem nova" onClick={enableNotifications}>
+            {/* O pontinho verde chama o olho: é o único item do pé que
+                pede uma ação, e some depois de respondido. */}
+            <span className="relative flex">
+              <BellRing className="size-4" />
+              <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
+            </span>
+            <span>Ativar avisos</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
+
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip={montado ? `Tema: ${atual.rotulo.toLowerCase()} — clique para ${proximo.rotulo.toLowerCase()}` : "Tema"}
+          onClick={() => setTheme(proximo.valor)}
+          aria-label="Trocar o tema"
+        >
+          <IconeDoTema key={montado ? atual.valor : "carregando"} className="animate-in spin-in-45 fade-in duration-300" />
+          <span>Tema</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+
+      <SidebarMenuItem>
+        <SidebarMenuButton tooltip="Sair" onClick={onSair} aria-label="Sair da conta">
+          <LogOut />
+          <span>Sair</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
 function Nav({ role, plataforma }: { role: UserRole; plataforma: boolean }) {
   const pathname = usePathname();
   const { totalUnread } = useRealtime();
@@ -483,6 +603,7 @@ function Shell({
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
+          <ControlesDoTrilho onSair={handleLogout} />
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -506,7 +627,10 @@ function Shell({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        {/* Faixa de 44px, e não os 64px de antes.
+        {/* Só no celular: no computador estes controles moram no pé do
+            trilho (ver ControlesDoTrilho) e o conteúdo começa no topo.
+
+            Faixa de 44px, e não os 64px de antes.
             
             Ela não tem conteúdo próprio — só os controles de tema, aviso e
             saída, encostados à direita. Vinte pixels de altura à toa em
@@ -518,7 +642,7 @@ function Shell({
             escuro os dois quase se encostavam e a barra parecia parte da
             lista de conversas. A borda em 8% de branco (ver globals.css)
             fecha a separação. */}
-        <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center gap-1 border-b bg-sidebar px-3">
+        <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center gap-1 border-b bg-sidebar px-3 md:hidden">
           {/* O único jeito de chegar na navegação pelo celular.
 
               A barra lateral já virava uma gaveta em telas estreitas — o
