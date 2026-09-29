@@ -170,7 +170,7 @@ const LinhaDaConversa = memo(function LinhaDaConversa({
         <div className="flex items-baseline justify-between gap-2">
           <span
             className={cn(
-              "truncate text-[15px]",
+              "truncate text-[16px]",
               unread > 0 ? "font-semibold" : "font-medium",
             )}
           >
@@ -190,7 +190,7 @@ const LinhaDaConversa = memo(function LinhaDaConversa({
         <div className="mt-0.5 flex items-center gap-1.5">
           <p
             className={cn(
-              "min-w-0 flex-1 truncate text-[13.5px]",
+              "min-w-0 flex-1 truncate text-[14px]",
               unread > 0 ? "font-medium text-foreground" : "text-muted-foreground",
             )}
           >

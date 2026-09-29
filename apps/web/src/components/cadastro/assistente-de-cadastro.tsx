@@ -904,10 +904,10 @@ function Acoes({
       ) : null}
       <button
         type="submit"
-        className="group inline-flex h-12 items-center gap-2.5 rounded-full bg-neutral-950 pr-5 pl-7 text-[15px] font-medium text-white shadow-[0_10px_30px_-10px_oklch(0_0_0/60%)] transition-all duration-300 hover:bg-primary hover:shadow-[0_14px_36px_-10px_oklch(0.62_0.15_165/70%)] active:scale-[0.98]"
+        className="group inline-flex h-12 items-center gap-2.5 rounded-full bg-neutral-950 pr-5 pl-7 text-[15px] font-medium text-white shadow-[0_10px_30px_-10px_oklch(0_0_0/60%)] transition-all duration-300 hover:bg-neutral-800 hover:shadow-[0_14px_36px_-12px_oklch(0.62_0.15_165/35%)] active:scale-[0.98]"
       >
         {rotulo}
-        <span className="flex size-7 items-center justify-center rounded-full bg-white/10 transition-transform duration-300 group-hover:translate-x-1">
+        <span className="flex size-7 items-center justify-center rounded-full bg-white/10 transition-all duration-300 group-hover:translate-x-1 group-hover:bg-primary">
           <ArrowRight className="size-4" />
         </span>
       </button>

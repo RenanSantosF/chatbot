@@ -518,7 +518,7 @@ function Shell({
             escuro os dois quase se encostavam e a barra parecia parte da
             lista de conversas. A borda em 8% de branco (ver globals.css)
             fecha a separação. */}
-        <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center gap-1 border-b bg-background px-3">
+        <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center gap-1 border-b bg-sidebar px-3">
           {/* O único jeito de chegar na navegação pelo celular.
 
               A barra lateral já virava uma gaveta em telas estreitas — o

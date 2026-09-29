@@ -188,27 +188,27 @@ button:disabled,
  * Preto puro (#000) achata tudo, porque as sombras e as bordas em branco
  * translúcido perdem a referência de profundidade.
  *
- * A quarta versão subiu tudo um degrau e reaproximou as superfícies. O que
- * estava errado não era o tom, era a DISTÂNCIA entre eles: o fundo da
- * conversa usava o mesmo valor do fundo da página (0.2035) enquanto os
- * painéis em volta usavam `card` (0.2372), e o buraco no meio da tela era
- * visível — parecia defeito, não profundidade.
+ * A quarta versão subiu tudo um degrau (0.22 a 0.32) e aproximou as
+ * superfícies — e ficou clara demais pra um dia inteiro de tela: tudo
+ * em volta de #232525, sem um lugar pro olho descansar, e o trilho do
+ * menu da mesma cor da lista.
  *
- * Agora a escada é curta e regular, e cada degrau tem um trabalho:
+ * A quinta segue a receita do WhatsApp Web atual, medida no print dele:
+ * as superfícies de TRABALHO descem (lista, cabeçalho e conversa em
+ * #161717, a mesma cor — sem "buraco" no meio da tela, que era o defeito
+ * da terceira versão), e a MOLDURA sobe (trilho do menu e barra do topo
+ * em #1D1F1F). O olho separa "navegação" de "trabalho" pela moldura, e
+ * não por uma escada de cinzas quase iguais.
  *
- *   0.2200  fundo/cabeçalho  — o mais fundo, onde nada é conteúdo
- *   0.2430  fundo da conversa — quase o painel, só um fio abaixo
- *   0.2560  card/sidebar     — as superfícies de trabalho
- *   0.2980  balão recebido   — precisa se destacar do papel de parede
- *   0.3180  popover/muted    — o que flutua por cima de tudo
+ *   0.1811  fundo das páginas — atrás dos cartões das outras telas
+ *   0.2035  card/conversa     — onde se trabalha (#161717)
+ *   0.2372  sidebar           — a moldura: trilho e topo (#1D1F1F)
+ *   0.2666  balão recebido / campos (#242626)
+ *   0.3042  selecionado / hover forte (#2E2F2F)
  *
- * A borda subiu de 5% pra 8% de branco no mesmo movimento: com as
- * superfícies mais próximas, é ela que separa o cabeçalho da lista de
- * conversas — em 5% os dois viravam um bloco só.
- *
- * Contraste conferido depois de subir: texto sobre fundo 13.9:1, texto
- * sobre card 12.3:1, texto fraco sobre fundo 5.4:1, texto sobre o balão
- * recebido 10.6:1. Todos acima do mínimo legível.
+ * Contraste conferido: texto sobre o painel 14.6:1, texto fraco (agora
+ * cinza neutro #A8ABAB, sem o azul) sobre o painel 7.8:1 e sobre o balão
+ * 6.6:1, texto sobre o balão recebido 12.9:1.
  *
  * O verde de destaque #14774E é usado como PREENCHIMENTO (pílula ativa do
  * menu, com texto claro em cima: 4.7:1). Como cor de TEXTO sobre o fundo
@@ -216,30 +216,25 @@ button:disabled,
  * que aparece como texto nas pastilhas de filtro, é um degrau acima
  * (#1DA968, 5.9:1) na mesma família. Medido, não estimado. */
 .dark {
-  --background: oklch(0.2200 0.0016 197);
+  --background: oklch(0.1811 0.0016 197); /* #111212 */
   --foreground: oklch(0.9436 0.0051 228.8); /* #E9EDEF */
-  --card: oklch(0.2560 0.0030 197);
+  --card: oklch(0.2035 0.0016 197); /* #161717 */
   --card-foreground: oklch(0.9436 0.0051 228.8);
-  --popover: oklch(0.3180 0.0014 197);
+  --popover: oklch(0.2748 0.0029 197); /* #262828 */
   --popover-foreground: oklch(0.9436 0.0051 228.8);
   --primary: oklch(0.6350 0.1360 158.5); /* #1DA968 */
-  --primary-foreground: oklch(0.2200 0.0016 197);
-  --secondary: oklch(0.3180 0.0014 197);
+  --primary-foreground: oklch(0.1811 0.0016 197);
+  --secondary: oklch(0.2666 0.0029 197);
   --secondary-foreground: oklch(0.9436 0.0051 228.8);
-  --muted: oklch(0.3180 0.0014 197);
-  /* 0.78, e não os 0.70 de antes.
-
-     Este token pinta a prévia da mensagem na lista de conversas, que é o
-     texto mais lido do produto inteiro — e em 0.70 sobre o painel
-     (L 0.256) ele ficava em ~4,7:1. Passa no mínimo pra texto normal e
-     falha no confortável, e a prévia é justamente texto pequeno lido de
-     relance, dezenas de vezes por hora. Em 0.78 sobe pra ~6,4:1 sem virar
-     branco: a hierarquia com o nome do cliente continua visível. */
-  --muted-foreground: oklch(0.78 0.020 235.2);
+  --muted: oklch(0.2666 0.0029 197); /* #242626 */
+  /* Texto fraco: a prévia da mensagem na lista, o texto mais lido do
+     produto. Cinza neutro (sem o azul de antes), 7,8:1 sobre o painel —
+     confortável pra ler de relance o dia inteiro. */
+  --muted-foreground: oklch(0.7388 0.0034 197); /* #A8ABAB, neutro como o do WhatsApp */
   /* Um degrau acima do `muted` pra a conversa ABERTA se separar do fundo.
      Os dois eram o mesmo valor, e a seleção — que é só troca de superfície
      (ver conversation-list) — praticamente não aparecia. */
-  --accent: oklch(0.3480 0.0020 197);
+  --accent: oklch(0.3042 0.0014 197); /* #2E2F2F */
   --accent-foreground: oklch(0.9436 0.0051 228.8);
   --destructive: oklch(0.68 0.19 22);
   /* 5%, não os 3% de antes: a divisória é medida contra o fundo, e o fundo
@@ -248,32 +243,32 @@ button:disabled,
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 9%);
   --ring: oklch(1 0 0 / 28%);
-  --chat-bg: oklch(0.2430 0.0030 197);
-  --chat-dot: oklch(1 0 0 / 3%);
+  --chat-bg: oklch(0.2035 0.0016 197); /* o mesmo do painel: a textura é que separa */
+  --chat-dot: oklch(1 0 0 / 3.5%);
   --bubble-out: oklch(0.3770 0.0699 163.4); /* #144D37 */
   --bubble-out-foreground: oklch(0.9436 0.0051 228.8);
   /* Token próprio, e não `card`: o balão recebido precisa se destacar do
      papel de parede (#0B141A), enquanto a superfície de painel fica um
      degrau abaixo (#111B21). Usando `card` nos dois, o balão do cliente
      praticamente sumia no fundo do chat. */
-  --bubble-in: oklch(0.2980 0.0029 197);
+  --bubble-in: oklch(0.2666 0.0029 197); /* #242626 */
   --bubble-in-foreground: oklch(0.9436 0.0051 228.8);
   --chart-1: oklch(0.6350 0.1360 158.5);
   --chart-2: oklch(0.6637 0.0236 235.2);
   --chart-3: oklch(0.52 0.002 197);
   --chart-4: oklch(0.40 0.002 197);
   --chart-5: oklch(0.3180 0.0014 197);
-  --sidebar: oklch(0.2560 0.0030 197);
+  --sidebar: oklch(0.2372 0.0030 197); /* #1D1F1F — a moldura, um degrau ACIMA do trabalho */
   --sidebar-foreground: oklch(0.9436 0.0051 228.8);
   --sidebar-primary: oklch(0.6350 0.1360 158.5);
-  --sidebar-primary-foreground: oklch(0.2200 0.0016 197);
+  --sidebar-primary-foreground: oklch(0.1811 0.0016 197);
   /* Superfície discreta, e não mais o verde sólido #14774E.
      Este token pinta o item ATIVO e também o hover de todos os outros, e
      em verde cheio cada passada de mouse virava um bloco pesado no menu —
      três blocos verdes disputando atenção com o conteúdo da tela. Agora a
      superfície só levanta o item, e quem diz "é aqui que você está" é a
      cor do ícone e do rótulo (ver o `foreground` abaixo). */
-  --sidebar-accent: oklch(0.3180 0.0014 197);
+  --sidebar-accent: oklch(0.3042 0.0014 197);
   /* O verde vira TINTA, não fundo. É o mesmo tom do `--primary` (#1DA968),
      escolhido por medida: 5.9:1 sobre o fundo escuro. */
   --sidebar-accent-foreground: oklch(0.9436 0.0051 228.8);

@@ -459,11 +459,15 @@ export const MessageBubble = memo(function MessageBubble({
         // cursor-pointer; dentro do balão o cursor volta ao de texto pra não
         // parecer que o texto não pode ser selecionado.
         //
-        // As medidas são as do WhatsApp Web: 14,5px com entrelinha de 19px,
-        // recuo de 6 a 9px e canto de 8px. Antes eram 15px com entrelinha
-        // de 24px e recuo de 14px — a mesma conversa ocupava quase o dobro
-        // da altura.
-        "relative flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden text-[14.5px] leading-[19px]",
+        // As medidas são as do WhatsApp Web: entrelinha de 19px, recuo de
+        // 6 a 9px e canto de 8px. Antes eram 15px com entrelinha de 24px e
+        // recuo de 14px — a mesma conversa ocupava quase o dobro da altura.
+        //
+        // 14px, e não 14,5: o Geist desenha maior que a fonte do WhatsApp
+        // no mesmo tamanho, e a 14,5 o texto do balão ficava visivelmente
+        // maior que a prévia da lista. Agora os dois têm o mesmo corpo
+        // (como lá), e quem se destaca na lista é o nome, não a conversa.
+        "relative flex min-w-0 cursor-text flex-col gap-0.5 overflow-hidden text-[14px] leading-[19px]",
         figurinha
           ? "items-start"
           : cn(
