@@ -157,6 +157,11 @@ export interface MessageMetadata {
   visualizacaoUnica?: "IMAGE" | "VIDEO" | "AUDIO";
   /** Chave do anexo no bucket próprio, quando já foi arquivado. */
   storageKey?: string;
+  /**
+   * Resumo da mensagem citada, quando a original não está no painel (veio
+   * de antes da conexão). Com a original aqui, quem manda é `replyTo`.
+   */
+  citacao?: { texto: string; tipo: MessageType; daEmpresa?: boolean };
   latitude?: number;
   longitude?: number;
   name?: string;

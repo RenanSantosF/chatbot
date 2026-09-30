@@ -237,6 +237,39 @@ describe('mensagem que chega', () => {
     expect(conversations.receiveInbound).not.toHaveBeenCalled();
   });
 
+  it('resposta citando, feita no celular, chega com a citação', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        key: {
+          remoteJid: '5511999999999@s.whatsapp.net',
+          fromMe: true,
+          id: '3EB0RESP',
+        },
+        message: { conversation: 'Estou bem' },
+        contextInfo: {
+          stanzaId: '3EB0CLIENTE',
+          participant: '5511999999999@s.whatsapp.net',
+          quotedMessage: { conversation: 'Como você está?' },
+        },
+      }),
+    );
+
+    expect(conversations.recordOutboundEcho).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // As duas candidatas: o id não diz de que lado a citada foi escrita.
+        replyToExternalId: [
+          '5511999999999@s.whatsapp.net|1|3EB0CLIENTE',
+          '5511999999999@s.whatsapp.net|0|3EB0CLIENTE',
+        ],
+        citacao: { texto: 'Como você está?', tipo: 'TEXT', daEmpresa: false },
+      }),
+    );
+  });
+
   it('status e transmissão continuam de fora', async () => {
     // Ninguém responde a um status pelo painel. Tratá-lo como atendimento
     // encheria a caixa de linhas que nunca vão ser lidas.

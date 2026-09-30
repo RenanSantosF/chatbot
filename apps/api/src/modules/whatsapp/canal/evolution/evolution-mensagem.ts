@@ -71,7 +71,7 @@ export interface DadosDaMensagem {
    * mandar, e o contexto — que inclui o id da mensagem citada — sobe pra
    * raiz do evento. Procurar só dentro da mensagem perde toda resposta.
    */
-  contextInfo?: { stanzaId?: string } | null;
+  contextInfo?: ContextoBruto | null;
   /**
    * O estado de entrega, que vem de dois jeitos.
    *
@@ -112,6 +112,21 @@ export interface MensagemTraduzida {
   metadata?: Record<string, unknown>;
   /** O id da mensagem citada, quando é resposta a outra. */
   citando?: string;
+  /**
+   * O que a mensagem citada dizia, copiado de dentro da própria resposta.
+   *
+   * O WhatsApp manda a citada inteira junto. Guardar um resumo dela é o
+   * que deixa a tarjinha aparecer mesmo quando a original não está no
+   * painel — o caso comum logo depois de conectar, quando a conversa só
+   * tem as mensagens mais recentes.
+   */
+  citacao?: { texto: string; tipo: MessageType; autorJid?: string };
+}
+
+interface ContextoBruto {
+  stanzaId?: string;
+  participant?: string;
+  quotedMessage?: Record<string, unknown> | null;
 }
 
 /** O que a Evolution chama de mídia, e o que isso vira aqui. */
@@ -131,7 +146,7 @@ interface ConteudoDeMidia {
 }
 
 interface ContextoDaCitacao {
-  contextInfo?: { stanzaId?: string };
+  contextInfo?: ContextoBruto;
 }
 
 /**
@@ -242,6 +257,63 @@ export function reacaoDaMensagem(
 export function traduzirMensagem(
   dados: DadosDaMensagem,
 ): MensagemTraduzida | null {
+  const traduzida = traduzirConteudo(dados);
+  if (!traduzida?.citando) return traduzida;
+  const citacao = resumoDaCitada(dados);
+  return citacao ? { ...traduzida, citacao } : traduzida;
+}
+
+/**
+ * O resumo da mensagem citada, tirado do `contextInfo` — que pode estar
+ * na raiz do evento ou dentro da parte que carrega o conteúdo.
+ */
+function resumoDaCitada(
+  dados: DadosDaMensagem,
+): MensagemTraduzida['citacao'] | undefined {
+  const partes = Object.values(conteudo(dados.message ?? {}));
+  const contextos = [
+    dados.contextInfo,
+    ...partes.map((parte) =>
+      parte && typeof parte === 'object'
+        ? (parte as ContextoDaCitacao).contextInfo
+        : undefined,
+    ),
+  ];
+  const contexto = contextos.find((c) => c?.quotedMessage);
+  if (!contexto?.quotedMessage) return undefined;
+
+  const citada = conteudo(contexto.quotedMessage);
+  const legenda = (chave: string) =>
+    (citada[chave] as { caption?: string } | undefined)?.caption;
+  const texto =
+    (citada.conversation as string | undefined) ??
+    (citada.extendedTextMessage as { text?: string } | undefined)?.text;
+
+  let resumo: { texto: string; tipo: MessageType } | undefined;
+  if (texto) resumo = { texto, tipo: 'TEXT' };
+  else {
+    for (const [chave, tipo] of Object.entries(MIDIAS)) {
+      if (!citada[chave]) continue;
+      resumo = {
+        texto:
+          legenda(chave) ??
+          (citada[chave] as { fileName?: string }).fileName ??
+          '',
+        tipo,
+      };
+      break;
+    }
+  }
+  if (!resumo) return undefined;
+
+  return {
+    texto: resumo.texto.slice(0, 300),
+    tipo: resumo.tipo,
+    autorJid: contexto.participant ?? undefined,
+  };
+}
+
+function traduzirConteudo(dados: DadosDaMensagem): MensagemTraduzida | null {
   const bruto = dados.message;
   if (!bruto) return null;
 

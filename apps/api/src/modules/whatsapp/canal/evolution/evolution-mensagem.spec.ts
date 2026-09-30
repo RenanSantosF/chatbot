@@ -97,6 +97,45 @@ describe('tradução da mensagem', () => {
     });
   });
 
+  it('guarda o resumo da citada, pra quando a original não está no painel', () => {
+    const traduzida = traduzirMensagem({
+      message: { conversation: 'te amoo' },
+      contextInfo: {
+        stanzaId: '3EB0ANTERIOR',
+        participant: '5527999431839@s.whatsapp.net',
+        quotedMessage: { conversation: 'Se é demais sério mesmo kkkkkk' },
+      },
+    });
+
+    expect(traduzida?.citacao).toEqual({
+      texto: 'Se é demais sério mesmo kkkkkk',
+      tipo: 'TEXT',
+      autorJid: '5527999431839@s.whatsapp.net',
+    });
+  });
+
+  it('foto citando: o resumo vem de dentro da mídia', () => {
+    const traduzida = traduzirMensagem({
+      message: {
+        imageMessage: {
+          mimetype: 'image/jpeg',
+          contextInfo: {
+            stanzaId: '3EB0ANTERIOR',
+            quotedMessage: {
+              extendedTextMessage: { text: 'Fiquei até animada' },
+            },
+          },
+        },
+      },
+    });
+
+    expect(traduzida).toMatchObject({
+      messageType: 'IMAGE',
+      citando: '3EB0ANTERIOR',
+      citacao: { texto: 'Fiquei até animada', tipo: 'TEXT' },
+    });
+  });
+
   it('enxerga o texto dentro do embrulho de mensagem temporária', () => {
     // O caso que some sem erro: com mensagens temporárias ligadas na
     // conversa, TODO o conteúdo vem embrulhado, e sem desembrulhar a

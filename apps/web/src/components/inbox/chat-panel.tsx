@@ -1313,7 +1313,17 @@ export function ChatPanel({
                 onReact={reagir}
                 onForward={setForwarding}
                 onDelete={setApagando}
-                autorDaCitada={message.replyTo ? autorDaCitada(message.replyTo) : undefined}
+                autorDaCitada={
+                  message.replyTo
+                    ? autorDaCitada(message.replyTo)
+                    : message.metadata?.citacao
+                      ? message.metadata.citacao.daEmpresa === undefined
+                        ? "Mensagem anterior"
+                        : message.metadata.citacao.daEmpresa
+                          ? "Você"
+                          : nomeDoContato
+                      : undefined
+                }
                 onIrParaCitada={irParaMensagem}
               />
               </div>

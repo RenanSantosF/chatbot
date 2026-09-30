@@ -230,9 +230,42 @@ export interface EnvioAceito {
  */
 const ESPERA_ANTES_DE_ENVIAR_MS = 1500;
 
+/** A mensagem citada num envio. */
+export interface Citada {
+  id: string;
+  remoteJid?: string;
+  fromMe?: boolean;
+  /** O texto da original, como está no painel. */
+  texto?: string | null;
+}
+
+/**
+ * O `quoted` que a Evolution entende de verdade.
+ *
+ * Só com o id, ela procura a original no banco DELA — e, quando não acha
+ * (mensagem vinda do histórico, ou o banco da Evolution sem guardar
+ * mensagens), manda a resposta sem citação nenhuma, calada. Era o que
+ * acontecia: no painel a resposta saía citando, no celular chegava solta.
+ * Com a chave inteira e o texto, ela não precisa procurar nada.
+ */
+function citacao(citada: Citada | null | undefined) {
+  if (!citada) return {};
+  return {
+    quoted: {
+      key: {
+        id: citada.id,
+        ...(citada.remoteJid
+          ? { remoteJid: citada.remoteJid, fromMe: citada.fromMe ?? false }
+          : {}),
+      },
+      ...(citada.texto ? { message: { conversation: citada.texto } } : {}),
+    },
+  };
+}
+
 export function enviarTexto(
   credenciais: Credenciais,
-  envio: { numero: string; texto: string; citando?: string | null },
+  envio: { numero: string; texto: string; citando?: Citada | null },
 ): Promise<RespostaDaEvolution<EnvioAceito>> {
   return chamar(credenciais, `/message/sendText/${credenciais.instance}`, {
     method: 'POST',
@@ -244,9 +277,7 @@ export function enviarTexto(
       // receber, durante o `delay` acima. Sem ele a mensagem aparece do
       // nada depois de uma pausa — que é pior que os dois extremos.
       presence: 'composing',
-      ...(envio.citando
-        ? { quoted: { key: { id: envio.citando } } }
-        : {}),
+      ...citacao(envio.citando),
     },
   });
 }
@@ -358,7 +389,7 @@ export function enviarMidia(
     mimetype: string;
     filename: string;
     legenda?: string;
-    citando?: string | null;
+    citando?: Citada | null;
   },
 ): Promise<RespostaDaEvolution<EnvioAceito>> {
   return chamar(
@@ -378,7 +409,7 @@ export function enviarMidia(
         // denuncia automação.
         delay: ESPERA_ANTES_DE_ENVIAR_MS,
         ...(envio.legenda ? { caption: envio.legenda } : {}),
-        ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
+        ...citacao(envio.citando),
       },
     },
   );
@@ -399,7 +430,7 @@ export function enviarMidia(
  */
 export function enviarFigurinha(
   credenciais: Credenciais,
-  envio: { numero: string; base64: string; citando?: string | null },
+  envio: { numero: string; base64: string; citando?: Citada | null },
 ): Promise<RespostaDaEvolution<EnvioAceito>> {
   return chamar(credenciais, `/message/sendSticker/${credenciais.instance}`, {
     method: 'POST',
@@ -407,7 +438,7 @@ export function enviarFigurinha(
     body: {
       number: envio.numero,
       sticker: envio.base64,
-      ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
+      ...citacao(envio.citando),
     },
   });
 }
@@ -422,7 +453,7 @@ export function enviarFigurinha(
  */
 export function enviarAudioDeVoz(
   credenciais: Credenciais,
-  envio: { numero: string; base64: string; citando?: string | null },
+  envio: { numero: string; base64: string; citando?: Citada | null },
 ): Promise<RespostaDaEvolution<EnvioAceito>> {
   return chamar(
     credenciais,
@@ -437,7 +468,7 @@ export function enviarAudioDeVoz(
         // "recording" e não "composing": no aparelho do cliente aparece
         // "gravando áudio...", que é o que de fato está por vir.
         presence: 'recording',
-        ...(envio.citando ? { quoted: { key: { id: envio.citando } } } : {}),
+        ...citacao(envio.citando),
       },
     },
   );

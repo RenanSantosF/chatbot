@@ -63,6 +63,15 @@ import { mediaIdDe } from './media-id';
  * outras esperam a conversa ser aberta (ver HistoricoGuardado). O resto
  * fica no celular (ver `importarHistorico`).
  */
+
+/** O resumo de uma mensagem citada que não está no painel. */
+export interface CitacaoCopiada {
+  texto: string;
+  tipo: MessageType;
+  /** Quem escreveu a citada; ausente quando o WhatsApp não diz. */
+  daEmpresa?: boolean;
+}
+
 export const LIMITE_DO_HISTORICO_IMPORTADO = 40;
 
 export interface ConversationViewer {
@@ -3273,7 +3282,13 @@ export class ConversationsService {
     messageType?: MessageType;
     metadata?: Prisma.InputJsonValue;
     externalId?: string;
-    replyToExternalId?: string;
+    /**
+     * A mensagem citada. Lista porque, no WhatsApp por QR code, o id não
+     * diz de que lado ela foi escrita — as candidatas vão todas.
+     */
+    replyToExternalId?: string | string[];
+    /** Resumo da citada, pra quando a original não estiver no painel. */
+    citacao?: CitacaoCopiada;
     /** A hora em que o cliente escreveu, quando ela não é agora. */
     createdAt?: Date;
     /**
@@ -3385,12 +3400,11 @@ export class ConversationsService {
 
     // A citação chega como o wamid da mensagem original; traduzimos pro id
     // interno pra a tela conseguir montar a tarjinha sem consultar a Meta.
-    const replyTo = input.replyToExternalId
-      ? await this.prisma.db.message.findFirst({
-          where: { externalId: input.replyToExternalId },
-          select: { id: true },
-        })
-      : null;
+    const { replyTo, metadata: comCitacao } = await this.resolverCitacao(
+      input.replyToExternalId,
+      input.citacao,
+      input.metadata,
+    );
 
     let inbound: Awaited<ReturnType<ConversationsService['persistMessage']>>;
     try {
@@ -3407,12 +3421,12 @@ export class ConversationsService {
          */
         metadata: input.participante
           ? {
-              ...(typeof input.metadata === 'object' && input.metadata
-                ? input.metadata
+              ...(typeof comCitacao === 'object' && comCitacao
+                ? comCitacao
                 : {}),
               participante: input.participante,
             }
-          : input.metadata,
+          : comCitacao,
         externalId: input.externalId,
         replyToId: replyTo?.id,
         createdAt: input.createdAt,
@@ -4149,12 +4163,45 @@ export class ConversationsService {
     return atualizada;
   }
 
+  /**
+   * Acha a mensagem citada no painel; se ela não estiver aqui, guarda o
+   * resumo que veio junto no metadado, pra a tarjinha aparecer do mesmo
+   * jeito (sem o clique que leva até a original, que não existe aqui).
+   */
+  private async resolverCitacao(
+    externos: string | string[] | undefined,
+    citacao: CitacaoCopiada | undefined,
+    metadata: Prisma.InputJsonValue | undefined,
+  ) {
+    const candidatas =
+      externos === undefined ? [] : Array.isArray(externos) ? externos : [externos];
+    const replyTo = candidatas.length
+      ? await this.prisma.db.message.findFirst({
+          where: { externalId: { in: candidatas } },
+          select: { id: true },
+        })
+      : null;
+    if (replyTo || !citacao) return { replyTo, metadata };
+    return {
+      replyTo: null,
+      metadata: {
+        ...(typeof metadata === 'object' && metadata && !Array.isArray(metadata)
+          ? (metadata as Prisma.InputJsonObject)
+          : {}),
+        citacao: { ...citacao },
+      } as Prisma.InputJsonObject,
+    };
+  }
+
   async recordOutboundEcho(input: {
     customerPhone: string;
     content: string;
     messageType?: MessageType;
     metadata?: Prisma.InputJsonValue;
     externalId?: string;
+    /** Resposta citando outra, feita no celular — ver receiveInbound. */
+    replyToExternalId?: string | string[];
+    citacao?: CitacaoCopiada;
   }) {
     // Só entra se já existir uma conversa aberta: a empresa responder pelo
     // celular pressupõe que o cliente escreveu antes. Criar conversa a partir
@@ -4181,14 +4228,23 @@ export class ConversationsService {
       if (jaTemos) return null;
     }
 
+    // Sem isto, responder citando pelo celular chegava no painel como uma
+    // mensagem solta — a citação era descartada aqui.
+    const { replyTo, metadata } = await this.resolverCitacao(
+      input.replyToExternalId,
+      input.citacao,
+      input.metadata,
+    );
+
     let gravada: Awaited<ReturnType<ConversationsService['persistMessage']>>;
     try {
       gravada = await this.persistMessage(conversation.id, {
         senderType: 'AGENT',
         content: input.content,
         messageType: input.messageType,
-        metadata: input.metadata,
+        metadata,
         externalId: input.externalId,
+        replyToId: replyTo?.id,
         status: 'SENT',
         // Quem entregou foi o WhatsApp do celular. Reenviar daqui faria o
         // cliente receber a mesma resposta duas vezes.

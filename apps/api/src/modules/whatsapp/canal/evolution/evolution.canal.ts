@@ -10,6 +10,7 @@ import type {
   ModeloAprovado,
 } from '../canal.interface';
 import * as evolution from './evolution.client';
+import type { Citada } from './evolution.client';
 import {
   desempacotarId,
   ehGrupo,
@@ -30,6 +31,15 @@ import {
  * Esse último ponto muda o produto, não só o código, e por isso está
  * escrito por extenso em `listarModelos` e `enviarModelo`.
  */
+
+/** O que o WhatsApp escreve na tarjinha de um anexo citado sem legenda. */
+const ROTULO_DO_ANEXO: Partial<Record<string, string>> = {
+  IMAGE: '📷 Foto',
+  VIDEO: '🎥 Vídeo',
+  AUDIO: '🎤 Áudio',
+  DOCUMENT: '📄 Documento',
+};
+
 @Injectable()
 export class EvolutionCanal implements CanalDeMensagem {
   private readonly logger = new Logger(EvolutionCanal.name);
@@ -130,6 +140,33 @@ export class EvolutionCanal implements CanalDeMensagem {
     return ehGrupo(para) ? para.trim() : para.replace(/\D/g, '');
   }
 
+  /**
+   * A citada com a chave inteira e o texto dela — ver `citacao` no
+   * evolution.client. O texto sai do painel; sem ele (anexo sem legenda),
+   * vai um rótulo, que é o que o WhatsApp mostra na tarjinha.
+   */
+  private async citada(citando?: IdExterno | null): Promise<Citada | null> {
+    if (!citando) return null;
+    const chave = desempacotarId(citando);
+    if (!chave) return { id: citando };
+
+    const original = await this.prisma.db.message
+      .findFirst({
+        where: { externalId: citando },
+        select: { content: true, messageType: true },
+      })
+      .catch(() => null);
+
+    return {
+      id: chave.id,
+      remoteJid: chave.remoteJid,
+      fromMe: chave.fromMe,
+      texto:
+        original?.content?.trim() ||
+        (original ? (ROTULO_DO_ANEXO[original.messageType] ?? null) : null),
+    };
+  }
+
   async enviarTexto(
     para: string,
     texto: string,
@@ -143,9 +180,7 @@ export class EvolutionCanal implements CanalDeMensagem {
     const resposta = await evolution.enviarTexto(credenciais, {
       numero: this.destino(para),
       texto,
-      // A citação vai só com o id: quem cita já está na mesma conversa, e
-      // o resto da chave é redundante ali.
-      citando: citando ? (desempacotarId(citando)?.id ?? citando) : null,
+      citando: await this.citada(citando),
     });
 
     if (!resposta.ok) {
@@ -198,9 +233,7 @@ export class EvolutionCanal implements CanalDeMensagem {
 
     const numero = this.destino(para);
     const base64 = arquivo.buffer.toString('base64');
-    const citando = opcoes.citando
-      ? (desempacotarId(opcoes.citando)?.id ?? opcoes.citando)
-      : null;
+    const citando = await this.citada(opcoes.citando);
 
     /*
      * Três rotas, porque são três coisas diferentes no aparelho de quem

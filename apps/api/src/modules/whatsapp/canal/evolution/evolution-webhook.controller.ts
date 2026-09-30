@@ -15,7 +15,10 @@ import type { Prisma } from '../../../../../generated/prisma/client';
 import { Public } from '../../../../common/auth/public.decorator';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../../../auth/auth.types';
-import { ConversationsService } from '../../../conversations/conversations.service';
+import {
+  ConversationsService,
+  type CitacaoCopiada,
+} from '../../../conversations/conversations.service';
 import {
   CustomersService,
   type ContatoDoAparelho,
@@ -33,6 +36,7 @@ import {
   traduzirStatus,
   type DadosDaMensagem,
   type EventoDaEvolution,
+  type MensagemTraduzida,
 } from './evolution-mensagem';
 
 /** Uma linha do histórico, no formato que `importarHistorico` espera. */
@@ -445,6 +449,8 @@ export class EvolutionWebhookController {
       // ecos de coexistência no caminho oficial, e aqui ele é a REGRA:
       // conexão por aparelho vinculado significa que o celular continua na
       // mão de alguém.
+      const citacao = citacaoDaMensagem(traduzida, chave.remoteJid, telefone);
+
       if (chave.fromMe) {
         await this.conversations.recordOutboundEcho({
           customerPhone: telefone,
@@ -452,6 +458,7 @@ export class EvolutionWebhookController {
           messageType: traduzida.messageType,
           metadata: traduzida.metadata as Prisma.InputJsonValue | undefined,
           externalId,
+          ...citacao,
         });
         continue;
       }
@@ -480,16 +487,7 @@ export class EvolutionWebhookController {
         metadata: traduzida.metadata as Prisma.InputJsonValue | undefined,
         channel: 'WHATSAPP',
         externalId,
-        replyToExternalId: traduzida.citando
-          ? empacotarId({
-              remoteJid: chave.remoteJid,
-              // A citação aponta pra uma mensagem NOSSA na esmagadora
-              // maioria das vezes: o cliente está respondendo o que a
-              // empresa escreveu.
-              fromMe: true,
-              id: traduzida.citando,
-            })
-          : undefined,
+        ...citacao,
         createdAt: horaDaMensagem(dados),
       });
 
@@ -1010,4 +1008,40 @@ export class EvolutionWebhookController {
       ...(pairingCode ? { pairingCode } : {}),
     });
   }
+}
+
+/**
+ * A citação de uma mensagem, pronta pro ConversationsService.
+ *
+ * O id citado não diz de que lado a original foi escrita, e o id externo
+ * guardado aqui inclui isso — então vão as duas candidatas. Antes ia só
+ * a "da empresa", e toda vez que o cliente citava uma mensagem DELE
+ * (ou a empresa citava uma do cliente, pelo celular) a citação sumia.
+ */
+function citacaoDaMensagem(
+  traduzida: MensagemTraduzida,
+  remoteJid: string,
+  telefone: string,
+): { replyToExternalId?: string[]; citacao?: CitacaoCopiada } {
+  if (!traduzida.citando) return {};
+  const id = traduzida.citando;
+  const autor = traduzida.citacao?.autorJid;
+  return {
+    replyToExternalId: [
+      empacotarId({ remoteJid, fromMe: true, id }),
+      empacotarId({ remoteJid, fromMe: false, id }),
+    ],
+    citacao: traduzida.citacao
+      ? {
+          texto: traduzida.citacao.texto,
+          tipo: traduzida.citacao.tipo,
+          // `@lid` esconde o número, e em grupo o autor é um participante
+          // qualquer: nos dois casos não dá pra dizer "você" ou "cliente".
+          daEmpresa:
+            !autor || autor.includes('@lid') || remoteJid.endsWith('@g.us')
+              ? undefined
+              : telefoneDoJid(autor) !== telefone,
+        }
+      : undefined,
+  };
 }

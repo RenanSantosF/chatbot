@@ -47,6 +47,15 @@ function montar(config: Record<string, unknown> | null) {
           },
         ),
       },
+      message: {
+        findFirst: jest.fn(({ where }: { where: { externalId: string } }) =>
+          Promise.resolve(
+            where.externalId.endsWith('|ANTES')
+              ? { content: 'Como você está?', messageType: 'TEXT' }
+              : null,
+          ),
+        ),
+      },
     },
   };
   const encryption = { decrypt: jest.fn().mockReturnValue('chave-crua') };
@@ -126,7 +135,7 @@ describe('envio de texto', () => {
     expect(canal.motivoDaUltimaFalha).toBeNull();
   });
 
-  it('cita mandando só o id, que é o que o servidor entende', async () => {
+  it('cita mandando a chave inteira e o texto — só o id, a citação se perdia', async () => {
     const rede = servidor();
     const canal = montar({});
 
@@ -137,7 +146,14 @@ describe('envio de texto', () => {
     );
 
     expect(rede.chamadas[0].corpo).toMatchObject({
-      quoted: { key: { id: 'ANTES' } },
+      quoted: {
+        key: {
+          id: 'ANTES',
+          remoteJid: '5511999@s.whatsapp.net',
+          fromMe: false,
+        },
+        message: { conversation: 'Como você está?' },
+      },
     });
   });
 });

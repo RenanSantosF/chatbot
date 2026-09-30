@@ -239,6 +239,21 @@ describe('eco do celular (coexistência)', () => {
     expect(criadas[0].status).toBe('SENT');
   });
 
+  it('resposta citando uma mensagem que não está no painel guarda o resumo dela', async () => {
+    const { service, criadas } = montar();
+
+    await service.recordOutboundEcho({
+      customerPhone: '5527999998888',
+      content: 'te amoo',
+      replyToExternalId: ['a|1|X', 'a|0|X'],
+      citacao: { texto: 'Se é demais sério mesmo', tipo: 'TEXT', daEmpresa: false },
+    });
+
+    expect(criadas[0].metadata).toMatchObject({
+      citacao: { texto: 'Se é demais sério mesmo', daEmpresa: false },
+    });
+  });
+
   it('ignora o eco repetido que a Meta reenvia', async () => {
     const { service, criadas } = montar({
       mensagemJaGravada: { id: 'msg-antiga' },

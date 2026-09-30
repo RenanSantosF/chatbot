@@ -537,6 +537,26 @@ export const MessageBubble = memo(function MessageBubble({
         </button>
       ) : null}
 
+      {/* A citada não está no painel (veio de antes da conexão): a tarjinha
+          sai do resumo que a própria resposta trouxe — sem o clique, que não
+          teria pra onde levar. */}
+      {!message.replyTo && message.metadata?.citacao ? (
+        <div
+          className={cn(
+            "mb-1 min-w-0 rounded-md border-l-2 px-2 py-1 text-left text-xs",
+            foto && "mb-0.5",
+            fromCustomer
+              ? "border-primary/60 bg-black/5 dark:bg-white/10"
+              : "border-primary-foreground/60 bg-black/10",
+          )}
+        >
+          <span className="block truncate font-medium opacity-80">{autorDaCitada}</span>
+          <span className="line-clamp-2 opacity-70">
+            {resumoDaMensagem(message.metadata.citacao.texto, message.metadata.citacao.tipo)}
+          </span>
+        </div>
+      ) : null}
+
       {message.messageType !== "TEXT" && !unica ? <MessageAttachment message={message} /> : null}
       {unica ? (
         <span className="flex items-start gap-2 text-[13.5px] italic opacity-75">
