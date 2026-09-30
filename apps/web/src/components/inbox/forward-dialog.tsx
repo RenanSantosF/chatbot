@@ -22,19 +22,26 @@ interface Page<T> {
 }
 
 /**
- * Escolhe pra qual conversa a mensagem vai. A lista é buscada na hora em
+ * Escolhe pra qual conversa as mensagens vão. A lista é buscada na hora em
  * vez de reaproveitar a do Inbox de propósito: os filtros que a pessoa
  * deixou aplicados lá não devem esconder um destino possível aqui.
+ *
+ * Várias de uma vez (escolhidas no modo de seleção do chat), enviadas uma
+ * a uma, na ordem da conversa — é como chegam do outro lado no WhatsApp.
  */
 export function ForwardDialog({
-  message,
+  messages,
   fromConversationId,
   onClose,
+  onForwarded,
 }: {
-  message: ConversationMessage | null;
+  messages: ConversationMessage[] | null;
   fromConversationId: string;
   onClose: () => void;
+  /** Depois de encaminhar tudo — o chat sai do modo de seleção. */
+  onForwarded?: () => void;
 }) {
+  const message = messages?.[0] ?? null;
   const [search, setSearch] = useState("");
   const [options, setOptions] = useState<ConversationSummary[]>([]);
   const [sendingTo, setSendingTo] = useState<string | null>(null);
@@ -51,17 +58,30 @@ export function ForwardDialog({
   }, [search, message, fromConversationId]);
 
   async function forwardTo(target: ConversationSummary) {
-    if (!message) return;
+    if (!messages?.length) return;
     setSendingTo(target.id);
+    let enviadas = 0;
     try {
-      await apiFetch(`/conversations/${fromConversationId}/messages/${message.id}/forward`, {
-        method: "POST",
-        body: JSON.stringify({ toConversationId: target.id }),
-      });
-      toast.success(`Encaminhada para ${target.customer.name}.`);
+      for (const item of messages) {
+        await apiFetch(`/conversations/${fromConversationId}/messages/${item.id}/forward`, {
+          method: "POST",
+          body: JSON.stringify({ toConversationId: target.id }),
+        });
+        enviadas += 1;
+      }
+      toast.success(
+        enviadas === 1
+          ? `Encaminhada para ${target.customer.name}.`
+          : `${enviadas} mensagens encaminhadas para ${target.customer.name}.`,
+      );
+      onForwarded?.();
       onClose();
     } catch {
-      toast.error("Não deu pra encaminhar essa mensagem.");
+      toast.error(
+        enviadas > 0
+          ? `Só ${enviadas} de ${messages.length} foram encaminhadas. Tente de novo as que faltaram.`
+          : "Não deu pra encaminhar.",
+      );
     } finally {
       setSendingTo(null);
     }
@@ -71,9 +91,15 @@ export function ForwardDialog({
     <Sheet open={Boolean(message)} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="gap-0">
         <SheetHeader>
-          <SheetTitle>Encaminhar</SheetTitle>
+          <SheetTitle>
+            {messages && messages.length > 1
+              ? `Encaminhar ${messages.length} mensagens`
+              : "Encaminhar"}
+          </SheetTitle>
           <SheetDescription className="line-clamp-2">
-            {message?.content || "Anexo"}
+            {messages && messages.length > 1
+              ? "Vão na ordem em que estão na conversa."
+              : message?.content || "Anexo"}
           </SheetDescription>
         </SheetHeader>
 

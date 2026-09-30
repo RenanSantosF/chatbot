@@ -3,7 +3,9 @@
 import {
   ArrowDown,
   ArrowLeft,
+  Check,
   ChevronDown,
+  Forward,
   ChevronUp,
   MessagesSquare,
   Paperclip,
@@ -257,7 +259,33 @@ export function ChatPanel({
   const [searchOpen, setSearchOpen] = useState(false);
   const [needle, setNeedle] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
-  const [forwarding, setForwarding] = useState<ConversationMessage | null>(null);
+  /*
+   * Encaminhar é escolher VÁRIAS, como no WhatsApp.
+   *
+   * O botão de encaminhar do balão não abre o destino direto: entra no
+   * modo de seleção com aquela mensagem marcada, e cada clique numa linha
+   * marca ou desmarca outra. `null` é fora do modo.
+   */
+  const [selecao, setSelecao] = useState<Set<string> | null>(null);
+  const [forwarding, setForwarding] = useState<ConversationMessage[] | null>(null);
+  // Trocou de conversa: a seleção era da anterior.
+  const [selecaoDaConversa, setSelecaoDaConversa] = useState(conversation?.id);
+  if (conversation?.id !== selecaoDaConversa) {
+    setSelecaoDaConversa(conversation?.id);
+    setSelecao(null);
+  }
+  const iniciarSelecao = useCallback(
+    (message: ConversationMessage) => setSelecao(new Set([message.id])),
+    [],
+  );
+  const alternarSelecao = (id: string) =>
+    setSelecao((atual) => {
+      if (!atual) return atual;
+      const proxima = new Set(atual);
+      if (proxima.has(id)) proxima.delete(id);
+      else proxima.add(id);
+      return proxima;
+    });
   /*
    * Reagir com uma função que não muda de identidade: a do Inbox é
    * recriada a cada render, e isso bastava pra furar a memorização de
@@ -434,6 +462,7 @@ export function ChatPanel({
       }
       if (apagando) return setApagando(null);
       if (forwarding) return setForwarding(null);
+      if (selecao) return setSelecao(null);
       if (pendingFile) return setPendingFile(null);
       if (searchOpen) {
         setSearchOpen(false);
@@ -454,6 +483,7 @@ export function ChatPanel({
   }, [
     apagando,
     forwarding,
+    selecao,
     pendingFile,
     searchOpen,
     replyTo,
@@ -1276,11 +1306,21 @@ export function ChatPanel({
                 onDoubleClick={(event) => {
                   // Só o vazio: dentro do balão o gesto atrapalharia
                   // selecionar e copiar o texto.
-                  if (event.target !== event.currentTarget) return;
+                  if (selecao || event.target !== event.currentTarget) return;
                   onReply(message);
                   piscarLinha(message.id);
                 }}
-                title={message.senderType === "SYSTEM" ? undefined : "Clique duas vezes para responder"}
+                // Escolhendo o que encaminhar, a linha inteira marca e
+                // desmarca — inclusive clicando no balão.
+                onClickCapture={
+                  selecao && podeEncaminhar(message)
+                    ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        alternarSelecao(message.id);
+                      }
+                    : undefined
+                }
                 className={cn(
                   // cursor-pointer só na faixa vazia: o balão volta pro
                   // cursor de texto (abaixo, no próprio balão) pra não
@@ -1301,18 +1341,34 @@ export function ChatPanel({
                   // citação lá embaixo — longe de onde o olho estava.
                   linhaPiscando === message.id && "bg-foreground/[0.06]",
                   destacada === message.id && "mensagem-destacada",
+                  selecao && "relative pl-9",
+                  selecao && !podeEncaminhar(message) && "cursor-default opacity-60",
+                  selecao?.has(message.id) && "bg-primary/10",
                 )}
               >
+              {selecao && podeEncaminhar(message) ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-1/2 left-2 flex size-5 -translate-y-1/2 items-center justify-center rounded-full border-2 transition-colors",
+                    selecao.has(message.id)
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-muted-foreground/50",
+                  )}
+                >
+                  {selecao.has(message.id) ? <Check className="size-3" strokeWidth={3} /> : null}
+                </span>
+              ) : null}
               <MessageBubble
                 message={message}
                 inicioDoGrupo={inicioDoGrupo}
                 animar={new Date(message.createdAt).getTime() > abertoEm}
                 highlight={needle.trim()}
                 isCurrentMatch={message.id === currentMatchId}
-                onReply={onReply}
-                onReact={reagir}
-                onForward={setForwarding}
-                onDelete={setApagando}
+                onReply={selecao ? undefined : onReply}
+                onReact={selecao ? undefined : reagir}
+                onForward={selecao ? undefined : iniciarSelecao}
+                onDelete={selecao ? undefined : setApagando}
                 autorDaCitada={
                   message.replyTo
                     ? autorDaCitada(message.replyTo)
@@ -1357,9 +1413,10 @@ export function ChatPanel({
       </div>
 
       <ForwardDialog
-        message={forwarding}
+        messages={forwarding}
         fromConversationId={conversation.id}
         onClose={() => setForwarding(null)}
+        onForwarded={() => setSelecao(null)}
       />
 
       <Sheet open={apagando !== null} onOpenChange={(aberto) => !aberto && setApagando(null)}>
@@ -1449,7 +1506,38 @@ export function ChatPanel({
         </div>
       </div>
 
-      {pendingFile ? (
+      {selecao ? (
+        // No lugar do compositor enquanto escolhe o que encaminhar, como no
+        // WhatsApp: quantas estão marcadas, cancelar e seguir.
+        <div className="flex items-center gap-2 bg-card p-3">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Cancelar seleção"
+            onClick={() => setSelecao(null)}
+          >
+            <X className="size-4" />
+          </Button>
+          <span className="text-sm font-medium tabular-nums">
+            {selecao.size === 0
+              ? "Toque nas mensagens pra escolher"
+              : selecao.size === 1
+                ? "1 mensagem selecionada"
+                : `${selecao.size} mensagens selecionadas`}
+          </span>
+          <Button
+            size="sm"
+            className="ml-auto"
+            disabled={selecao.size === 0}
+            onClick={() =>
+              setForwarding(conversation.messages.filter((m) => selecao.has(m.id)))
+            }
+          >
+            <Forward className="size-4" />
+            Encaminhar
+          </Button>
+        </div>
+      ) : pendingFile ? (
         <AttachmentComposer
           file={pendingFile}
           sending={false}
@@ -1593,5 +1681,14 @@ export function ChatPanel({
       </>
       )}
     </div>
+  );
+}
+
+/** Nota do sistema, apagada ou ainda não gravada não tem o que encaminhar. */
+function podeEncaminhar(message: ConversationMessage) {
+  return (
+    message.senderType !== "SYSTEM" &&
+    !message.deletedAt &&
+    !message.id.startsWith("pending-")
   );
 }

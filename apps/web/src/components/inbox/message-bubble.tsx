@@ -106,7 +106,7 @@ function avisoDeVisualizacaoUnica(tipo: "IMAGE" | "VIDEO" | "AUDIO", recebida: b
  * da mensagem.
  */
 const ACAO_DA_BARRA =
-  "flex size-7 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground";
+  "flex size-8 items-center justify-center rounded-full text-foreground/85 transition-colors hover:bg-muted hover:text-foreground";
 
 /**
  * O botão de reagir, e as carinhas atrás dele.
@@ -162,13 +162,13 @@ function BotaoDeReagir({
         aria-expanded={aberto}
         onClick={() => setAberto((estava) => !estava)}
         className={cn(
-          "flex size-7 items-center justify-center rounded-full transition-colors",
+          "flex size-8 items-center justify-center rounded-full transition-colors",
           aberto
             ? "bg-muted text-foreground"
-            : "text-muted-foreground/70 hover:bg-muted hover:text-foreground",
+            : "text-foreground/85 hover:bg-muted hover:text-foreground",
         )}
       >
-        <SmilePlus className="size-4" />
+        <SmilePlus className="size-[18px]" />
       </button>
 
       {aberto ? (
@@ -397,10 +397,18 @@ export const MessageBubble = memo(function MessageBubble({
             // `focus-within` também segura a barra visível: sem ele, abrir
             // o seletor de reação e mover o mouse pra escolher fazia a
             // barra inteira sumir junto com ele.
-            "pointer-events-none absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-full border bg-popover/95 p-0.5 opacity-0 shadow-[0_2px_10px_oklch(0_0_0/14%)] backdrop-blur-sm transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 has-[[aria-expanded=true]]:pointer-events-auto has-[[aria-expanded=true]]:opacity-100",
-            // Invisível também não pode ser clicável: com os balões
-            // grudados, a barra (escondida) do balão de baixo ficava por
-            // cima do de cima e roubava o clique nele.
+            //
+            // Sair do balão não some com a barra na hora: ela espera um
+            // instante (`delay-300` no sumiço, zero no aparecer), e a ponte
+            // invisível (`before:`) cobre o vão entre os dois. Antes, levar
+            // o mouse do balão até a barra passava pelo vão, o balão perdia
+            // o hover e a barra sumia no caminho.
+            //
+            // `invisible`, e não só transparente: escondida, ela não pode
+            // ser clicável — com os balões grudados, a barra do balão de
+            // baixo ficava por cima do de cima e roubava o clique nele.
+            "invisible absolute bottom-full z-10 mb-1 flex items-center gap-0.5 rounded-full border bg-popover p-0.5 opacity-0 shadow-[0_2px_12px_oklch(0_0_0/22%)] transition-[opacity,visibility] delay-300 duration-150 group-hover/msg:visible group-hover/msg:opacity-100 group-hover/msg:delay-0 focus-within:visible focus-within:opacity-100 has-[[aria-expanded=true]]:visible has-[[aria-expanded=true]]:opacity-100",
+            "before:absolute before:inset-x-0 before:top-full before:h-2 before:content-['']",
             fromCustomer ? "left-2" : "right-2",
           )}
         >
@@ -418,18 +426,18 @@ export const MessageBubble = memo(function MessageBubble({
               onClick={() => onReply(message)}
               className={ACAO_DA_BARRA}
             >
-              <Reply className="size-4" />
+              <Reply className="size-[18px]" />
             </button>
           ) : null}
           {onForward ? (
             <button
               type="button"
               title="Encaminhar"
-              aria-label="Encaminhar esta mensagem"
+              aria-label="Encaminhar — escolher mensagens"
               onClick={() => onForward(message)}
               className={ACAO_DA_BARRA}
             >
-              <Forward className="size-4" />
+              <Forward className="size-[18px]" />
             </button>
           ) : null}
           {/* Só no que a empresa mandou. Apagar fala do cliente seria
@@ -443,7 +451,7 @@ export const MessageBubble = memo(function MessageBubble({
               onClick={() => onDelete(message)}
               className={cn(ACAO_DA_BARRA, "hover:text-destructive")}
             >
-              <Trash2 className="size-4" />
+              <Trash2 className="size-[18px]" />
             </button>
           ) : null}
         </div>
