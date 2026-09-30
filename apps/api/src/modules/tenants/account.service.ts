@@ -41,6 +41,7 @@ export class AccountService {
       where: { id: this.prisma.tenantId },
       select: {
         name: true,
+        createdAt: true,
         _count: {
           select: {
             conversations: true,
@@ -55,7 +56,12 @@ export class AccountService {
 
     const billing = await this.global.client.billingAccount.findFirst({
       where: { tenantId: this.prisma.tenantId },
-      select: { stripeSubscriptionId: true, planLabel: true },
+      select: {
+        stripeSubscriptionId: true,
+        planLabel: true,
+        usedBytes: true,
+        quotaBytes: true,
+      },
     });
 
     return {
@@ -66,6 +72,13 @@ export class AccountService {
       pessoas: tenant._count.users,
       assinaturaAtiva: Boolean(billing?.stripeSubscriptionId),
       plano: billing?.planLabel ?? 'Grátis',
+      criadaEm: tenant.createdAt,
+      armazenamento: billing
+        ? {
+            usadoBytes: Number(billing.usedBytes),
+            cotaBytes: Number(billing.quotaBytes),
+          }
+        : null,
     };
   }
 

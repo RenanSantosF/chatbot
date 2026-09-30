@@ -1,4 +1,5 @@
 import {
+  Building2,
   Bot,
   Inbox,
   ClipboardList,
@@ -8,7 +9,6 @@ import {
   MessageCircle,
   Route,
   ShieldCheck,
-  TriangleAlert,
   Users,
 } from "lucide-react";
 import type { PermissionKey } from "@/lib/use-permissions";
@@ -89,12 +89,12 @@ export const SETTINGS_SECTIONS = [
     icon: HardDrive,
     roles: ["OWNER", "ADMIN"],
   },
-  // Por último, e só pro dono: é a única tela daqui que não configura
-  // nada — ela encerra a empresa e leva o histórico de todo mundo junto.
+  // Por último, e só pro dono: plano, consumo do mês e o que a conta
+  // guarda (o apagar mora lá também, discreto, no rodapé).
   {
     href: "/dashboard/settings/account",
     label: "Conta",
-    icon: TriangleAlert,
+    icon: Building2,
     roles: ["OWNER"],
   },
 ] as const satisfies readonly {
