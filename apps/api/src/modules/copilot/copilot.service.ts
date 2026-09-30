@@ -17,12 +17,28 @@ import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { LIMITE_DAS_INSTRUCOES_GERAIS } from '../ai/ai-context';
 import { PermissionsService } from '../permissions/permissions.service';
 import type { PermissionKey } from '../permissions/permissions.constants';
-import type { UserRole } from '../../../generated/prisma/client';
+import type { Prisma, UserRole } from '../../../generated/prisma/client';
 import { extrasQueSobraram } from '../ai/ai-usage.service';
 import {
   descreverSemana,
   lerExpediente,
 } from '../inbox-settings/horario-comercial';
+import { AiInstructionsService } from '../ai/ai-instructions.service';
+import { LIMITE_POR_REGRA } from '../ai/ai-context';
+import { ConversationsService } from '../conversations/conversations.service';
+import { QueuesService } from '../queues/queues.service';
+import { QuickRepliesService } from '../quick-replies/quick-replies.service';
+import { CORES, TagsService } from '../tags/tags.service';
+import type { RequestUser } from '../auth/auth.types';
+import { CopilotLeituraService, PERIODOS } from './copilot-leitura.service';
+import {
+  type Acao,
+  type Proposta,
+  acharPorNome,
+  criarToken,
+  lerToken,
+  marcarComoUsado,
+} from './propostas';
 
 /**
  * A permissão que cada ferramenta exige — a MESMA da tela equivalente.
@@ -42,7 +58,30 @@ const PERMISSAO_DA_FERRAMENTA: Record<string, PermissionKey | null> = {
   ajustarAtendimento: 'whatsapp.manage',
   ajustarIa: 'ai.manage',
   resumirFila: 'metrics.view',
+  // Ler conversa é de todo mundo — o recorte de setor do Inbox vale aqui
+  // dentro (ver CopilotLeituraService.visiveis).
+  buscarConversas: null,
+  lerConversa: null,
+  perguntasQueAIaNaoSoube: 'ai.manage',
+  relatorio: 'metrics.view',
+  proporEnsinamento: 'ai.manage',
+  proporRespostaRapida: 'quickReplies.manage',
+  // Criar etiqueta é livre na tela (ver TagsController).
+  proporEtiqueta: null,
+  proporSetor: 'queues.manage',
+  proporDistribuicao: 'conversations.assign',
 };
+
+/** A permissão que CONFIRMAR cada proposta exige — conferida de novo no clique. */
+const PERMISSAO_DA_ACAO: Record<Acao['tipo'], PermissionKey | null> = {
+  ensinar: 'ai.manage',
+  respostaRapida: 'quickReplies.manage',
+  etiqueta: null,
+  setor: 'queues.manage',
+  distribuir: 'conversations.assign',
+};
+
+const ABERTAS = ['OPEN', 'WAITING_CUSTOMER', 'WAITING_AGENT'] as const;
 
 /**
  * O que o assistente pode mudar na tela de Atendimento, com a mesma régua
@@ -94,6 +133,21 @@ function tamanho(bytes: number): string {
 interface Contexto {
   podeGerirIa: boolean;
   papel: UserRole;
+  userId: string;
+  /** O que o modelo propôs nesta resposta — vira botão de confirmar na tela. */
+  propostas: Proposta[];
+  /** Conversas citadas — viram atalho pra abrir no Inbox. */
+  conversas: Map<string, string>;
+}
+
+export interface RespostaDoAssistente {
+  content: string;
+  /** A resposta é um aviso de falha (ver o widget). */
+  falhou?: boolean;
+  /** Ações que só acontecem se a pessoa clicar em Confirmar. */
+  propostas?: Proposta[];
+  /** Conversas citadas, pra abrir com um clique. */
+  conversas?: { id: string; cliente: string }[];
 }
 
 export interface CopilotTurn {
@@ -121,6 +175,12 @@ export class CopilotService {
     private readonly inboxSettings: InboxSettingsService,
     private readonly permissions: PermissionsService,
     @Inject(AI_PROVIDER) private readonly ai: AiProvider,
+    private readonly leitura: CopilotLeituraService,
+    private readonly instrucoes: AiInstructionsService,
+    private readonly respostasRapidas: QuickRepliesService,
+    private readonly etiquetas: TagsService,
+    private readonly setores: QueuesService,
+    private readonly conversations: ConversationsService,
   ) {}
 
   private readonly tools: AiToolDeclaration[] = [
@@ -203,14 +263,285 @@ export class CopilotService {
         'Diz quantas conversas estão em cada situação e quantas estão sem responsável. Use pra perguntas do tipo "como está a fila hoje".',
       parametersSchema: { type: 'object', properties: {} },
     },
+    {
+      name: 'buscarConversas',
+      description:
+        'Procura conversas. Use para "quem ficou sem resposta hoje", "conversas do João", "o que está com a IA agora", "conversas do setor Financeiro". Filtros opcionais: cliente (nome ou telefone), situacao (esperando_resposta = o cliente escreveu e a equipe ainda não respondeu; sem_responsavel; com_a_ia; abertas; encerradas), periodo (última mensagem em: hoje, ontem, 7dias, 30dias, mes) e setor. Devolve cliente, situação, responsável, há quanto tempo espera e a última mensagem.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string' },
+          situacao: {
+            type: 'string',
+            enum: [
+              'esperando_resposta',
+              'sem_responsavel',
+              'com_a_ia',
+              'abertas',
+              'encerradas',
+              'todas',
+            ],
+          },
+          periodo: { type: 'string', enum: PERIODOS },
+          setor: { type: 'string' },
+          limite: { type: 'integer' },
+        },
+      },
+    },
+    {
+      name: 'lerConversa',
+      description:
+        'Lê as mensagens de uma conversa (as últimas 80), com quem disse o quê e quando. Use para "resume a conversa com a Maria", "o que o João pediu ontem?", "o que foi combinado com tal cliente". Informe conversaId (de buscarConversas) ou o nome/telefone do cliente.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          conversaId: { type: 'string' },
+          cliente: { type: 'string' },
+        },
+      },
+    },
+    {
+      name: 'perguntasQueAIaNaoSoube',
+      description:
+        'Lista as conversas que a IA passou pra equipe por não saber ou não poder responder, com a pergunta do cliente, o motivo e a resposta que a equipe deu depois. Use para "o que a IA não soube essa semana", e para sugerir o que ensinar a ela. periodo: hoje, ontem, 7dias (padrão), 30dias, mes.',
+      parametersSchema: {
+        type: 'object',
+        properties: { periodo: { type: 'string', enum: PERIODOS } },
+      },
+    },
+    {
+      name: 'relatorio',
+      description:
+        'Números do atendimento num período: clientes que escreveram, quanto a IA atendeu sozinha, quantas passou pra equipe e por quê, tempo médio de resposta (IA e equipe), ranking por atendente, horários de pico e dia mais movimentado. Use para "como foi a semana", "quem atendeu mais", "qual o horário de pico". periodo: hoje, ontem, 7dias (padrão), 30dias, mes.',
+      parametersSchema: {
+        type: 'object',
+        properties: { periodo: { type: 'string', enum: PERIODOS } },
+      },
+    },
+    {
+      name: 'proporEnsinamento',
+      description: `Propõe ensinar uma regra/informação à IA que atende os clientes (ex.: "Preço do clareamento: R$ 800, em até 3x"). NÃO grava: aparece um botão pra pessoa confirmar. Use quando a pessoa disser que a IA errou ou não sabia algo, ou ao sugerir ensinamentos a partir de perguntasQueAIaNaoSoube (uma proposta por assunto). titulo: até 120 caracteres. texto: a informação direta, escrita como fato ou instrução, até ${LIMITE_POR_REGRA} caracteres.`,
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string' },
+          texto: { type: 'string' },
+        },
+        required: ['titulo', 'texto'],
+      },
+    },
+    {
+      name: 'proporRespostaRapida',
+      description:
+        'Propõe criar uma resposta rápida (atalho com barra). NÃO grava: aparece um botão pra confirmar. atalho: uma palavra sem espaço (ex.: pix). titulo: opcional, até 80. texto: o que será enviado.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          atalho: { type: 'string' },
+          titulo: { type: 'string' },
+          texto: { type: 'string' },
+        },
+        required: ['atalho', 'texto'],
+      },
+    },
+    {
+      name: 'proporEtiqueta',
+      description: `Propõe criar uma etiqueta de conversa. NÃO grava: aparece um botão pra confirmar. nome: até 40 caracteres. cor (opcional): ${CORES.join(', ')}.`,
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          nome: { type: 'string' },
+          cor: { type: 'string', enum: [...CORES] },
+        },
+        required: ['nome'],
+      },
+    },
+    {
+      name: 'proporSetor',
+      description:
+        'Propõe criar um setor, opcionalmente já com participantes (nomes de pessoas da equipe). NÃO grava: aparece um botão pra confirmar.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          nome: { type: 'string' },
+          descricao: { type: 'string' },
+          participantes: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['nome'],
+      },
+    },
+    {
+      name: 'proporDistribuicao',
+      description:
+        'Propõe passar conversas em aberto pra uma pessoa (vai como indicação, ela aceita) ou pra um setor. NÃO executa: aparece um botão pra confirmar, com quantas conversas e quais. Filtros das conversas: doSetor, situacao (esperando_resposta, sem_responsavel, abertas — padrão), cliente, ou conversaIds (de buscarConversas). Destino: paraPessoa OU paraSetor (nomes). Ex.: "passa as do financeiro pra Ana" = doSetor Financeiro, paraPessoa Ana.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          doSetor: { type: 'string' },
+          situacao: {
+            type: 'string',
+            enum: ['esperando_resposta', 'sem_responsavel', 'abertas'],
+          },
+          cliente: { type: 'string' },
+          conversaIds: { type: 'array', items: { type: 'string' } },
+          paraPessoa: { type: 'string' },
+          paraSetor: { type: 'string' },
+        },
+      },
+    },
   ];
 
   private async execute(
     name: string,
     args: Record<string, unknown>,
-    { podeGerirIa, papel }: Contexto,
+    contexto: Contexto,
   ) {
+    const { podeGerirIa, papel } = contexto;
+    const leitor = { userId: contexto.userId, role: papel };
+    const texto = (valor: unknown) =>
+      typeof valor === 'string' ? valor.trim() : '';
     switch (name) {
+      case 'buscarConversas': {
+        const resultado = await this.leitura.buscarConversas(
+          {
+            cliente: texto(args.cliente) || undefined,
+            situacao: texto(args.situacao) || undefined,
+            periodo: texto(args.periodo) || undefined,
+            setor: texto(args.setor) || undefined,
+            limite: Number(args.limite) || undefined,
+          },
+          leitor,
+        );
+        for (const c of resultado.conversas.slice(0, 5)) {
+          contexto.conversas.set(c.id, c.cliente);
+        }
+        return { output: resultado };
+      }
+
+      case 'lerConversa': {
+        const resultado = await this.leitura.lerConversa(
+          {
+            conversaId: texto(args.conversaId) || undefined,
+            cliente: texto(args.cliente) || undefined,
+          },
+          leitor,
+        );
+        if ('error' in resultado) return { error: resultado.error };
+        if ('id' in resultado && resultado.id) {
+          contexto.conversas.set(resultado.id, resultado.cliente);
+        }
+        return { output: resultado };
+      }
+
+      case 'perguntasQueAIaNaoSoube':
+        return {
+          output: await this.leitura.perguntasQueAIaNaoSoube({
+            periodo: texto(args.periodo) || undefined,
+          }),
+        };
+
+      case 'relatorio':
+        return {
+          output: await this.leitura.relatorio({
+            periodo: texto(args.periodo) || undefined,
+          }),
+        };
+
+      case 'proporEnsinamento': {
+        const titulo = texto(args.titulo);
+        const conteudo = texto(args.texto);
+        if (titulo.length < 2 || titulo.length > 120) {
+          return { error: 'O título precisa ter de 2 a 120 caracteres.' };
+        }
+        if (conteudo.length < 2 || conteudo.length > LIMITE_POR_REGRA) {
+          return {
+            error: `O texto precisa ter de 2 a ${LIMITE_POR_REGRA} caracteres. Texto longo vai como documento em Configurações › Conhecimento.`,
+          };
+        }
+        return this.propor(
+          contexto,
+          { tipo: 'ensinar', titulo, texto: conteudo },
+          `Ensinar à IA: ${titulo}`,
+          conteudo,
+        );
+      }
+
+      case 'proporRespostaRapida': {
+        const atalho = texto(args.atalho).replace(/^\/+/, '');
+        const conteudo = texto(args.texto);
+        const titulo = texto(args.titulo) || undefined;
+        if (!atalho || atalho.length > 60 || /\s/.test(atalho)) {
+          return { error: 'O atalho precisa ser uma palavra só, sem espaço.' };
+        }
+        if (!conteudo || conteudo.length > 4096) {
+          return { error: 'O texto precisa ter de 1 a 4096 caracteres.' };
+        }
+        if (titulo && titulo.length > 80) {
+          return { error: 'O título pode ter até 80 caracteres.' };
+        }
+        return this.propor(
+          contexto,
+          { tipo: 'respostaRapida', atalho, titulo, texto: conteudo },
+          `Criar a resposta rápida /${atalho}`,
+          conteudo,
+        );
+      }
+
+      case 'proporEtiqueta': {
+        const nome = texto(args.nome);
+        const cor = texto(args.cor) || undefined;
+        if (!nome || nome.length > 40) {
+          return { error: 'O nome precisa ter de 1 a 40 caracteres.' };
+        }
+        if (cor && !(CORES as readonly string[]).includes(cor)) {
+          return { error: `Cor inválida. Opções: ${CORES.join(', ')}.` };
+        }
+        return this.propor(
+          contexto,
+          { tipo: 'etiqueta', nome, cor },
+          `Criar a etiqueta "${nome}"`,
+        );
+      }
+
+      case 'proporSetor': {
+        const nome = texto(args.nome);
+        const descricao = texto(args.descricao) || undefined;
+        if (nome.length < 2 || nome.length > 60) {
+          return { error: 'O nome precisa ter de 2 a 60 caracteres.' };
+        }
+        if (descricao && descricao.length > 300) {
+          return { error: 'A descrição pode ter até 300 caracteres.' };
+        }
+        const pedidos = Array.isArray(args.participantes)
+          ? args.participantes.filter(
+              (p): p is string => typeof p === 'string' && !!p.trim(),
+            )
+          : [];
+        const equipe = (
+          await this.prisma.db.user.findMany({
+            where: { status: 'ACTIVE' },
+            select: { id: true, name: true },
+          })
+        ).map((u) => ({ id: u.id, nome: u.name }));
+        const participantes: { id: string; nome: string }[] = [];
+        for (const pedido of pedidos) {
+          const achado = acharPorNome(equipe, pedido);
+          if ('erro' in achado) return { error: achado.erro };
+          participantes.push(achado.achado);
+        }
+        return this.propor(
+          contexto,
+          { tipo: 'setor', nome, descricao, participantes },
+          `Criar o setor "${nome}"`,
+          participantes.length
+            ? `Com ${participantes.map((p) => p.nome).join(', ')}.`
+            : descricao,
+        );
+      }
+
+      case 'proporDistribuicao':
+        return this.proporDistribuicao(args, contexto);
+
       case 'lerConfiguracoes': {
         const [inbox, ai, instrucoes] = await Promise.all([
           this.inboxSettings.get(),
@@ -500,6 +831,253 @@ export class CopilotService {
     }
   }
 
+  /** Guarda a proposta pra virar botão na tela; o modelo só fica sabendo que ela existe. */
+  private propor(
+    contexto: Contexto,
+    acao: Acao,
+    titulo: string,
+    detalhe?: string,
+  ) {
+    contexto.propostas.push({
+      token: criarToken(acao, {
+        tenantId: this.prisma.tenantId,
+        userId: contexto.userId,
+      }),
+      titulo,
+      detalhe,
+    });
+    return {
+      output: {
+        proposta: 'criada',
+        oQueAcontece: titulo,
+        observacao:
+          'Ainda não foi feito: a pessoa confirma no botão que aparece abaixo da sua resposta.',
+      },
+    };
+  }
+
+  /** "Passa as do financeiro pra Ana" — resolve os nomes e as conversas AGORA, pra a tela mostrar o que vai acontecer. */
+  private async proporDistribuicao(
+    args: Record<string, unknown>,
+    contexto: Contexto,
+  ) {
+    const texto = (valor: unknown) =>
+      typeof valor === 'string' ? valor.trim() : '';
+    const paraPessoa = texto(args.paraPessoa);
+    const paraSetor = texto(args.paraSetor);
+    if (!paraPessoa === !paraSetor) {
+      return { error: 'Diga pra quem vai: uma pessoa OU um setor.' };
+    }
+
+    const [equipe, setores] = await Promise.all([
+      this.prisma.db.user.findMany({
+        where: { status: 'ACTIVE' },
+        select: { id: true, name: true },
+      }),
+      this.prisma.db.queue.findMany({ select: { id: true, name: true } }),
+    ]);
+    const listaDeSetores = setores.map((q) => ({ id: q.id, nome: q.name }));
+
+    let para: Extract<Acao, { tipo: 'distribuir' }>['para'];
+    if (paraPessoa) {
+      const achado = acharPorNome(
+        equipe.map((u) => ({ id: u.id, nome: u.name })),
+        paraPessoa,
+      );
+      if ('erro' in achado) return { error: achado.erro };
+      para = { tipo: 'pessoa', ...achado.achado };
+    } else {
+      const achado = acharPorNome(listaDeSetores, paraSetor);
+      if ('erro' in achado) return { error: achado.erro };
+      para = { tipo: 'setor', ...achado.achado };
+    }
+
+    const filtros: Prisma.ConversationWhereInput[] = [
+      await this.leitura.visiveis({
+        userId: contexto.userId,
+        role: contexto.papel,
+      }),
+      { status: { in: [...ABERTAS] } },
+    ];
+    const doSetor = texto(args.doSetor);
+    if (doSetor) {
+      const achado = acharPorNome(listaDeSetores, doSetor);
+      if ('erro' in achado) return { error: achado.erro };
+      filtros.push({ queueId: achado.achado.id });
+    }
+    const situacao = texto(args.situacao);
+    if (situacao === 'esperando_resposta') {
+      filtros.push({ waitingSince: { not: null } });
+    } else if (situacao === 'sem_responsavel') {
+      filtros.push({ assignedUserId: null });
+    }
+    const ids = Array.isArray(args.conversaIds)
+      ? args.conversaIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    if (ids.length) filtros.push({ id: { in: ids } });
+    const cliente = texto(args.cliente);
+    if (cliente) {
+      filtros.push({
+        customer: { name: { contains: cliente, mode: 'insensitive' } },
+      });
+    }
+    if (!doSetor && !situacao && !ids.length && !cliente) {
+      return {
+        error:
+          'Diga quais conversas: de um setor, as que esperam resposta, as sem responsável, de um cliente, ou as da busca anterior.',
+      };
+    }
+    // Já está com o destino: passar de novo só geraria nota repetida.
+    filtros.push(
+      para.tipo === 'pessoa'
+        ? { NOT: { assignedUserId: para.id } }
+        : { NOT: { queueId: para.id, assignedUserId: null } },
+    );
+
+    const conversas = await this.prisma.db.conversation.findMany({
+      where: { AND: filtros },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 50,
+      select: { id: true, customer: { select: { name: true } } },
+    });
+    if (conversas.length === 0) {
+      return {
+        error:
+          'Nenhuma conversa em aberto bate com esse filtro (ou já estão com o destino).',
+      };
+    }
+
+    const nomes = conversas.map((c) => c.customer.name);
+    const n = conversas.length;
+    return this.propor(
+      contexto,
+      { tipo: 'distribuir', conversas: conversas.map((c) => c.id), para },
+      `Passar ${n} ${n === 1 ? 'conversa' : 'conversas'} para ${para.tipo === 'setor' ? `o setor ${para.nome}` : para.nome}`,
+      `${nomes.slice(0, 5).join(', ')}${n > 5 ? ` e mais ${n - 5}` : ''}.` +
+        (para.tipo === 'pessoa' ? ' Vai como indicação: ela aceita.' : ''),
+    );
+  }
+
+  /**
+   * O clique em "Confirmar". Relê a permissão AGORA — a proposta pode ter
+   * sido feita antes de o dono tirar o acesso da pessoa.
+   */
+  async confirmar(token: string, user: RequestUser) {
+    const lido = lerToken(token, {
+      tenantId: this.prisma.tenantId,
+      userId: user.userId,
+    });
+    if ('erro' in lido) throw new BadRequestException(lido.erro);
+    const { acao } = lido;
+
+    const exigida = PERMISSAO_DA_ACAO[acao.tipo];
+    if (exigida && !(await this.permissions.can(user.role, exigida))) {
+      throw new BadRequestException('Seu perfil não tem permissão para isso.');
+    }
+    if (!marcarComoUsado(token)) {
+      throw new BadRequestException('Esta proposta já foi confirmada.');
+    }
+
+    try {
+      switch (acao.tipo) {
+        case 'ensinar':
+          await this.instrucoes.create({
+            title: acao.titulo,
+            content: acao.texto,
+          });
+          return {
+            content: `Pronto, a IA aprendeu: "${acao.titulo}". Já vale nas próximas respostas.`,
+          };
+        case 'respostaRapida': {
+          const criada = await this.respostasRapidas.create({
+            shortcut: acao.atalho,
+            title: acao.titulo,
+            content: acao.texto,
+          });
+          return {
+            content: `Pronto: digite /${criada.shortcut} na conversa pra usar.`,
+          };
+        }
+        case 'etiqueta':
+          await this.etiquetas.create({ name: acao.nome, color: acao.cor });
+          return { content: `Pronto, a etiqueta "${acao.nome}" foi criada.` };
+        case 'setor': {
+          const setor = await this.setores.create({
+            name: acao.nome,
+            description: acao.descricao,
+          });
+          for (const pessoa of acao.participantes) {
+            await this.setores.addMember(setor.id, pessoa.id);
+          }
+          return {
+            content: `Pronto, o setor "${acao.nome}" foi criado${
+              acao.participantes.length
+                ? ` com ${acao.participantes.map((p) => p.nome).join(', ')}`
+                : ''
+            }.`,
+          };
+        }
+        case 'distribuir': {
+          const viewer = { userId: user.userId, role: user.role };
+          let feitas = 0;
+          for (const id of acao.conversas) {
+            try {
+              if (acao.para.tipo === 'pessoa') {
+                await this.conversations.transferTo(
+                  id,
+                  acao.para.id,
+                  user.userId,
+                  viewer,
+                );
+              } else {
+                await this.conversations.transferToQueue(
+                  id,
+                  acao.para.id,
+                  user.userId,
+                  viewer,
+                );
+              }
+              feitas += 1;
+            } catch (erro) {
+              this.logger.warn(
+                `Distribuição: a conversa ${id} não foi passada (${String(erro)}).`,
+              );
+            }
+          }
+          const falhas = acao.conversas.length - feitas;
+          return {
+            content:
+              `Pronto: ${feitas} ${feitas === 1 ? 'conversa passada' : 'conversas passadas'} para ${
+                acao.para.tipo === 'setor'
+                  ? `o setor ${acao.para.nome}`
+                  : acao.para.nome
+              }.` +
+              (falhas
+                ? ` ${falhas} não ${falhas === 1 ? 'pôde' : 'puderam'} ser passada${falhas === 1 ? '' : 's'} (encerrada ou fora do seu acesso).`
+                : ''),
+          };
+        }
+      }
+    } catch (erro) {
+      // Recusa das telas (atalho repetido, teto de regras) volta como frase.
+      const mensagem =
+        erro instanceof Error && 'getStatus' in erro
+          ? erro.message
+          : 'Não deu pra fazer isso agora.';
+      if (!(erro instanceof Error && 'getStatus' in erro)) {
+        this.logger.warn(`Confirmação falhou: ${String(erro)}`);
+      }
+      return { content: mensagem, falhou: true };
+    }
+  }
+
+  async avisos(user: RequestUser) {
+    return this.leitura.avisos(
+      { userId: user.userId, role: user.role },
+      await this.permissions.can(user.role, 'ai.manage'),
+    );
+  }
+
   /**
    * WhatsApp, cota da IA e — pra quem cuida da conta — espaço e plano.
    *
@@ -584,7 +1162,11 @@ export class CopilotService {
     };
   }
 
-  async ask(history: CopilotTurn[], role: UserRole) {
+  async ask(
+    history: CopilotTurn[],
+    user: RequestUser,
+  ): Promise<RespostaDoAssistente> {
+    const role = user.role;
     const resolution = await this.credentials.resolve();
     if (!resolution.credentials) {
       throw new BadRequestException(
@@ -615,6 +1197,19 @@ export class CopilotService {
      * pedido dele se perdeu — e repetir a alteração.
      */
     let mexeu = false;
+    const contexto: Contexto = {
+      podeGerirIa,
+      papel: role,
+      userId: user.userId,
+      propostas: [],
+      conversas: new Map(),
+    };
+    const extras = () => ({
+      propostas: contexto.propostas.length ? contexto.propostas : undefined,
+      conversas: contexto.conversas.size
+        ? [...contexto.conversas].map(([id, cliente]) => ({ id, cliente }))
+        : undefined,
+    });
 
     try {
       const result = await this.ai.generateReply({
@@ -623,6 +1218,9 @@ export class CopilotService {
         apiKey: resolution.credentials.apiKey,
         model: resolution.credentials.model,
         tools: this.tools.filter((tool) => permitidas.has(tool.name)),
+        // Relatório e resumo de conversa não cabem no teto do atendimento
+        // (feito pra mensagem de WhatsApp).
+        maximoDeSaida: 1500,
         executeTool: async (name, args) => {
           if (!permitidas.has(name)) {
             return { error: 'Seu perfil não tem permissão para esta ação.' };
@@ -630,10 +1228,7 @@ export class CopilotService {
           if (name === 'ajustarAtendimento' || name === 'ajustarIa')
             mexeu = true;
           try {
-            return await this.execute(name, args, {
-              podeGerirIa,
-              papel: role,
-            });
+            return await this.execute(name, args, contexto);
           } catch (error) {
             this.logger.warn(`Falha na ferramenta ${name}: ${String(error)}`);
             return { error: 'Não deu pra executar essa ação agora.' };
@@ -642,12 +1237,15 @@ export class CopilotService {
       });
 
       const conteudo = result.content.trim();
-      if (conteudo) return { content: conteudo };
+      if (conteudo) return { content: conteudo, ...extras() };
 
       return {
-        content: mexeu
-          ? 'Pronto, ajustei. Confira na tela de Configurações pra ver como ficou.'
-          : 'Não consegui formular uma resposta pra isso. Tente perguntar de outro jeito.',
+        content: contexto.propostas.length
+          ? 'Confira abaixo e confirme.'
+          : mexeu
+            ? 'Pronto, ajustei. Confira na tela de Configurações pra ver como ficou.'
+            : 'Não consegui formular uma resposta pra isso. Tente perguntar de outro jeito.',
+        ...extras(),
       };
     } catch (error) {
       /*
@@ -688,22 +1286,31 @@ O que você faz sozinho:
 - Ligar/desligar e ajustar: confirmação de leitura, aviso e texto de encerramento, saudação automática, encerramento de conversa parada, juntar conversas do mesmo cliente, assinatura com o nome do atendente, quem vê quais conversas, transcrição de áudio.
 - Ligar/desligar a IA, mudar o nome, o tom, a memória sobre clientes e as instruções gerais.
 - Resumir a fila.
+- Ler conversas: procurar ("quem ficou sem resposta hoje", "conversas do João") com buscarConversas e ler/resumir uma conversa com lerConversa. Ao resumir, diga o que o cliente quer, o que já foi respondido ou combinado, e o que falta — em poucas linhas, sem copiar a conversa.
+- Mostrar o que a IA não soube responder (perguntasQueAIaNaoSoube) e sugerir o que ensinar. Para cada assunto útil, chame proporEnsinamento com a informação certa — de preferência a que a equipe respondeu ao cliente. Nunca invente preço, prazo ou regra: se a equipe não respondeu, pergunte à pessoa qual é a resposta certa.
+- Quando a pessoa disser que a IA errou ("o certo é R$ 800"), chame proporEnsinamento com a informação correta.
+- Relatório de um período (relatorio): responda com os números que importam — clientes atendidos, quanto a IA resolveu sozinha, tempo de resposta, quem atendeu mais, horário de pico — e uma observação útil no fim, se houver.
+- Criar resposta rápida, etiqueta e setor, e passar conversas pra uma pessoa ou setor (proporRespostaRapida, proporEtiqueta, proporSetor, proporDistribuicao).
+
+Propostas (as ferramentas "propor..."):
+- Elas NÃO executam nada: aparece um botão "Confirmar" abaixo da sua resposta, e só o clique da pessoa executa.
+- Depois de propor, diga em uma frase o que vai acontecer e peça pra ela confirmar no botão. Nunca diga que já fez.
+- Se um nome for ambíguo ou não existir, a ferramenta devolve as opções: pergunte qual, não escolha.
 
 O que você não faz (e onde a pessoa resolve), pelo menu Configurações:
 - WhatsApp: conectar, reconectar ou trocar o número.
 - Atendimento: horário de atendimento (dias e faixas, com almoço).
-- IA: ensinar instruções novas uma a uma.
 - Conhecimento: enviar documentos (PDF, planilhas, textos) pra IA consultar.
 - Dados a coletar: o que a IA pergunta ao cliente (nome, CPF, e-mail...).
 - Direcionamento: qual assunto vai pra qual pessoa ou setor.
 - Setores, Equipe (convidar e remover pessoas), Permissões (o que cada papel pode fazer).
 - Armazenamento: prazo de guarda e limpeza automática quando encher.
 - Conta: plano, pagamento e compra de respostas extras de IA.
-Você nunca apaga conversa, cliente, pessoa nem a conta.
+Você nunca apaga conversa, cliente, pessoa nem a conta, e nunca manda mensagem pra cliente.
 
 Quando a pessoa reclamar, investigue antes e proponha a correção concreta:
 - "A IA não responde": veja lerSituacao e lerConfiguracoes — WhatsApp desconectado? IA desligada? Respostas do mês acabaram (aí: comprar respostas extras em Configurações › Conta)? Diga qual é, e ofereça ligar o que você pode ligar.
-- "A IA respondeu errado / inventou / não sabia": veja lerTreinamentoDaIa. Sugira ensinar uma instrução com a resposta certa (Configurações › IA) ou enviar o documento com a informação (Conhecimento). Se o problema for o jeito de falar, ofereça mudar o tom.
+- "A IA respondeu errado / inventou / não sabia": veja lerTreinamentoDaIa e, se precisar, perguntasQueAIaNaoSoube. Proponha o ensinamento com a resposta certa (proporEnsinamento). Texto longo (tabela de preços, contrato) vai como documento em Configurações › Conhecimento. Se o problema for o jeito de falar, ofereça mudar o tom.
 - "Mandou pro setor/pessoa errada": mostre as regras de direcionamento e sugira ajustar a descrição do assunto em Direcionamento.
 - "O cliente vê que eu li e não respondi": ofereça desligar a confirmação de leitura.
 - "O cliente não sabe que encerrou" ou "fica esperando": ofereça ligar o aviso ao encerrar.

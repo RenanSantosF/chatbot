@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import {
   ArrayMaxSize,
@@ -34,6 +34,13 @@ class AskDto {
   history!: CopilotTurnDto[];
 }
 
+class ConfirmarDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(8000)
+  token!: string;
+}
+
 @Controller('copilot')
 @UseGuards(AuthGuard('jwt'))
 export class CopilotController {
@@ -41,7 +48,20 @@ export class CopilotController {
 
   @Post('ask')
   ask(@Body() dto: AskDto, @CurrentUser() user: RequestUser) {
-    // O papel decide quais ferramentas o assistente pode usar por ela.
-    return this.copilot.ask(dto.history, user.role);
+    // O papel decide quais ferramentas o assistente pode usar por ela, e a
+    // pessoa decide quais conversas ele pode ler (o recorte de setor).
+    return this.copilot.ask(dto.history, user);
+  }
+
+  /** O clique em "Confirmar" numa proposta do assistente. */
+  @Post('confirmar')
+  confirmar(@Body() dto: ConfirmarDto, @CurrentUser() user: RequestUser) {
+    return this.copilot.confirmar(dto.token, user);
+  }
+
+  /** O que pede atenção agora — o pontinho no botão do assistente. */
+  @Get('avisos')
+  avisos(@CurrentUser() user: RequestUser) {
+    return this.copilot.avisos(user);
   }
 }

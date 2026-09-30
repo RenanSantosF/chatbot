@@ -49,6 +49,13 @@ import { CorrecaoDeTextoService } from './correcao-de-texto.service';
     AiToolsService,
     CorrecaoDeTextoService,
   ],
-  exports: [AiEngineService, AiUsageService, TranscricaoService],
+  exports: [
+    AiEngineService,
+    AiUsageService,
+    TranscricaoService,
+    // O assistente do painel ensina a IA pelo mesmo caminho da tela (com
+    // o mesmo teto de regras ativas).
+    AiInstructionsService,
+  ],
 })
 export class AiModule {}
