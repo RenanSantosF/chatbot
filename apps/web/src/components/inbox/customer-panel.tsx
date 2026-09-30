@@ -18,6 +18,7 @@ import { PRIORITY_META } from "@/lib/priority";
 import { COR_DA_SITUACAO, situacaoDoAtendimento } from "@/lib/situacao";
 import { cn } from "@/lib/utils";
 import type { ConversationDetail } from "@/lib/types";
+import { abrirGaleria } from "@/lib/galeria";
 import { CustomerNotes } from "./customer-notes";
 import { TasksSection } from "./tasks-section";
 
@@ -140,16 +141,32 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
           { icon: MessageSquare, value: messages.length, label: "mensagens" },
           { icon: Users, value: fromCustomer, label: "do cliente" },
           { icon: ImageIcon, value: media.length, label: "mídias" },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="flex flex-col items-center gap-0.5 rounded-lg bg-muted/60 py-2.5"
-          >
-            <stat.icon className="size-3.5 text-muted-foreground" />
-            <span className="text-base leading-none font-semibold tabular-nums">{stat.value}</span>
-            <span className="text-[10px] text-muted-foreground">{stat.label}</span>
-          </div>
-        ))}
+        ].map((stat) =>
+          stat.label === "mídias" ? (
+            // O número de mídias abre a galeria: é onde o olho procura
+            // "cadê aquela foto que o cliente mandou?".
+            <button
+              key={stat.label}
+              type="button"
+              onClick={abrirGaleria}
+              title="Ver mídia, documentos e links"
+              className="flex flex-col items-center gap-0.5 rounded-lg bg-muted/60 py-2.5 transition-colors hover:bg-muted"
+            >
+              <stat.icon className="size-3.5 text-muted-foreground" />
+              <span className="text-base leading-none font-semibold tabular-nums">{stat.value}</span>
+              <span className="text-[10px] text-primary">{stat.label} ›</span>
+            </button>
+          ) : (
+            <div
+              key={stat.label}
+              className="flex flex-col items-center gap-0.5 rounded-lg bg-muted/60 py-2.5"
+            >
+              <stat.icon className="size-3.5 text-muted-foreground" />
+              <span className="text-base leading-none font-semibold tabular-nums">{stat.value}</span>
+              <span className="text-[10px] text-muted-foreground">{stat.label}</span>
+            </div>
+          ),
+        )}
       </div>
 
       <Section title="Atendimento" icon={Bot}>

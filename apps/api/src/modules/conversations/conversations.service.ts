@@ -851,6 +851,68 @@ export class ConversationsService {
   }
 
   /**
+   * A galeria da conversa: fotos e vídeos, documentos, áudios ou links.
+   *
+   * O que é guardado (até 20 GB por conta) só vale alguma coisa se dá pra
+   * achar. Rolar a conversa inteira atrás de uma foto de três semanas
+   * atrás é o que o WhatsApp resolve com "Mídia, links e docs" — e é o
+   * mesmo recorte aqui, da mais nova pra mais antiga, com as contagens de
+   * cada aba numa ida só.
+   */
+  async listarMidias(
+    conversationId: string,
+    options: { tipo?: string; cursor?: string; limit?: number } = {},
+    viewer?: ConversationViewer,
+  ) {
+    await this.requireConversationExists(conversationId, viewer);
+    const take = Math.min(Math.max(options.limit ?? 60, 1), 120);
+
+    const base = { conversationId, deletedAt: null };
+    const recortes: Record<string, Prisma.MessageWhereInput> = {
+      MIDIA: { ...base, messageType: { in: ['IMAGE', 'VIDEO'] } },
+      DOCUMENTO: { ...base, messageType: 'DOCUMENT' },
+      AUDIO: { ...base, messageType: 'AUDIO' },
+      LINK: {
+        ...base,
+        messageType: 'TEXT',
+        content: { contains: 'http', mode: 'insensitive' },
+      },
+    };
+    const tipo = options.tipo && options.tipo in recortes ? options.tipo : 'MIDIA';
+
+    const [items, ...contagens] = await Promise.all([
+      this.prisma.db.message.findMany({
+        where: recortes[tipo],
+        select: {
+          id: true,
+          content: true,
+          messageType: true,
+          metadata: true,
+          senderType: true,
+          createdAt: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: take + 1,
+        ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
+      }),
+      ...Object.values(recortes).map((where) =>
+        this.prisma.db.message.count({ where }),
+      ),
+    ]);
+
+    const hasMore = items.length > take;
+    const page = hasMore ? items.slice(0, take) : items;
+    return {
+      tipo,
+      items: page,
+      nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+      contagens: Object.fromEntries(
+        Object.keys(recortes).map((chave, i) => [chave, contagens[i]]),
+      ),
+    };
+  }
+
+  /**
    * A paginação em si, SEM reconferir se a conversa existe.
    *
    * Separada de `listMessages` por causa de quem já carregou a conversa

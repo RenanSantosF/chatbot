@@ -222,6 +222,22 @@ export class ConversationsController {
     );
   }
 
+  /** Fotos e vídeos, documentos, áudios ou links — ver `listarMidias`. */
+  @Get(':id/midias')
+  listarMidias(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Query('tipo') tipo?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.conversationsService.listarMidias(
+      id,
+      { tipo, cursor, limit: limit ? Number(limit) : undefined },
+      { userId: user.userId, role: user.role },
+    );
+  }
+
   /** Páginas anteriores do histórico — usado pela rolagem infinita pra cima. */
   @Get(':id/messages')
   listMessages(

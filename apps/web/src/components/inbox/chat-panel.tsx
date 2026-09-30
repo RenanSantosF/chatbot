@@ -5,8 +5,9 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
-  Forward,
   ChevronUp,
+  Forward,
+  Images,
   MessagesSquare,
   Paperclip,
   Search,
@@ -45,6 +46,8 @@ import { AttachmentComposer } from "./attachment-composer";
 import { CAMPO_DE_MENSAGEM } from "./campo-de-mensagem";
 import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
+import { GaleriaDaConversa } from "./galeria-da-conversa";
+import { aoAbrirGaleria } from "@/lib/galeria";
 import { VoiceRecorder } from "./voice-recorder";
 import type {
   ConversationDetail,
@@ -270,6 +273,9 @@ export function ChatPanel({
    * marca ou desmarca outra. `null` é fora do modo.
    */
   const [selecao, setSelecao] = useState<Set<string> | null>(null);
+  /** "Mídia, documentos e links" — aberta daqui ou da ficha do cliente. */
+  const [galeriaAberta, setGaleriaAberta] = useState(false);
+  useEffect(() => aoAbrirGaleria(() => setGaleriaAberta(true)), []);
   const [forwarding, setForwarding] = useState<ConversationMessage[] | null>(null);
   // Trocou de conversa: a seleção era da anterior.
   const [selecaoDaConversa, setSelecaoDaConversa] = useState(conversation?.id);
@@ -1099,6 +1105,15 @@ export function ChatPanel({
           >
             <Search className="size-4" />
           </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Mídia, documentos e links"
+            title="Mídia, documentos e links"
+            onClick={() => setGaleriaAberta(true)}
+          >
+            <Images className="size-4" />
+          </Button>
           <TagPicker
             selecionadas={conversation.tags ?? []}
             onMarcar={async (tag) => {
@@ -1417,6 +1432,13 @@ export function ChatPanel({
           </Button>
         ) : null}
       </div>
+
+      <GaleriaDaConversa
+        conversationId={conversation.id}
+        aberta={galeriaAberta}
+        onFechar={() => setGaleriaAberta(false)}
+        onIrParaMensagem={(id) => void irParaMensagem(id)}
+      />
 
       <ForwardDialog
         messages={forwarding}
