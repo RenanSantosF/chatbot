@@ -16,6 +16,13 @@ interface LimiteDaIa {
   usadas: number;
   limite: number;
   extras: number;
+  renovaDia: number;
+  renovaEm: string;
+}
+
+/** "15/10" — a data da próxima renovação, curta. */
+function diaEMes(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
 /**
@@ -85,8 +92,8 @@ export function UsageCard() {
         </CardTitle>
         <CardDescription>
           {uso.podeResponder
-            ? "Volta a zero no início do próximo mês."
-            : "Limite atingido — a IA para de responder sozinha até comprar um pacote extra ou o mês virar. O atendimento continua chegando normalmente pra equipe."}
+            ? `Renova todo dia ${uso.renovaDia}, o dia da assinatura — a próxima em ${diaEMes(uso.renovaEm)}.`
+            : `Limite atingido — a IA para de responder sozinha até comprar um pacote extra ou o plano renovar, em ${diaEMes(uso.renovaEm)}. O atendimento continua chegando normalmente pra equipe.`}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

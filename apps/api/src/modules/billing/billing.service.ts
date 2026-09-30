@@ -1,3 +1,5 @@
+import { diaNoFuso } from '../../common/utils/fuso';
+import { fusoValido } from '../inbox-settings/horario-comercial';
 import {
   BadRequestException,
   Injectable,
@@ -459,6 +461,45 @@ export class BillingService {
    * assinatura (mudança e cancelamento) decidem se a carência começa,
    * continua ou termina.
    */
+  /**
+   * O dia do mês em que a assinatura cobra, no fuso da empresa — é quando
+   * as respostas de IA renovam (ver AiUsageService).
+   *
+   * Pergunta ao Stripe em vez de supor "hoje": quem assina durante uma
+   * liberação manual só começa a pagar quando ela acaba (ver criarCheckout).
+   * Falhou a consulta, fica o dia de criação da conta, que é o padrão.
+   */
+  private async diaDoCicloDaAssinatura(
+    tenantId: string,
+    subscriptionId: string,
+  ): Promise<number | null> {
+    try {
+      const assinatura =
+        await this.stripe().subscriptions.retrieve(subscriptionId);
+      return this.diaNoFusoDaEmpresa(tenantId, assinatura.billing_cycle_anchor);
+    } catch (erro) {
+      this.logger.warn(
+        `Não deu pra ler o ciclo da assinatura ${subscriptionId}: ${String(erro)}`,
+      );
+      return null;
+    }
+  }
+
+  private async diaNoFusoDaEmpresa(
+    tenantId: string,
+    segundos: number | null | undefined,
+  ): Promise<number | null> {
+    if (!segundos) return null;
+    const tenant = await this.global.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { timezone: true },
+    });
+    return diaNoFuso(
+      fusoValido(tenant?.timezone ?? 'America/Sao_Paulo'),
+      new Date(segundos * 1000),
+    );
+  }
+
   async processarEvento(evento: Stripe.Event): Promise<void> {
     switch (evento.type) {
       case 'checkout.session.completed': {
@@ -510,6 +551,10 @@ export class BillingService {
           return;
         }
 
+        const aiCicloDia = await this.diaDoCicloDaAssinatura(
+          tenantId,
+          subscriptionId,
+        );
         await this.global.client.billingAccount.upsert({
           where: { tenantId },
           create: {
@@ -517,12 +562,14 @@ export class BillingService {
             stripeCustomerId: customerId,
             stripeSubscriptionId: subscriptionId,
             planLabel: 'Assinatura ativa',
+            ...(aiCicloDia ? { aiCicloDia } : {}),
           },
           update: {
             stripeCustomerId: customerId,
             stripeSubscriptionId: subscriptionId,
             planLabel: 'Assinatura ativa',
             assinaturaVencidaEm: null,
+            ...(aiCicloDia ? { aiCicloDia } : {}),
           },
         });
         this.logger.log(`Assinatura criada pro tenant ${tenantId}.`);
@@ -559,9 +606,18 @@ export class BillingService {
           assinatura.status === 'active' || assinatura.status === 'trialing';
         const cancelada = evento.type === 'customer.subscription.deleted';
 
+        // O dia da fatura manda na renovação das respostas de IA — e ele
+        // muda se a assinatura for refeita ou tiver o ciclo ajustado.
+        const aiCicloDia = emDia
+          ? await this.diaNoFusoDaEmpresa(
+              conta.tenantId,
+              assinatura.billing_cycle_anchor,
+            )
+          : null;
         await this.global.client.billingAccount.update({
           where: { id: conta.id },
           data: {
+            ...(aiCicloDia ? { aiCicloDia } : {}),
             stripeSubscriptionId: emDia ? assinatura.id : null,
             planLabel: emDia
               ? 'Assinatura ativa'

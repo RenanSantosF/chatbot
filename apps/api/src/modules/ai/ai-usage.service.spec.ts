@@ -17,6 +17,8 @@ function montar(conta: Record<string, unknown> | null) {
     aiOutputTokensUsed: 0n,
     aiUsagePeriodStart: null,
     aiExtraMessagesThisPeriod: 0,
+    aiCicloDia: null,
+    createdAt: new Date('2026-08-15T15:00:00Z'),
     ...conta,
   };
 
@@ -46,6 +48,11 @@ function montar(conta: Record<string, unknown> | null) {
         create: jest.fn().mockResolvedValue(criada),
         update,
       },
+      tenant: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ timezone: 'America/Sao_Paulo' }),
+      },
     },
   };
 
@@ -62,7 +69,7 @@ describe('AiUsageService.limite', () => {
 
     const limite = await service.limite();
 
-    expect(limite).toEqual({
+    expect(limite).toMatchObject({
       podeResponder: true,
       usadas: 5,
       limite: 10,
@@ -80,7 +87,7 @@ describe('AiUsageService.limite', () => {
 
     const limite = await service.limite();
 
-    expect(limite).toEqual({
+    expect(limite).toMatchObject({
       podeResponder: true,
       usadas: 10,
       limite: 15,
@@ -100,9 +107,10 @@ describe('AiUsageService.limite', () => {
     expect(limite.podeResponder).toBe(false);
   });
 
-  it('zera sozinho quando o mês vira, sem rotina agendada', async () => {
+  it('zera sozinho quando o ciclo vira, sem rotina agendada', async () => {
     const mesPassado = new Date();
     mesPassado.setUTCMonth(mesPassado.getUTCMonth() - 1);
+    mesPassado.setUTCDate(mesPassado.getUTCDate() - 1);
 
     const { service, prisma } = montar({
       aiMonthlyMessageLimit: 10,
@@ -112,7 +120,7 @@ describe('AiUsageService.limite', () => {
 
     const limite = await service.limite();
 
-    expect(limite).toEqual({
+    expect(limite).toMatchObject({
       podeResponder: true,
       usadas: 0,
       limite: 10,
@@ -135,6 +143,69 @@ describe('AiUsageService.limite', () => {
 
     expect(prisma.db.billingAccount.create).toHaveBeenCalled();
     expect(limite.limite).toBe(3000);
+  });
+});
+
+/**
+ * O ciclo é o da assinatura, não o do calendário.
+ *
+ * O relato: "ao invés de renovar todo dia primeiro deveria ser todo dia
+ * do mês que ele assinou". Quem assina dia 15 paga dia 15 — e as
+ * respostas renovam junto com a fatura.
+ */
+describe('as respostas renovam no dia da assinatura', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date('2026-09-30T15:00:00Z') });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('assinou dia 15: o que foi usado desde 15/09 continua contando no dia 30', async () => {
+    const { service, prisma } = montar({
+      aiCicloDia: 15,
+      aiRepliesUsed: 40,
+      aiUsagePeriodStart: new Date('2026-09-16T12:00:00Z'),
+    });
+
+    const limite = await service.limite();
+
+    expect(limite.usadas).toBe(40);
+    expect(prisma.db.billingAccount.update).not.toHaveBeenCalled();
+  });
+
+  it('e renova no dia 15 do mês seguinte, à meia-noite de São Paulo', async () => {
+    const { service } = montar({
+      aiCicloDia: 15,
+      aiUsagePeriodStart: new Date('2026-09-16T12:00:00Z'),
+    });
+
+    const limite = await service.limite();
+
+    expect(limite.renovaDia).toBe(15);
+    expect(limite.renovaEm.toISOString()).toBe('2026-10-15T03:00:00.000Z');
+  });
+
+  it('o uso de antes do dia 15 é do ciclo passado: zera', async () => {
+    const { service } = montar({
+      aiCicloDia: 15,
+      aiRepliesUsed: 900,
+      aiUsagePeriodStart: new Date('2026-09-10T12:00:00Z'),
+    });
+
+    const limite = await service.limite();
+    expect(limite.usadas).toBe(0);
+  });
+
+  it('sem o dia do Stripe, vale o dia em que a conta foi criada', async () => {
+    const { service } = montar({
+      createdAt: new Date('2026-08-20T15:00:00Z'),
+      aiUsagePeriodStart: new Date('2026-09-21T12:00:00Z'),
+    });
+
+    const limite = await service.limite();
+    expect(limite.renovaDia).toBe(20);
+    expect(limite.renovaEm.toISOString()).toBe('2026-10-20T03:00:00.000Z');
   });
 });
 

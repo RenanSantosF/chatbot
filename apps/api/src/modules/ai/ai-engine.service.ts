@@ -409,7 +409,7 @@ export class AiEngineService {
     const cota = await this.usage.limite();
     if (!cota.podeResponder) {
       throw new Error(
-        `O limite de respostas da IA deste mês foi atingido (${cota.usadas}/${cota.limite}). Volta a valer no início do próximo mês.`,
+        `O limite de respostas da IA deste mês foi atingido (${cota.usadas}/${cota.limite}). Volta a valer na renovação do plano, no dia da assinatura.`,
       );
     }
 

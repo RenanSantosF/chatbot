@@ -1330,6 +1330,12 @@ model BillingAccount {
   /// descontá-las das respostas do plano puniria quem escreve com cuidado.
   /// O teto existe só contra abuso (ver CorrecaoDeTextoService).
   aiCorrecoesNoPeriodo      Int       @default(0)
+  /// O dia do mês (1–31) em que as respostas de IA renovam — o dia em que
+  /// a assinatura começou a cobrar, no fuso da empresa. Quem assinou dia 15
+  /// renova todo dia 15, junto com a fatura. Nulo: vale o dia em que a
+  /// conta foi criada (que é o da assinatura, já que pagar é a última
+  /// etapa do cadastro). Vem do Stripe (`billing_cycle_anchor`).
+  aiCicloDia                Int?
 
   /// Quando a assinatura foi vista pela primeira vez fora de "active"
   /// (atraso de pagamento ou cancelamento), numa conta que já tinha

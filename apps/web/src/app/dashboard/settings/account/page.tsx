@@ -39,6 +39,14 @@ interface UsoDaIa {
   usadas: number;
   limite: number;
   extras: number;
+  /** O dia do mês em que renova — o da assinatura. */
+  renovaDia: number;
+  renovaEm: string;
+}
+
+/** "15/10" — a data da próxima renovação, curta. */
+function diaEMes(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
 /** "1.284 mensagens" — plural certo e milhar separado, sem biblioteca. */
@@ -187,8 +195,8 @@ export default function AccountPage() {
               valor={`${uso.usadas.toLocaleString("pt-BR")} de ${uso.limite.toLocaleString("pt-BR")}`}
               detalhe={
                 uso.extras > 0
-                  ? `Inclui ${uso.extras.toLocaleString("pt-BR")} compradas — não vencem na virada do mês.`
-                  : "Renovam todo dia 1º. Atendimento humano não entra na conta."
+                  ? `Inclui ${uso.extras.toLocaleString("pt-BR")} compradas — não vencem na renovação. Renova em ${diaEMes(uso.renovaEm)}.`
+                  : `Renovam todo dia ${uso.renovaDia}, o dia da assinatura — a próxima em ${diaEMes(uso.renovaEm)}. Atendimento humano não entra na conta.`
               }
               fracao={uso.usadas / Math.max(uso.limite, 1)}
               acao={

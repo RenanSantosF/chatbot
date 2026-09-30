@@ -3542,7 +3542,7 @@ export class ConversationsService {
           desligada:
             'A IA está desligada nas configurações. Ligue-a em Configurações > IA antes de reativar numa conversa.',
           'limite-mensal':
-            'O limite de respostas automáticas deste mês foi atingido. A IA volta a responder sozinha no início do próximo mês.',
+            'O limite de respostas automáticas deste mês foi atingido. A IA volta a responder sozinha na renovação do plano, no dia da assinatura.',
         };
         throw new BadRequestException(
           mensagens[motivo ?? ''] ??

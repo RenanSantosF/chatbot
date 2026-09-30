@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { custoEmDolar } from './preco-do-modelo';
+import { cicloMensal, diaNoFuso } from '../../common/utils/fuso';
+import { fusoValido } from '../inbox-settings/horario-comercial';
 
 export interface UsoDaIa {
   inputTokens: number;
@@ -13,6 +15,22 @@ export interface LimiteDaIa {
   limite: number;
   /** Quanto do `limite` veio de pacote avulso comprado, e não do plano. */
   extras: number;
+  /** O dia do mês em que o plano renova (o da assinatura). */
+  renovaDia: number;
+  /** Quando é a próxima renovação. */
+  renovaEm: Date;
+}
+
+/**
+ * O dia do mês em que as respostas renovam: o da assinatura, ou — sem
+ * ele — o da criação da conta, que é o mesmo na prática (pagar é a última
+ * etapa do cadastro).
+ */
+export function diaDoCiclo(
+  conta: { aiCicloDia: number | null; createdAt: Date },
+  fuso: string,
+): number {
+  return conta.aiCicloDia ?? diaNoFuso(fuso, conta.createdAt);
 }
 
 /**
@@ -72,31 +90,41 @@ export class AiUsageService {
   constructor(private readonly prisma: TenantPrismaService) {}
 
   /**
-   * A conta, com o período corrente já zerado se o mês virou.
+   * A conta, com o período corrente já zerado se o ciclo virou.
    *
-   * "Virou o mês" é comparado a cada leitura, não numa rotina agendada —
-   * mesma ideia de `historicoIniciadoEm` no canal do WhatsApp: mais
-   * simples, e não depende de nenhum processo em segundo plano estar de
-   * pé pra funcionar.
+   * O ciclo é o da ASSINATURA: quem assinou dia 15 renova todo dia 15,
+   * junto com a fatura. Era o dia 1º pra todo mundo, e quem assinava dia
+   * 28 ganhava um mês de três dias — ou, do outro lado, pagava a fatura
+   * dia 5 com as respostas do mês quase no fim.
+   *
+   * "Virou" é comparado a cada leitura, não numa rotina agendada — mesma
+   * ideia de `historicoIniciadoEm` no canal do WhatsApp: mais simples, e
+   * não depende de nenhum processo em segundo plano estar de pé.
    */
   private async linhaDoPeriodoAtual() {
-    const existente = await this.prisma.db.billingAccount.findFirst();
+    const [existente, tenant] = await Promise.all([
+      this.prisma.db.billingAccount.findFirst(),
+      this.prisma.db.tenant.findUnique({
+        where: { id: this.prisma.tenantId },
+        select: { timezone: true },
+      }),
+    ]);
     const conta =
       existente ??
       (await this.prisma.db.billingAccount.create({
         data: { tenantId: this.prisma.tenantId },
       }));
 
-    const inicio = conta.aiUsagePeriodStart;
+    const fuso = fusoValido(tenant?.timezone ?? 'America/Sao_Paulo');
     const agora = new Date();
-    const mesVirou =
-      !inicio ||
-      inicio.getUTCFullYear() !== agora.getUTCFullYear() ||
-      inicio.getUTCMonth() !== agora.getUTCMonth();
+    const dia = diaDoCiclo(conta, fuso);
+    const ciclo = cicloMensal(dia, fuso, agora);
+    const inicio = conta.aiUsagePeriodStart;
+    const cicloVirou = !inicio || inicio.getTime() < ciclo.inicio.getTime();
 
-    if (!mesVirou) return conta;
+    if (!cicloVirou) return { conta, ciclo, dia };
 
-    return this.prisma.db.billingAccount.update({
+    const renovada = await this.prisma.db.billingAccount.update({
       where: { id: conta.id },
       data: {
         aiUsagePeriodStart: agora,
@@ -112,11 +140,12 @@ export class AiUsageService {
         aiCorrecoesNoPeriodo: 0,
       },
     });
+    return { conta: renovada, ciclo, dia };
   }
 
   /** A IA desta conta ainda tem quanto sobrando no mês (plano + pacotes avulsos)? */
   async limite(): Promise<LimiteDaIa> {
-    const conta = await this.linhaDoPeriodoAtual();
+    const { conta, ciclo, dia } = await this.linhaDoPeriodoAtual();
     const limite =
       conta.aiMonthlyMessageLimit + conta.aiExtraMessagesThisPeriod;
     return {
@@ -124,6 +153,8 @@ export class AiUsageService {
       usadas: conta.aiRepliesUsed,
       limite,
       extras: conta.aiExtraMessagesThisPeriod,
+      renovaDia: dia,
+      renovaEm: ciclo.fim,
     };
   }
 
@@ -135,7 +166,7 @@ export class AiUsageService {
    * resposta que o cliente nunca recebeu (ver AiEngineService).
    */
   async registrar(uso: UsoDaIa): Promise<void> {
-    const conta = await this.linhaDoPeriodoAtual();
+    const { conta } = await this.linhaDoPeriodoAtual();
 
     await this.prisma.db.billingAccount.update({
       where: { id: conta.id },

@@ -104,8 +104,8 @@ export default function MensagensExtrasPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Respostas extras de IA</h1>
         <p className="text-sm text-muted-foreground text-pretty">
           Somam às respostas do plano na hora. O que você comprar e não usar{" "}
-          <strong className="font-medium text-foreground">não vence na virada do mês</strong> — passa
-          pro mês seguinte.
+          <strong className="font-medium text-foreground">não vence na renovação do plano</strong> —
+          passa pro mês seguinte.
         </p>
       </div>
 

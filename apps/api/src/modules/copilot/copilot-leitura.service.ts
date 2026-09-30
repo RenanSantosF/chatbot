@@ -9,6 +9,9 @@ import { descreverMensagem } from '../ai/ai-context';
 import { InboxSettingsService } from '../inbox-settings/inbox-settings.service';
 import { fusoValido } from '../inbox-settings/horario-comercial';
 import { normalizar } from './propostas';
+import { meiaNoite, partes } from '../../common/utils/fuso';
+
+export { meiaNoite };
 
 /** Quem está perguntando — é o que decide que conversas ele pode ler. */
 export interface Leitor {
@@ -68,56 +71,6 @@ export function duracao(ms: number): string {
 function media(valores: number[]): number | null {
   if (valores.length === 0) return null;
   return valores.reduce((soma, v) => soma + v, 0) / valores.length;
-}
-
-/**
- * Os pedaços de data no fuso da empresa.
- *
- * O servidor roda em UTC: "hoje" pro dono de uma clínica em São Paulo
- * começa às 03:00 UTC. Contar pelo relógio do servidor jogaria o
- * movimento das 21h no dia seguinte.
- */
-function partes(fuso: string, instante: Date) {
-  const valores = new Intl.DateTimeFormat('en-US', {
-    timeZone: fuso,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    weekday: 'short',
-    hour12: false,
-  }).formatToParts(instante);
-  const pegar = (tipo: string) =>
-    valores.find((parte) => parte.type === tipo)?.value ?? '0';
-  return {
-    ano: Number(pegar('year')),
-    mes: Number(pegar('month')),
-    dia: Number(pegar('day')),
-    hora: Number(pegar('hour')) % 24,
-    minuto: Number(pegar('minute')),
-    segundo: Number(pegar('second')),
-    semana: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(
-      pegar('weekday'),
-    ),
-  };
-}
-
-/** A meia-noite (no fuso da empresa) do dia em que `instante` cai. */
-export function meiaNoite(fuso: string, instante: Date): Date {
-  const p = partes(fuso, instante);
-  const comoSeFosseUtc = Date.UTC(
-    p.ano,
-    p.mes - 1,
-    p.dia,
-    p.hora,
-    p.minuto,
-    p.segundo,
-  );
-  const deslocamento =
-    comoSeFosseUtc - (instante.getTime() - (instante.getTime() % 1000));
-  return new Date(Date.UTC(p.ano, p.mes - 1, p.dia) - deslocamento);
 }
 
 export function intervaloDoPeriodo(

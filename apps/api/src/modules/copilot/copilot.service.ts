@@ -18,7 +18,9 @@ import { LIMITE_DAS_INSTRUCOES_GERAIS } from '../ai/ai-context';
 import { PermissionsService } from '../permissions/permissions.service';
 import type { PermissionKey } from '../permissions/permissions.constants';
 import type { Prisma, UserRole } from '../../../generated/prisma/client';
-import { extrasQueSobraram } from '../ai/ai-usage.service';
+import { diaDoCiclo, extrasQueSobraram } from '../ai/ai-usage.service';
+import { cicloMensal } from '../../common/utils/fuso';
+import { fusoValido } from '../inbox-settings/horario-comercial';
 import {
   descreverSemana,
   lerExpediente,
@@ -1089,7 +1091,7 @@ export class CopilotService {
     const [tenant, evolution, meta, conta, retencao] = await Promise.all([
       this.prisma.db.tenant.findUnique({
         where: { id: this.prisma.tenantId },
-        select: { canal: true },
+        select: { canal: true, timezone: true },
       }),
       this.prisma.db.evolutionSettings.findFirst(),
       this.prisma.db.whatsAppSettings.findFirst({
@@ -1113,14 +1115,13 @@ export class CopilotService {
           ? { conectado: true, numero: meta.displayPhoneNumber }
           : { conectado: false, estado: 'nunca conectado' };
 
-    // Mesma virada de mês do AiUsageService, só lendo: um mês novo ainda
+    // Mesma virada de ciclo do AiUsageService, só lendo: um ciclo novo ainda
     // não tocado conta zero usadas e só o que sobrou dos pacotes.
-    const agora = new Date();
+    const fuso = fusoValido(tenant?.timezone ?? 'America/Sao_Paulo');
+    const ciclo = conta ? cicloMensal(diaDoCiclo(conta, fuso), fuso) : null;
     const inicio = conta?.aiUsagePeriodStart;
     const mesmoMes =
-      !!inicio &&
-      inicio.getUTCFullYear() === agora.getUTCFullYear() &&
-      inicio.getUTCMonth() === agora.getUTCMonth();
+      !!inicio && !!ciclo && inicio.getTime() >= ciclo.inicio.getTime();
     const plano = conta?.aiMonthlyMessageLimit ?? 5000;
     const extras = !conta
       ? 0
@@ -1143,6 +1144,9 @@ export class CopilotService {
         doPlano: plano,
         compradas: extras,
         acabou: usadas >= limite,
+        renovaEm: ciclo
+          ? ciclo.fim.toLocaleDateString('pt-BR', { timeZone: fuso })
+          : undefined,
       },
       armazenamento: cuidaDaConta
         ? {

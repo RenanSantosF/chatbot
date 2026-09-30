@@ -99,7 +99,7 @@ export class CorrecaoDeTextoService {
     });
     if (conta && conta.aiCorrecoesNoPeriodo >= LIMITE_DE_CORRECOES_POR_MES) {
       throw new HttpException(
-        'As correções deste mês acabaram. Elas voltam no dia 1º.',
+        'As correções deste mês acabaram. Elas voltam na renovação do plano.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
