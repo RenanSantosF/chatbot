@@ -65,7 +65,7 @@ type Passo = (typeof PASSOS)[number];
 /** Quantos passos contam no "2 de 6": o de boas-vindas não é pergunta. */
 const PERGUNTAS = PASSOS.length - 1;
 
-const PRECO_MENSAL = "147";
+const PRECO_MENSAL = "167";
 
 /** "Onde nos conheceu?" — opcional, em um clique. Vai pro painel da plataforma. */
 const ORIGENS = [

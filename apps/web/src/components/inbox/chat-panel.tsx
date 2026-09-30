@@ -47,6 +47,12 @@ import { CAMPO_DE_MENSAGEM } from "./campo-de-mensagem";
 import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
 import { GaleriaDaConversa } from "./galeria-da-conversa";
+import {
+  BotaoCorrigir,
+  DicaDaCorrecao,
+  FaixaDeCorrecao,
+  useCorrecaoDeTexto,
+} from "./correcao-de-texto";
 import { aoAbrirGaleria } from "@/lib/galeria";
 import { VoiceRecorder } from "./voice-recorder";
 import type {
@@ -256,6 +262,8 @@ export function ChatPanel({
   const { user } = useSession();
   const { canal } = useRealtime();
   const [draft, setDraft] = useState("");
+  /** O ✨: a IA corrige o rascunho, e dá pra desfazer (ver correcao-de-texto). */
+  const correcao = useCorrecaoDeTexto(draft, setDraft);
   /**
    * Esc dispensou o seletor de respostas rápidas nesta digitação.
    *
@@ -1720,6 +1728,7 @@ export function ChatPanel({
          nunca no clique, e o botão só ocupava o canto onde o microfone
          precisa estar. Enter envia, Shift+Enter quebra linha. */
       <>
+      {correcao.podeDesfazer ? <FaixaDeCorrecao onDesfazer={correcao.desfazer} /> : null}
       <QuickReplyPicker
         termo={atalhoDispensado ? null : termoDoAtalho(draft)}
         onEscolher={(resposta) => {
@@ -1734,7 +1743,18 @@ export function ChatPanel({
           );
         }}
       />
-      <form onSubmit={handleSubmit} data-tour="composer" className="flex items-end gap-2 bg-card p-3">
+      <form
+        onSubmit={handleSubmit}
+        data-tour="composer"
+        className="relative flex items-end gap-2 bg-card p-3"
+      >
+        {composicaoTravada ? null : (
+          <DicaDaCorrecao
+            jaUsou={Boolean(user.usouCorrecao)}
+            texto={draft}
+            onExperimentar={() => void correcao.corrigir()}
+          />
+        )}
 
         <Button
           type="button"
@@ -1760,9 +1780,11 @@ export function ChatPanel({
             Shift+Enter não fazia nada além de enviar. Cresce até umas seis
             linhas e aí rola por dentro, pra não empurrar a conversa pra
             fora da tela. */}
+        <div className="relative flex min-w-0 flex-1">
         <textarea
           rows={1}
           value={draft}
+          readOnly={correcao.corrigindo}
           onChange={(event) => {
             setDraft(event.target.value);
             // Digitar de novo devolve o seletor: o Esc dispensa aquela
@@ -1783,6 +1805,8 @@ export function ChatPanel({
           spellCheck
           enterKeyHint="send"
           onKeyDown={(event) => {
+            // Ctrl+J corrige com a IA; Ctrl+Z desfaz a correção.
+            if (correcao.aoTeclar(event)) return;
             // Enter envia; Shift+Enter cai no comportamento natural do
             // textarea, que é quebrar a linha. `isComposing` protege quem
             // digita com acento composto ou teclado de outro idioma: o
@@ -1814,9 +1838,16 @@ export function ChatPanel({
           // foco de campo desabilitado). O envio é otimista — não há por
           // que esperar por ele pra continuar escrevendo.
           disabled={composicaoTravada}
-          // Preenchido e sem moldura (ver CAMPO_DE_MENSAGEM).
-          className={CAMPO_DE_MENSAGEM}
+          // Preenchido e sem moldura (ver CAMPO_DE_MENSAGEM). O recuo à
+          // direita é o lugar do ✨.
+          className={cn(CAMPO_DE_MENSAGEM, "pr-10", correcao.corrigindo && "animate-pulse")}
         />
+        <BotaoCorrigir
+          visivel={!composicaoTravada && draft.trim().length >= 2}
+          corrigindo={correcao.corrigindo}
+          onClick={() => void correcao.corrigir()}
+        />
+        </div>
         {/* No canto onde estava o botão de enviar. O gravador se expande
             sobre o compositor enquanto grava, então precisa ser o último
             item da linha pra não empurrar o campo de texto. */}

@@ -417,6 +417,9 @@ model User {
   /// Quando a pessoa terminou (ou pulou) o tour guiado do painel. Por
   /// conta, e não por navegador: trocar de computador não repete o tour.
   tourVistoEm        DateTime?
+  /// A primeira vez que esta pessoa usou a correção de texto por IA. Com
+  /// ela preenchida, a dica que ensina o atalho não aparece mais.
+  usouCorrecaoEm     DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
@@ -1321,6 +1324,11 @@ model BillingAccount {
   /// bate no teto do mês não precisar esperar o mês virar. O que não foi
   /// usado passa pro mês seguinte (ver extrasQueSobraram, em AiUsageService).
   aiExtraMessagesThisPeriod Int       @default(0)
+  /// Correções de texto pedidas à IA no período (o botão ✨ do compositor).
+  /// Contam à parte das respostas: custam uma fração de centavo cada, e
+  /// descontá-las das respostas do plano puniria quem escreve com cuidado.
+  /// O teto existe só contra abuso (ver CorrecaoDeTextoService).
+  aiCorrecoesNoPeriodo      Int       @default(0)
 
   /// Quando a assinatura foi vista pela primeira vez fora de "active"
   /// (atraso de pagamento ou cancelamento), numa conta que já tinha

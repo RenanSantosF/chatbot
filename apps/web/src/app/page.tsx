@@ -6,6 +6,8 @@ import {
   ChevronDown,
   LayoutGrid,
   Route,
+  Sparkles,
+  Undo2,
   Users,
   Zap,
 } from "lucide-react";
@@ -64,6 +66,30 @@ const EQUIPE = [
   { iniciais: "EL", cor: "bg-emerald-100 text-emerald-700" },
 ];
 
+/**
+ * A correção de texto da equipe, mostrada com um exemplo de verdade.
+ *
+ * Os erros de "antes" são os de quem digita rápido no meio do expediente —
+ * acento, abreviação, letra trocada —, e o "depois" é o que a IA devolve:
+ * o mesmo recado, só que escrito direito.
+ */
+const CORRECAO_ANTES = [
+  { texto: "ola", erro: true },
+  { texto: ", o " },
+  { texto: "orcamento", erro: true },
+  { texto: " fica pronto " },
+  { texto: "amanha", erro: true },
+  { texto: " e te mando " },
+  { texto: "asim q", erro: true },
+  { texto: " sair" },
+];
+const CORRECAO_DEPOIS = "Olá, o orçamento fica pronto amanhã e te mando assim que sair.";
+const CORRECAO_PONTOS = [
+  "Corrige acentos, digitação e pontuação em um clique",
+  "Mantém o tom e o que foi dito — só escreve direito",
+  "Quem atende revisa antes de enviar, e pode desfazer",
+];
+
 const PASSOS = [
   { titulo: "Conecte", texto: "Leia o QR code com o celular que já atende." },
   { titulo: "Ensine", texto: "Escreva o que a IA precisa saber sobre você." },
@@ -76,7 +102,7 @@ const PASSOS = [
  * Quem cobra de verdade é o preço cadastrado no Stripe (`STRIPE_PRICE_ID`);
  * este número é só o que a página anuncia. Mudou lá, muda aqui.
  */
-const PRECO_MENSAL = "147";
+const PRECO_MENSAL = "167";
 
 /**
  * O que o plano único inclui.
@@ -89,6 +115,7 @@ const PLANO_INCLUI = [
   "Atendentes ilimitados, sem custo por usuário",
   "5.000 respostas de IA por mês",
   "20 GB para guardar conversas, fotos e documentos",
+  "IA que corrige o texto da equipe antes de enviar",
   "Setores e filas à vontade",
   "Conexão por QR code, no seu número",
   "Etiquetas, filas e respostas rápidas",
@@ -121,6 +148,11 @@ const PERGUNTAS = [
     pergunta: "Tem limite de atendentes?",
     resposta:
       "Não. Coloque quantas pessoas quiser atendendo no mesmo número, cada uma com o próprio acesso, sem pagar nada a mais por isso. O plano é da empresa, não de cada usuário.",
+  },
+  {
+    pergunta: "A IA ajuda também quem atende?",
+    resposta:
+      "Sim. Enquanto escreve, o atendente pode pedir pra IA corrigir o texto com um clique: ela arruma acentos, erros de digitação e pontuação, sem mudar o que foi dito. O texto corrigido aparece no campo pra ele revisar antes de enviar, e dá pra desfazer na hora.",
   },
   {
     pergunta: "E se a IA não souber responder?",
@@ -197,7 +229,10 @@ export default async function Home() {
                 url: absoluto("/"),
                 description: SITE_DESCRIPTION,
                 inLanguage: "pt-BR",
-                featureList: RECURSOS.map((r) => r.titulo),
+                featureList: [
+                  ...RECURSOS.map((r) => r.titulo),
+                  "Correção de texto com IA para os atendentes",
+                ],
               },
               {
                 "@type": "FAQPage",
@@ -366,6 +401,82 @@ export default async function Home() {
               <p className="text-sm text-muted-foreground">
                 Incluso no plano de R$ {PRECO_MENSAL}/mês
               </p>
+            </div>
+          </div>
+        </section>
+
+        {/* A IA não só atende o cliente: ajuda quem atende a escrever
+            certo. Com o exemplo lado a lado, que se entende sem ler. */}
+        <section className="overflow-hidden">
+          <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-5 py-20 md:grid-cols-[1fr_1.1fr] md:gap-16">
+            <div className="flex flex-col items-start gap-4">
+              <span className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.14em] text-primary uppercase">
+                <Sparkles className="size-3.5" />
+                IA também pra sua equipe
+              </span>
+              <h2 className="text-3xl font-bold tracking-tight text-balance sm:text-4xl">
+                Sua equipe escreve certo, sem esforço
+              </h2>
+              <p className="max-w-lg text-lg leading-relaxed text-muted-foreground text-pretty">
+                Na correria do atendimento escapa um acento, uma letra trocada. A IA
+                revisa a mensagem do atendente antes de ela sair — e o cliente só vê
+                um texto claro e profissional.
+              </p>
+              <ul className="flex flex-col gap-2.5 pt-1">
+                {CORRECAO_PONTOS.map((item) => (
+                  <li key={item} className="flex items-start gap-2.5 text-[15px]">
+                    <Check className="mt-0.5 size-4.5 shrink-0 text-primary" strokeWidth={2.5} />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div aria-hidden className="relative">
+              <div className="pointer-events-none absolute -inset-6 rounded-[2rem] bg-primary/8 blur-2xl" />
+              <div className="relative flex flex-col gap-4 rounded-3xl border bg-card p-6 shadow-[0_24px_60px_-30px_oklch(0_0_0/30%)]">
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">O atendente digitou</span>
+                  <p className="rounded-xl bg-muted/70 px-4 py-3 text-[15px] leading-relaxed text-muted-foreground">
+                    {CORRECAO_ANTES.map((parte, indice) => (
+                      <span
+                        key={indice}
+                        className={
+                          parte.erro
+                            ? "underline decoration-rose-400 decoration-wavy decoration-1 underline-offset-4"
+                            : undefined
+                        }
+                      >
+                        {parte.texto}
+                      </span>
+                    ))}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs font-semibold text-primary">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1">
+                    <Sparkles className="size-3.5" />
+                    Corrigido pela IA
+                  </span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">O cliente recebe</span>
+                  <p className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-[15px] leading-relaxed font-medium">
+                    {CORRECAO_DEPOIS}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 pt-1 text-xs text-muted-foreground">
+                  <span>Revise antes de enviar</span>
+                  <span className="flex items-center gap-1 font-medium text-foreground">
+                    <Undo2 className="size-3.5" />
+                    Desfazer
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </section>

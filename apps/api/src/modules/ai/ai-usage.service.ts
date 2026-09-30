@@ -109,6 +109,7 @@ export class AiUsageService {
         // tudo três dias depois, e pacote maior não teria como ser vendido
         // com honestidade.
         aiExtraMessagesThisPeriod: extrasQueSobraram(conta),
+        aiCorrecoesNoPeriodo: 0,
       },
     });
   }

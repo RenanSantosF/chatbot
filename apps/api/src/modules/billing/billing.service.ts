@@ -192,7 +192,7 @@ export class BillingService {
    * abrir e sincronizar continua a mesma.
    *
    * O VALOR em si vive só no Stripe (o código não tem número nenhum
-   * fixo), mas o site e o cadastro anunciam R$147/mês com 5.000 respostas
+   * fixo), mas o site e o cadastro anunciam R$167/mês com 5.000 respostas
    * de IA incluídas (ver DEPLOY.md) — abaixo do concorrente direto mais
    * próximo (chatbot de WhatsApp por QR code com IA, ~R$190-200/mês no
    * mercado brasileiro), e com margem folgada sobre o custo real do provedor

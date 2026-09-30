@@ -11,6 +11,8 @@ export interface SessionUser {
   mustChangePassword?: boolean;
   /** Já terminou ou pulou o tour guiado — guardado na conta, não no navegador. */
   tourVisto?: boolean;
+  /** Já usou a correção de texto por IA — a dica do atalho some. */
+  usouCorrecao?: boolean;
 }
 
 export interface SessionTenant {

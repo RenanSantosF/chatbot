@@ -154,7 +154,12 @@ export class AuthController {
         this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } }),
         this.prisma.client.user.findUnique({
           where: { id: user.userId },
-          select: { name: true, mustChangePassword: true, tourVistoEm: true },
+          select: {
+            name: true,
+            mustChangePassword: true,
+            tourVistoEm: true,
+            usouCorrecaoEm: true,
+          },
         }),
         // O estado do WhatsApp vem JUNTO com a sessão, e não só por evento
         // de tempo real. Sem isto, quem abria o painel com a sessão já caída
@@ -191,6 +196,8 @@ export class AuthController {
         role: user.role,
         mustChangePassword: account.mustChangePassword,
         tourVisto: account.tourVistoEm !== null,
+        // Já usou a correção por IA: a dica do atalho não aparece mais.
+        usouCorrecao: account.usouCorrecaoEm !== null,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       canal,

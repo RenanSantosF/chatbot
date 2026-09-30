@@ -1470,7 +1470,8 @@ describe('o que muda no celular aparece no painel', () => {
     await controller.receber(SEGREDO, req, {
       event: 'chats.delete',
       instance: 'inteliwa-1',
-      data: ['5511999999999@s.whatsapp.net', '120363000@g.us'],
+      // O evento traz só a lista de endereços, não mensagens.
+      data: ['5511999999999@s.whatsapp.net', '120363000@g.us'] as never,
     });
 
     expect(conversations.apagarConversasDoContato).toHaveBeenCalledWith(

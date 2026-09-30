@@ -8,8 +8,8 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 
 /** O preço do plano, pra estimar a receita recorrente (MRR). */
 function precoMensal(): number {
-  const valor = Number(process.env.PLANO_PRECO_MENSAL ?? 147);
-  return Number.isFinite(valor) && valor > 0 ? valor : 147;
+  const valor = Number(process.env.PLANO_PRECO_MENSAL ?? 167);
+  return Number.isFinite(valor) && valor > 0 ? valor : 167;
 }
 
 /** Os nomes que o cadastro grava em `comoConheceu`, e como aparecem. */
