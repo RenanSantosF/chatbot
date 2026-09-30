@@ -18,12 +18,14 @@ const portalCreate = jest.fn<
   [Record<string, unknown>]
 >();
 const constructEvent = jest.fn();
+const pricesRetrieve = jest.fn();
 
 jest.mock('stripe', () => {
   return jest.fn().mockImplementation(() => ({
     checkout: { sessions: { create: sessionsCreate } },
     billingPortal: { sessions: { create: portalCreate } },
     webhooks: { constructEvent },
+    prices: { retrieve: pricesRetrieve },
   }));
 });
 
@@ -613,5 +615,77 @@ describe('BillingService: cupom e cliente que o Stripe não conhece', () => {
 
     await expect(service.criarCheckout()).rejects.toThrow('rede caiu');
     expect(global.client.billingAccount.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('BillingService: pacotes de vários tamanhos', () => {
+  const antes = { ...process.env };
+  beforeEach(() => {
+    process.env.STRIPE_SECRET_KEY = 'sk_live_123';
+    process.env.STRIPE_PACOTES = '1000:price_mil,10000:price_dezmil';
+    delete process.env.STRIPE_TOPUP_PRICE_ID;
+    process.env.WEB_APP_URL = 'https://app.exemplo.com';
+    sessionsCreate.mockReset();
+    pricesRetrieve.mockReset();
+  });
+  afterEach(() => {
+    process.env = { ...antes };
+  });
+
+  it('compra o pacote escolhido e marca a quantidade na sessão', async () => {
+    sessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/p' });
+    const { service } = montar({ id: 'billing-1', stripeCustomerId: 'cus_1' });
+
+    await service.criarCheckoutExtra(10000);
+
+    const chamada = sessionsCreate.mock.calls[0][0] as {
+      line_items: { price: string }[];
+      metadata: Record<string, string>;
+    };
+    expect(chamada.line_items[0].price).toBe('price_dezmil');
+    expect(chamada.metadata).toEqual({ pacote: '10000' });
+  });
+
+  it('pacote que não está à venda é recusado', async () => {
+    const { service } = montar({ id: 'billing-1', stripeCustomerId: 'cus_1' });
+    await expect(service.criarCheckoutExtra(3000)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('o webhook credita a quantidade que foi paga', async () => {
+    const { service, global } = montar(null);
+
+    await service.processarEvento({
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_1',
+          mode: 'payment',
+          client_reference_id: 'tenant-1',
+          metadata: { pacote: '10000' },
+        },
+      },
+    } as never);
+
+    expect(global.client.billingAccount.updateMany).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1' },
+      data: { aiExtraMessagesThisPeriod: { increment: 10000 } },
+    });
+  });
+
+  it('lista os pacotes com o preço que o Stripe cobra', async () => {
+    pricesRetrieve.mockImplementation((id: string) =>
+      Promise.resolve({
+        unit_amount: id === 'price_mil' ? 4990 : 29990,
+        currency: 'brl',
+      }),
+    );
+    const { service } = montar(null);
+
+    expect(await service.listarPacotes()).toEqual([
+      { quantidade: 1000, centavos: 4990, moeda: 'brl' },
+      { quantidade: 10000, centavos: 29990, moeda: 'brl' },
+    ]);
   });
 });

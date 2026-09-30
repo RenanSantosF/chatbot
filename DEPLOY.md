@@ -69,6 +69,7 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `STRIPE_SECRET_KEY` | **obrigatória** — sem ela, ninguém consegue criar conta: o cadastro termina no Checkout, e sem chave o Checkout não abre. Chave secreta da sua conta Stripe (a mesma de outro sistema seu, se preferir) |
    | `STRIPE_PRICE_ID` | **obrigatória** — o id do preço (`price_...`) da assinatura mensal, criado no Dashboard do Stripe > Product catalog |
    | `STRIPE_TOPUP_PRICE_ID` | opcional — o id do preço (`price_...`) do pacote avulso de 1.000 respostas extras de IA. Sem ela, o botão "Comprar mensagens extras" mostra erro; o resto do sistema funciona igual |
+   | `STRIPE_PACOTES` | opcional — vários tamanhos de pacote, no formato `quantidade:price_...` separados por vírgula (ex.: `1000:price_a,3000:price_b,10000:price_c`). A tela de compra mostra um cartão por pacote, com o preço lido do Stripe. Convive com `STRIPE_TOPUP_PRICE_ID` (que vira o pacote de 1.000 se ele não estiver na lista) |
    | `PLATFORM_ADMIN_EMAILS` | o(s) e-mail(s) de quem vê o painel da plataforma (receita, funil, origem das contas, erros), separados por vírgula — ex.: `voce@empresa.com`. Sem ela, ninguém vê; o item "Plataforma" só aparece no menu pra esses e-mails. **As empresas desses e-mails usam o sistema de graça, pra sempre** — são as únicas liberadas sem assinatura (fora as que você liberar por alguns dias na aba Contas do painel) |
    | `PLANO_PRECO_MENSAL` | opcional — o preço do plano em reais, usado só pra estimar a receita mensal (MRR) no painel da plataforma. Padrão `147` |
    | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
@@ -500,6 +501,11 @@ valor nenhum fixo.
    recorrente) — o pacote de 1.000 mensagens extras. Copie o id
    (`price_...`) — é o `STRIPE_TOPUP_PRICE_ID`. Pule este passo se não for
    vender pacote avulso agora; o resto do sistema funciona sem ele.
+   - Pacotes maiores: crie um **Price** único pra cada tamanho (sugestão:
+     1.000 = R$ 49,90 · 3.000 = R$ 119,90 · 10.000 = R$ 299,90) e liste
+     todos em `STRIPE_PACOTES`, ex.:
+     `1000:price_a,3000:price_b,10000:price_c`. O que o cliente compra e
+     não usa passa pro mês seguinte.
 3. Em **Developers > API keys**, copie a **Secret key** (`sk_live_...` em
    produção, `sk_test_...` pra testar) — é o `STRIPE_SECRET_KEY`.
 4. Em **Developers > Webhooks**, crie um endpoint:

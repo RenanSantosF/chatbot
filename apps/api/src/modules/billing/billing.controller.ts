@@ -1,9 +1,19 @@
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { BillingExempt } from '../../common/billing/billing-exempt.decorator';
 import { Roles } from '../../common/auth/roles.decorator';
 import { RolesGuard } from '../../common/auth/roles.guard';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
 import { BillingService } from './billing.service';
+
+class CheckoutExtraDto {
+  /** Qual pacote (quantidade de respostas). Sem ele, o menor. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  quantidade?: number;
+}
 
 /**
  * A assinatura, do lado de quem administra a empresa.
@@ -34,9 +44,14 @@ export class BillingController {
     return this.billing.criarCheckout();
   }
 
+  @Get('pacotes')
+  pacotes() {
+    return this.billing.listarPacotes();
+  }
+
   @Post('checkout-extra')
-  checkoutExtra() {
-    return this.billing.criarCheckoutExtra();
+  checkoutExtra(@Body() dto: CheckoutExtraDto) {
+    return this.billing.criarCheckoutExtra(dto?.quantidade);
   }
 
   @Post('portal')

@@ -46,6 +46,25 @@ export interface LimiteDaIa {
  * evolution.service.ts) não tem custo de provedor — é a chamada ao
  * modelo que custa, e só ela é contada.
  */
+/**
+ * Quantas respostas compradas sobram na virada do mês.
+ *
+ * O plano é gasto primeiro, o pacote depois: só o que passou do plano
+ * saiu do pacote. Ex.: plano 5.000, pacote 3.000, usou 6.000 → o pacote
+ * pagou 1.000, sobram 2.000.
+ */
+export function extrasQueSobraram(conta: {
+  aiMonthlyMessageLimit: number;
+  aiExtraMessagesThisPeriod: number;
+  aiRepliesUsed: number;
+}): number {
+  const gastasDoPacote = Math.max(
+    0,
+    conta.aiRepliesUsed - conta.aiMonthlyMessageLimit,
+  );
+  return Math.max(0, conta.aiExtraMessagesThisPeriod - gastasDoPacote);
+}
+
 @Injectable()
 export class AiUsageService {
   private readonly logger = new Logger(AiUsageService.name);
@@ -84,10 +103,12 @@ export class AiUsageService {
         aiRepliesUsed: 0,
         aiInputTokensUsed: 0,
         aiOutputTokensUsed: 0,
-        // Pacote avulso vale pro período em que foi comprado, não pra
-        // sempre — do contrário uma compra de reforço em março viraria
-        // cota extra permanente, mês após mês, sem custo nenhum a mais.
-        aiExtraMessagesThisPeriod: 0,
+        // O que foi COMPRADO e não foi usado passa pro mês seguinte; as
+        // respostas do plano, não (renovam todo mês). Antes o pacote
+        // zerava na virada — quem comprasse 10 mil no dia 28 perdia quase
+        // tudo três dias depois, e pacote maior não teria como ser vendido
+        // com honestidade.
+        aiExtraMessagesThisPeriod: extrasQueSobraram(conta),
       },
     });
   }

@@ -8,6 +8,7 @@ import Stripe from 'stripe';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { CacheCurto } from '../../common/cache/cache-curto';
+import { pacotesConfigurados, quantidadePaga } from './pacotes';
 import { emailsDaPlataforma } from '../plataforma/plataforma.guard';
 import { RegistroDeEventos } from '../plataforma/registro-de-eventos.service';
 import {
@@ -43,16 +44,16 @@ export function clienteSumiu(erro: unknown): boolean {
 }
 
 /**
- * Quantas respostas o pacote avulso acrescenta, e por quanto.
+ * Preço de cada pacote avulso, como o Stripe cobra (ver listarPacotes).
  *
- * Um pacote só, de propósito — dar a escolher quantidade era resolver um
- * problema que ninguém tem ainda (o plano mensal já cobre uso normal
- * sobrando; ver o comentário em AiUsageService). R$49,90 por 1.000
- * respostas fica em torno de R$0,05 por resposta, contra um custo real de
- * provedor de menos de um centavo — a mesma margem generosa do plano
- * mensal, só que fatiada pra quem precisa de um empurrão no meio do mês.
+ * Os pacotes em si vêm de `STRIPE_PACOTES` (ver pacotes.ts): mais de um
+ * tamanho, com preço por resposta caindo nos maiores. A régua de preço
+ * sugerida — e a conta de custo por trás dela — está no DEPLOY.md.
  */
-const MENSAGENS_POR_PACOTE_EXTRA = 1000;
+const PRECOS = new CacheCurto<{
+  centavos: number | null;
+  moeda: string | null;
+}>(10 * 60_000);
 
 /**
  * O status de quando a consulta ao banco falhou (ver `status`): destrava
@@ -286,13 +287,21 @@ export class BillingService {
    * pra quem já é cliente, então usa o customer do Stripe já existente em
    * vez de pedir e-mail de novo.
    */
-  async criarCheckoutExtra(): Promise<{ url: string }> {
-    const precoId = process.env.STRIPE_TOPUP_PRICE_ID;
-    if (!precoId) {
+  async criarCheckoutExtra(quantidade?: number): Promise<{ url: string }> {
+    const pacotes = pacotesConfigurados();
+    if (pacotes.length === 0) {
       throw new BadRequestException(
         'Pacote de mensagens extras não está configurado nesta instalação. Fale com o suporte.',
       );
     }
+    // Sem escolha, o menor — é o que o botão antigo (sem opções) comprava.
+    const pacote = quantidade
+      ? pacotes.find((p) => p.quantidade === quantidade)
+      : pacotes[0];
+    if (!pacote) {
+      throw new BadRequestException('Esse pacote não está mais à venda.');
+    }
+    const precoId = pacote.precoId;
 
     const conta = await this.contaAtual();
     if (!conta.stripeCustomerId) {
@@ -308,6 +317,8 @@ export class BillingService {
         mode: 'payment',
         line_items: [{ price: precoId, quantity: 1 }],
         allow_promotion_codes: true,
+        // É o que o webhook lê pra saber quanto creditar (ver quantidadePaga).
+        metadata: { pacote: String(pacote.quantidade) },
         client_reference_id: this.prisma.tenantId,
         customer: conta.stripeCustomerId,
         success_url: `${base}/dashboard/settings/ai?pacoteExtra=sucesso`,
@@ -330,6 +341,37 @@ export class BillingService {
       tenantId: this.prisma.tenantId,
     });
     return { url: sessao.url };
+  }
+
+  /**
+   * Os pacotes à venda, com o preço que o Stripe cobra de verdade.
+   *
+   * O valor vem do próprio Stripe (e fica 10 minutos em memória), nunca
+   * de um número escrito no código: mudou o preço lá, muda na tela. Se o
+   * Stripe não responder, o pacote aparece sem preço — o Checkout mostra
+   * o valor antes de cobrar de qualquer jeito.
+   */
+  async listarPacotes(): Promise<
+    { quantidade: number; centavos: number | null; moeda: string | null }[]
+  > {
+    const pacotes = pacotesConfigurados();
+    return Promise.all(
+      pacotes.map(async ({ quantidade, precoId }) => {
+        const guardado = PRECOS.get(precoId);
+        if (guardado) return { quantidade, ...guardado };
+        try {
+          const preco = await this.stripe().prices.retrieve(precoId);
+          const valor = {
+            centavos: preco.unit_amount ?? null,
+            moeda: preco.currency ?? null,
+          };
+          PRECOS.set(precoId, valor);
+          return { quantidade, ...valor };
+        } catch {
+          return { quantidade, centavos: null, moeda: null };
+        }
+      }),
+    );
   }
 
   /**
@@ -430,12 +472,11 @@ export class BillingService {
         }
 
         if (sessao.mode === 'payment') {
+          const quantidade = quantidadePaga(sessao.metadata);
           const resultado = await this.global.client.billingAccount.updateMany({
             where: { tenantId },
             data: {
-              aiExtraMessagesThisPeriod: {
-                increment: MENSAGENS_POR_PACOTE_EXTRA,
-              },
+              aiExtraMessagesThisPeriod: { increment: quantidade },
             },
           });
           if (resultado.count === 0) {
@@ -445,7 +486,7 @@ export class BillingService {
             return;
           }
           this.logger.log(
-            `Pacote extra de ${MENSAGENS_POR_PACOTE_EXTRA} mensagens creditado pro tenant ${tenantId}.`,
+            `Pacote extra de ${quantidade} mensagens creditado pro tenant ${tenantId}.`,
           );
           await this.eventos?.registrar('pacote_pago', {
             tenantId,

@@ -1,4 +1,4 @@
-import { AiUsageService } from './ai-usage.service';
+import { AiUsageService, extrasQueSobraram } from './ai-usage.service';
 
 /**
  * A cota mensal de respostas da IA.
@@ -157,5 +157,34 @@ describe('AiUsageService.registrar', () => {
         }),
       }),
     );
+  });
+});
+
+describe('respostas compradas na virada do mês', () => {
+  it('o plano é gasto primeiro; o que sobrou do pacote passa pro mês seguinte', () => {
+    // Plano 5.000, pacote 3.000, usou 6.000: o pacote pagou 1.000.
+    expect(
+      extrasQueSobraram({
+        aiMonthlyMessageLimit: 5000,
+        aiExtraMessagesThisPeriod: 3000,
+        aiRepliesUsed: 6000,
+      }),
+    ).toBe(2000);
+    // Nem encostou no pacote: sobra inteiro.
+    expect(
+      extrasQueSobraram({
+        aiMonthlyMessageLimit: 5000,
+        aiExtraMessagesThisPeriod: 3000,
+        aiRepliesUsed: 1200,
+      }),
+    ).toBe(3000);
+    // Gastou tudo: nada sobra (e nunca negativo).
+    expect(
+      extrasQueSobraram({
+        aiMonthlyMessageLimit: 5000,
+        aiExtraMessagesThisPeriod: 3000,
+        aiRepliesUsed: 9000,
+      }),
+    ).toBe(0);
   });
 });
