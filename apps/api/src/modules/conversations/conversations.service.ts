@@ -64,6 +64,10 @@ import { mediaIdDe } from './media-id';
  * fica no celular (ver `importarHistorico`).
  */
 
+
+/** Quando tentar de novo um status que chegou antes da mensagem. */
+export const ESPERAS_DO_STATUS_MS = [1_500, 5_000, 20_000];
+
 /** O resumo de uma mensagem citada que não está no painel. */
 export interface CitacaoCopiada {
   texto: string;
@@ -1641,9 +1645,38 @@ export class ConversationsService {
     });
   }
 
-  async applyDeliveryStatus(externalId: string, status: MessageStatus) {
+  async applyDeliveryStatus(
+    externalId: string,
+    status: MessageStatus,
+    tentativa = 0,
+  ) {
     const message = await this.acharPeloIdExterno(externalId);
     if (!message) {
+      /*
+       * O tique chegou antes da mensagem — e isso é o caso comum, não raro.
+       *
+       * No WhatsApp por QR code, a mensagem escrita no celular e o
+       * "entregue"/"lido" dela chegam em entregas separadas, quase juntas,
+       * e são processadas em paralelo. Se o cliente está com a conversa
+       * aberta, o "lido" vem colado na própria mensagem: chegava aqui
+       * antes de ela estar gravada e se perdia. Era o balão com um tique
+       * só no painel e dois azuis no celular. O envio pelo painel tem a
+       * mesma corrida: o id externo só é gravado depois que o envio volta.
+       *
+       * Tentar de novo um pouco depois resolve os dois, sem guardar estado.
+       */
+      const espera = ESPERAS_DO_STATUS_MS[tentativa];
+      if (espera !== undefined) {
+        setTimeout(() => {
+          this.applyDeliveryStatus(externalId, status, tentativa + 1).catch(
+            (erro: unknown) =>
+              this.logger.warn(
+                `Status de entrega não aplicado: ${String(erro)}`,
+              ),
+          );
+        }, espera).unref();
+        return;
+      }
       // Silencioso de propósito no caso comum (webhook de status chegando
       // fora de ordem é normal e frequente) — mas SEM achar a mensagem é
       // raro, e é exatamente o sintoma de "o tique nunca vira" relatado.

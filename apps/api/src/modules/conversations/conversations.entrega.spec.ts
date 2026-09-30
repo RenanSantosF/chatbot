@@ -136,6 +136,41 @@ describe('status de entrega vindo do webhook', () => {
     expect(realtime.emitToUsers).not.toHaveBeenCalled();
   });
 
+  it('tique que chega antes da mensagem é aplicado quando ela aparece', async () => {
+    // A mensagem do celular e o "lido" dela chegam quase juntos, e o
+    // "lido" podia ser processado primeiro — e se perdia.
+    jest.useFakeTimers();
+    try {
+      const { service, prisma, atualizacoes } = montar({ mensagem: null });
+
+      await service.applyDeliveryStatus('wamid.1', 'READ');
+      expect(atualizacoes).toHaveLength(0);
+
+      prisma.db.message.findFirst.mockResolvedValue(mensagemCom('SENT'));
+      await jest.advanceTimersByTimeAsync(1_500);
+
+      expect(atualizacoes).toEqual([{ status: 'READ' }]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('desiste depois de algumas tentativas', async () => {
+    jest.useFakeTimers();
+    try {
+      const { service, prisma } = montar({ mensagem: null });
+
+      await service.applyDeliveryStatus('wamid.sumiu', 'READ');
+      await jest.advanceTimersByTimeAsync(60_000);
+
+      // Uma tentativa na hora e três depois — e mais nenhuma.
+      expect(prisma.db.message.findFirst).toHaveBeenCalledTimes(4);
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('avisa o painel quando o status realmente mudou', async () => {
     const { service, realtime } = montar({ mensagem: mensagemCom('SENT') });
 
