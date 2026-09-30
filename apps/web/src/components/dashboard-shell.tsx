@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRight,
   Bell,
   CircleHelp,
   BellRing,
@@ -13,6 +14,7 @@ import {
   Moon,
   Sun,
   Settings,
+  Smartphone,
   TriangleAlert,
   Users,
 } from "lucide-react";
@@ -208,44 +210,77 @@ function ConnectionBadge() {
 }
 
 /**
- * O WhatsApp da empresa caiu — e isso é diferente do painel ter caído.
+ * O WhatsApp da empresa não está ligado — dito de dois jeitos diferentes.
  *
- * A distinção importa porque as consequências são opostas. "Reconectando"
- * ali em cima quer dizer que ESTA aba perdeu contato com o servidor: as
- * mensagens continuam sendo entregues, só não aparecem aqui até voltar.
- * Isto aqui é o contrário — o painel está ótimo, e é o WhatsApp que não
- * está mais ligado. Quem atende continua digitando e apertando enviar, e
- * cada mensagem some no caminho.
+ * Ainda NÃO CONECTOU (primeiro acesso): é o próximo passo natural, não um
+ * problema. Faixa calma, na cor da marca, com "Conectar". A versão
+ * anterior abria a primeira visita com um alarme vermelho dizendo
+ * "desconectado… Reconectar" pra quem nunca tinha conectado nada.
  *
- * Por isso ocupa uma faixa, e não uma etiqueta discreta: é o único aviso
- * do produto que significa "pare o que está fazendo".
+ * CAIU (já esteve conectado): aí sim é aviso — as mensagens enviadas não
+ * chegam ao cliente. Âmbar, não vermelho: é urgente, mas se resolve em um
+ * minuto lendo o QR code de novo, e o vermelho fica pro que bloqueia a
+ * conta (ver CobrancaVencida).
+ *
+ * Na própria tela de conectar a faixa some: lá ela só repetiria a tela.
  */
-function CanalCaido() {
+function CanalCaido({ role }: { role: UserRole }) {
   const { canal } = useRealtime();
+  const pathname = usePathname();
   if (!canal || canal.estado === "CONECTADO") return null;
+  if (pathname.startsWith("/dashboard/settings/whatsapp")) return null;
+  // No Inbox, quem nunca conectou já vê o cartão grande (SemWhatsApp).
+  if (!canal.jaConectou && pathname === "/dashboard") return null;
 
-  const desvinculado = canal.estado === "DESCONECTADO";
+  const podeConectar = role === "OWNER" || role === "ADMIN";
 
+  if (!canal.jaConectou) {
+    return (
+      <div
+        role="status"
+        className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-primary/15 bg-primary/[0.06] px-4 py-2 text-center text-xs"
+      >
+        <Smartphone className="size-3.5 shrink-0 text-primary" />
+        <span className="font-medium">
+          {podeConectar
+            ? "Falta só conectar o WhatsApp da empresa para as conversas começarem a chegar."
+            : "O WhatsApp da empresa ainda não foi conectado."}
+        </span>
+        {podeConectar ? (
+          <Link
+            href="/dashboard/settings/whatsapp"
+            className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Conectar agora
+            <ArrowRight className="size-3" />
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">Peça para o dono da conta conectar.</span>
+        )}
+      </div>
+    );
+  }
+
+  const esperandoQr = canal.estado === "AGUARDANDO_QRCODE";
   return (
     <div
       role="alert"
-      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-xs text-destructive"
+      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-800 dark:text-amber-300"
     >
       <TriangleAlert className="size-3.5 shrink-0" />
       <span className="font-medium">
-        {desvinculado
-          ? "O WhatsApp desta empresa está desconectado."
-          : "O WhatsApp está aguardando a leitura do QR code."}
+        {esperandoQr
+          ? "O WhatsApp está esperando a leitura do QR code."
+          : "O WhatsApp da empresa se desconectou."}
       </span>
-      <span className="text-destructive/80">
-        {canal.lastError ?? "As mensagens enviadas agora não vão chegar."}
+      <span className="opacity-80">
+        {canal.lastError ?? "Enquanto isso, as mensagens enviadas não chegam aos clientes."}
       </span>
-      <Link
-        href="/dashboard/settings/whatsapp"
-        className="font-medium underline underline-offset-2"
-      >
-        Reconectar
-      </Link>
+      {podeConectar ? (
+        <Link href="/dashboard/settings/whatsapp" className="font-medium underline underline-offset-2">
+          Reconectar
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -440,14 +475,84 @@ const TEMAS = [
  * do trilho, com o nome no balão ao passar o mouse. No celular a barra
  * continua existindo, porque é nela que mora o botão do menu.
  */
+/**
+ * Reconectando, trazendo conversas, sincronizando — numa pílula que flutua
+ * no alto da tela, por cima do conteúdo.
+ *
+ * Morou no pé do trilho quando a barra do topo saiu, e ali ninguém via: é
+ * justo o aviso que explica por que uma mensagem ainda não apareceu, e
+ * precisa estar onde o olho está. Pílula, e não faixa, pra não empurrar o
+ * conteúdo pra baixo e voltar a abrir o buraco que a barra deixava. No
+ * celular quem mostra é a barra do topo (ConnectionBadge).
+ */
+function StatusFlutuante() {
+  const { connected, sincronizando, historico } = useRealtime();
+  const progresso = historico?.importando
+    ? Math.min(99, Math.round(historico.progresso ?? 0))
+    : null;
+
+  let conteudo: React.ReactNode = null;
+  let titulo: string | undefined;
+  if (!connected) {
+    conteudo = (
+      <>
+        <span className="relative flex size-2">
+          <span className="absolute inset-0 animate-ping rounded-full bg-amber-500/70" />
+          <span className="relative size-2 rounded-full bg-amber-500" />
+        </span>
+        Reconectando ao servidor…
+      </>
+    );
+    titulo = "As mensagens aparecem aqui assim que a conexão voltar.";
+  } else if (progresso !== null) {
+    conteudo = (
+      <>
+        <svg viewBox="0 0 20 20" className="size-4 -rotate-90" aria-hidden>
+          <circle cx="10" cy="10" r="8" fill="none" strokeWidth="3" className="stroke-muted" />
+          <circle
+            cx="10"
+            cy="10"
+            r="8"
+            fill="none"
+            strokeWidth="3"
+            strokeLinecap="round"
+            className="stroke-primary transition-[stroke-dashoffset] duration-700"
+            strokeDasharray={2 * Math.PI * 8}
+            strokeDashoffset={2 * Math.PI * 8 * (1 - Math.max(progresso, 4) / 100)}
+          />
+        </svg>
+        Trazendo conversas do celular{progresso > 0 ? ` · ${progresso}%` : "…"}
+      </>
+    );
+    titulo =
+      historico && historico.mensagens > 0
+        ? `${historico.mensagens.toLocaleString("pt-BR")} mensagens até agora. As conversas vão aparecendo sozinhas.`
+        : "As conversas vão aparecendo sozinhas.";
+  } else if (sincronizando) {
+    conteudo = (
+      <>
+        <Spinner className="size-3.5" />
+        Sincronizando…
+      </>
+    );
+  }
+
+  if (!conteudo) return null;
+  return (
+    <div className="pointer-events-none fixed top-2.5 left-1/2 z-40 hidden -translate-x-1/2 md:block">
+      <div
+        role="status"
+        title={titulo}
+        className="pointer-events-auto flex items-center gap-2 rounded-full border bg-popover/95 px-3.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg backdrop-blur animate-in fade-in slide-in-from-top-2"
+      >
+        {conteudo}
+      </div>
+    </div>
+  );
+}
+
 function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
-  const {
-    connected,
-    sincronizando,
-    historico,
-    notifPermission,
-    enableNotifications,
-  } = useRealtime();
+  const { notifPermission, enableNotifications } = useRealtime();
   const { theme, setTheme } = useTheme();
   const [montado, setMontado] = useState(false);
   useEffect(() => {
@@ -461,70 +566,8 @@ function ControlesDoTrilho({ onSair }: { onSair: () => void }) {
   const proximo = TEMAS[(TEMAS.indexOf(atual) + 1) % TEMAS.length];
   const IconeDoTema = montado ? atual.icone : Monitor;
 
-  const progresso = historico?.importando
-    ? Math.min(99, Math.round(historico.progresso ?? 0))
-    : null;
-
   return (
     <SidebarMenu>
-      {!connected ? (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Reconectando ao servidor — as mensagens aparecem assim que voltar"
-            className="cursor-default text-amber-500 hover:bg-transparent hover:text-amber-500"
-          >
-            <span className="relative flex size-4 items-center justify-center">
-              <span className="absolute size-2.5 animate-ping rounded-full bg-amber-500/60" />
-              <span className="size-2 rounded-full bg-amber-500" />
-            </span>
-            <span>Reconectando</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ) : progresso !== null ? (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip={`Trazendo conversas do celular${progresso > 0 ? ` · ${progresso}%` : ""}`}
-            className="cursor-default hover:bg-transparent"
-          >
-            {/* Um anel que enche: o quanto já chegou, sem texto nenhum. */}
-            <svg viewBox="0 0 20 20" className="size-5 -rotate-90" aria-hidden>
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                fill="none"
-                strokeWidth="2.5"
-                className="stroke-muted"
-              />
-              <circle
-                cx="10"
-                cy="10"
-                r="8"
-                fill="none"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                className="stroke-primary transition-[stroke-dashoffset] duration-700"
-                strokeDasharray={2 * Math.PI * 8}
-                strokeDashoffset={
-                  2 * Math.PI * 8 * (1 - Math.max(progresso, 4) / 100)
-                }
-              />
-            </svg>
-            <span>Trazendo conversas</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ) : sincronizando ? (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Sincronizando"
-            className="cursor-default hover:bg-transparent"
-          >
-            <Spinner className="size-4" />
-            <span>Sincronizando</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ) : null}
-
       {notifPermission === "default" ? (
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -770,7 +813,7 @@ function Shell({
         </header>
         <CobrancaVencida cobranca={cobranca} role={user.role} />
         <LiberacaoAcabando cobranca={cobranca} role={user.role} />
-        <CanalCaido />
+        <CanalCaido role={user.role} />
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
             <span className="text-amber-800 dark:text-amber-300">
@@ -813,6 +856,7 @@ function Shell({
             {children}
           </div>
         </div>
+        <StatusFlutuante />
         <CopilotWidget />
         <TourGuiado />
       </SidebarInset>

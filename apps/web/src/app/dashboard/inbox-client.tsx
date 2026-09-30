@@ -22,6 +22,7 @@ import { useRealtime } from "@/components/realtime-provider";
 import { useTelaLarga } from "@/hooks/use-tela-larga";
 import { conferirPrimeiraPagina } from "@/lib/conferencia-da-lista";
 import { useSession } from "@/components/session-provider";
+import { SemWhatsApp } from "@/components/inbox/sem-whatsapp";
 import type { Relogio } from "@/lib/espera";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
@@ -227,8 +228,12 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
   const transicaoEmCurso = useRef(false);
   const ultimaTransicao = useRef(0);
   const ultimoEventoDaLista = useRef(0);
-  const { socket, unreadCounts, clearUnread, setActiveConversationId, sincronizar } =
+  const { socket, unreadCounts, clearUnread, setActiveConversationId, sincronizar, canal } =
     useRealtime();
+  // Nunca conectou: o Inbox abre, mas com o aviso grande por cima (ver
+  // SemWhatsApp). Enquanto o estado não chega, nada de aviso — piscar o
+  // cartão pra quem está conectado seria pior que esperar um instante.
+  const semWhatsApp = Boolean(canal && canal.estado !== "CONECTADO" && !canal.jaConectou);
 
   /*
    * O `?c=` da URL abre a conversa TODA VEZ que muda, não só na primeira.
@@ -1640,7 +1645,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // nome, prévia, hora e selos, e em 400 a prévia era cortada no meio da
     // primeira frase — que é justamente o que se lê pra decidir se abre.
     <TranscricaoDeAudioProvider modo={transcricao}>
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[440px_1fr] xl:grid-cols-[440px_1fr_330px] [&>*]:min-h-0">
+    <div className="relative grid h-full min-h-0 grid-cols-1 overflow-hidden bg-card md:grid-cols-[440px_1fr] xl:grid-cols-[440px_1fr_330px] [&>*]:min-h-0">
       {/* No celular só UMA das duas colunas existe por vez.
 
           A coluna da lista era `hidden md:flex`, e o painel de conversa
@@ -1755,6 +1760,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
           <CustomerPanel conversation={detail} />
         </div>
       ) : null}
+      {semWhatsApp ? <SemWhatsApp /> : null}
     </div>
     </TranscricaoDeAudioProvider>
   );

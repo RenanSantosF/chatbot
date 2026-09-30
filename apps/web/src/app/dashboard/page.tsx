@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { apiFetchServer } from "@/lib/api-server";
 import {
   COOKIE_DOS_FILTROS,
@@ -43,17 +42,13 @@ export default async function InboxPage({
   const filtros =
     lerFiltrosDoCookie((await cookies()).get(COOKIE_DOS_FILTROS)?.value, DEFAULT_FILTERS) ??
     DEFAULT_FILTERS;
-  const [inicial, ativacao] = await Promise.all([
-    carregarPrimeiraPagina(filtros, c),
-    // Conta recém-criada ainda não respondeu as boas-vindas: o primeiro
-    // acesso vai pra visão geral, onde elas e os primeiros passos moram —
-    // um Inbox vazio não diria o que fazer. Link direto pra uma conversa
-    // (`?c=`) nunca é desviado.
-    c
-      ? Promise.resolve(null)
-      : apiFetchServer<{ precisaDeBoasVindas: boolean }>("/onboarding").catch(() => null),
-  ]);
-  if (ativacao?.precisaDeBoasVindas) redirect("/dashboard/visao-geral");
+  // Sem desvio pra visão geral, nem pra conta nova: o Inbox abria, a
+  // página percebia que as boas-vindas não tinham sido respondidas e
+  // mandava pra visão geral — um clique em "Conversas" piscava uma tela e
+  // caía em outra. Agora ele sempre abre; sem WhatsApp conectado, o
+  // próprio Inbox diz o que falta (ver SemWhatsApp no InboxClient), e as
+  // boas-vindas continuam esperando na visão geral.
+  const inicial = await carregarPrimeiraPagina(filtros, c);
   return <InboxClient inicial={inicial} />;
 }
 

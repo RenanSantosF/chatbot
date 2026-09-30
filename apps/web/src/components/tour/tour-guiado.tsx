@@ -231,16 +231,21 @@ export function TourGuiado() {
 
   // Sozinho, uma vez: primeira visita às conversas, em tela de computador
   // (no celular o painel é outro, e metade dos alvos nem aparece).
+  // Espera o WhatsApp: sem ele, o Inbox está coberto pelo cartão de
+  // "conecte o WhatsApp" e o tour apontaria pra uma lista escondida. Ao
+  // conectar, `jaConectou` vira verdadeiro e o tour abre sozinho.
+  const semWhatsApp = Boolean(canal && canal.estado !== "CONECTADO" && !canal.jaConectou);
   useEffect(() => {
     if (
       pathname !== "/dashboard" ||
+      semWhatsApp ||
       tourJaVisto(user.id, user.tourVisto) ||
       window.innerWidth < 1024
     )
       return;
     const espera = setTimeout(comecar, 1500);
     return () => clearTimeout(espera);
-  }, [pathname, user.id, user.tourVisto, comecar]);
+  }, [pathname, semWhatsApp, user.id, user.tourVisto, comecar]);
 
   // Quem viu o tour antes de ele ser guardado na conta (só no navegador):
   // passa a marca pra conta, pra não aparecer de novo em outro lugar.

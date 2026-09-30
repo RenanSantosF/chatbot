@@ -33,6 +33,12 @@ export interface EstadoDoCanal {
   pairingCode?: string | null;
   /** Quando esta notícia chegou — é o que faz a tela reagir a repetições. */
   em: number;
+  /**
+   * Já esteve conectado alguma vez? Separa "ainda não conectou" (primeiro
+   * acesso, convite calmo) de "caiu" (aviso de verdade). Vem da sessão e
+   * vira `true` na primeira conexão — nenhum evento o desliga.
+   */
+  jaConectou?: boolean;
 }
 
 /**
@@ -178,6 +184,7 @@ export function RealtimeProvider({
       ? {
           estado: canalInicial.estado,
           lastError: canalInicial.motivo,
+          jaConectou: canalInicial.jaConectou,
           em: Date.now(),
         }
       : null,
@@ -301,7 +308,11 @@ export function RealtimeProvider({
     // urgentes: os dois primeiros param o produto inteiro, e o terceiro
     // expira em cerca de um minuto.
     instance.on("canal.estado", (evento: Omit<EstadoDoCanal, "em">) => {
-      setCanal({ ...evento, em: Date.now() });
+      setCanal((atual) => ({
+        ...evento,
+        jaConectou: Boolean(atual?.jaConectou || evento.estado === "CONECTADO"),
+        em: Date.now(),
+      }));
       // Parear recomeça a importação; cair encerra a espera — não há
       // aparelho do outro lado pra mandar lote nenhum.
       setHistorico(
@@ -467,7 +478,11 @@ export function RealtimeProvider({
   );
 
   const informarCanal = useCallback((estado: Omit<EstadoDoCanal, "em">) => {
-    setCanal({ ...estado, em: Date.now() });
+    setCanal((atual) => ({
+      ...estado,
+      jaConectou: Boolean(atual?.jaConectou || estado.jaConectou || estado.estado === "CONECTADO"),
+      em: Date.now(),
+    }));
   }, []);
 
   const informarHistorico = useCallback((novo: HistoricoDoCanal) => {
