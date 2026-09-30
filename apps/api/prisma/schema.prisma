@@ -569,11 +569,12 @@ model InboxSettings {
   /// recurso está escolhendo evitar essa conta; quem não ligar está optando
   /// por correr esse risco conscientemente, não descobrindo-o por acaso.
   ///
-  /// O padrão de 20 horas (`autoCloseHours`, abaixo) encerra com folga antes
-  /// das 24, enquanto ainda dá tempo de alguém reabrir de graça — vale pra
-  /// quem ligar o recurso.
+  /// O padrão é 2 horas (`autoCloseHours`, abaixo): atendimento de WhatsApp
+  /// que ficou duas horas parado já acabou, e deixá-lo aberto até o dia
+  /// seguinte só enche Pendentes. Era 20 — encerrava tão tarde que a
+  /// conversa passava a noite na fila. Vale pra quem ligar o recurso.
   autoCloseIdle    Boolean         @default(false)
-  autoCloseHours   Int             @default(20)
+  autoCloseHours   Int             @default(2)
   /// Avisa o cliente antes de encerrar por inatividade.
   ///
   /// Sem o aviso, a conversa some do lado de cá e o cliente fica achando

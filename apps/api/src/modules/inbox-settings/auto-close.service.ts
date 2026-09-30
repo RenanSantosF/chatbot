@@ -18,9 +18,9 @@ const JANELA_HORAS = 24;
  * Encerra sozinho os atendimentos que ficaram parados.
  *
  * Existe por causa da janela de 24h: assunto que fica pendurado até estourar
- * esse prazo vira um problema que custa dinheiro pra retomar. Por isso o
- * padrão de fábrica é 20 horas — encerra com folga antes das 24, enquanto
- * ainda dá tempo de alguém reabrir de graça se quiser.
+ * esse prazo vira um problema que custa dinheiro pra retomar. O padrão
+ * de fábrica é 2 horas: atendimento parado há duas horas já acabou, e
+ * deixá-lo aberto até o dia seguinte só enche a fila.
  *
  * O AVISO AO CLIENTE
  *
