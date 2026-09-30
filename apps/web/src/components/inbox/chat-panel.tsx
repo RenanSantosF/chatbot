@@ -651,7 +651,10 @@ export function ChatPanel({
     function aoDigitar(evento: KeyboardEvent) {
       if (evento.ctrlKey || evento.metaKey || evento.altKey) return;
       // Uma tecla só, e imprimível: "a" entra, "Enter" e "ArrowUp" não.
-      if (evento.key.length !== 1) return;
+      // `key` pode nem vir: o preenchimento automático do Chrome (senha
+      // salva, sugestão de formulário) dispara `keydown` sem ela, e ler
+      // `.length` disso derrubava a tela com TypeError.
+      if (typeof evento.key !== "string" || evento.key.length !== 1) return;
 
       const alvo = evento.target as HTMLElement | null;
       if (
