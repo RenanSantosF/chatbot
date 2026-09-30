@@ -137,6 +137,21 @@ export interface CanalDeMensagem {
     pista?: unknown,
   ): Promise<MidiaBaixada | null>;
 
+  /**
+   * Troca o texto de uma mensagem já enviada, no aparelho do cliente.
+   *
+   * Opcional: a API oficial não tem isso. Devolve `null` quando deu certo
+   * e o motivo, em português, quando não deu.
+   */
+  editarMensagem?(
+    para: string,
+    mensagem: IdExterno,
+    texto: string,
+  ): Promise<string | null>;
+
+  /** "Apagar para todos". Mesmo contrato de `editarMensagem`. */
+  apagarParaTodos?(para: string, mensagem: IdExterno): Promise<string | null>;
+
   /** O porquê da última falha, em português, pra mostrar a quem atende. */
   readonly motivoDaUltimaFalha: string | null;
 }

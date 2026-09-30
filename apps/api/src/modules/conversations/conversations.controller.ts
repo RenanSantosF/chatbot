@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -34,6 +35,7 @@ import {
   AbrirConversaDto,
   IniciarConversaDto,
 } from './dto/iniciar-conversa.dto';
+import { EditarMensagemDto } from './dto/editar-mensagem.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetPriorityDto } from './dto/set-priority.dto';
@@ -207,6 +209,20 @@ export class ConversationsController {
     return conversa;
   }
 
+  /**
+   * Apaga a conversa inteira do painel. Só dono e admin: é histórico de
+   * atendimento, e não volta.
+   */
+  @Delete(':id')
+  @Roles('OWNER', 'ADMIN')
+  apagarConversa(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.conversationsService.apagarConversa(id, {
+      userId: user.userId,
+      role: user.role,
+      name: user.name,
+    });
+  }
+
   @Get(':id')
   getById(
     @Param('id') id: string,
@@ -311,6 +327,36 @@ export class ConversationsController {
       role: user.role,
       // O nome vai junto pra o registro dizer QUEM apagou sem depender de
       // o usuário ainda existir quando alguém for ler.
+      name: user.name,
+    });
+  }
+
+  /** Edita o texto no painel e no aparelho do cliente (até 15 min). */
+  @Patch(':id/messages/:messageId')
+  @RequiresPermission('conversations.send')
+  editarMensagem(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: EditarMensagemDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.editarMensagem(id, messageId, dto.texto, {
+      userId: user.userId,
+      role: user.role,
+    });
+  }
+
+  /** Apaga no aparelho do cliente e no painel (até 2 dias). */
+  @Delete(':id/messages/:messageId/para-todos')
+  @RequiresPermission('conversations.send')
+  apagarParaTodos(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.apagarParaTodos(id, messageId, {
+      userId: user.userId,
+      role: user.role,
       name: user.name,
     });
   }

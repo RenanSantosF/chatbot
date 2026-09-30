@@ -3,6 +3,7 @@ import {
   Check,
   CheckCheck,
   Forward,
+  Pencil,
   Reply,
   SmilePlus,
   Trash2,
@@ -263,6 +264,7 @@ export const MessageBubble = memo(function MessageBubble({
   onReact,
   onForward,
   onDelete,
+  onEdit,
   autorDaCitada = "Cliente",
   onIrParaCitada,
 }: {
@@ -287,6 +289,8 @@ export const MessageBubble = memo(function MessageBubble({
   onReact?: (messageId: string, emoji: string) => Promise<void>;
   onForward?: (message: ConversationMessage) => void;
   onDelete?: (message: ConversationMessage) => void;
+  /** Editar o texto (só texto da empresa, até 15 min depois do envio). */
+  onEdit?: (message: ConversationMessage) => void;
   /** Quem escreveu a mensagem citada — o nome do contato como está salvo, ou "Você". */
   autorDaCitada?: string;
   /** Clique na citação: leva até a mensagem original. */
@@ -438,6 +442,17 @@ export const MessageBubble = memo(function MessageBubble({
               className={ACAO_DA_BARRA}
             >
               <Forward className="size-[18px]" />
+            </button>
+          ) : null}
+          {onEdit && !fromCustomer && podeEditar(message) ? (
+            <button
+              type="button"
+              title="Editar"
+              aria-label="Editar esta mensagem"
+              onClick={() => onEdit(message)}
+              className={ACAO_DA_BARRA}
+            >
+              <Pencil className="size-[18px]" />
             </button>
           ) : null}
           {/* Só no que a empresa mandou. Apagar fala do cliente seria
@@ -618,6 +633,7 @@ export const MessageBubble = memo(function MessageBubble({
         )}
       >
         {message.senderType === "AI" ? <span className="font-medium">IA</span> : null}
+        {message.metadata?.editadaEm ? <span className="italic">editada</span> : null}
         <span suppressHydrationWarning>{timeLabel(message.createdAt)}</span>
         {fromCustomer ? null : (
           <DeliveryTicks status={message.status} motivo={message.metadata?.falha} />
@@ -651,3 +667,15 @@ export const MessageBubble = memo(function MessageBubble({
     </div>
   );
 });
+
+/** O WhatsApp só deixa editar texto, e só nos primeiros 15 minutos. */
+const PRAZO_PRA_EDITAR_MS = 15 * 60 * 1000;
+
+function podeEditar(message: ConversationMessage) {
+  return (
+    message.messageType === "TEXT" &&
+    Boolean(message.externalId) &&
+    message.status !== "FAILED" &&
+    Date.now() - new Date(message.createdAt).getTime() < PRAZO_PRA_EDITAR_MS
+  );
+}

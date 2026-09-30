@@ -25,6 +25,7 @@ import {
 } from '../../../customers/customers.service';
 import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { EvolutionCanal } from './evolution.canal';
+import { EvolutionService } from './evolution.service';
 import { WhatsappMediaService } from '../../whatsapp-media.service';
 import { empacotarId, identidadeDoDestino, telefoneDoJid } from './evolution-id';
 import {
@@ -71,6 +72,7 @@ export class EvolutionWebhookController {
     private readonly media: WhatsappMediaService,
     private readonly customers: CustomersService,
     private readonly evolution: EvolutionCanal,
+    private readonly sessao: EvolutionService,
   ) {}
 
   /**
@@ -271,6 +273,10 @@ export class EvolutionWebhookController {
     // e o do histórico usa as duas de uma vez — `messaging-history.set`.
     // Trocar só o ponto deixava esse de fora sem nenhum aviso: ele caía no
     // `default` e virava uma linha de log em nível debug.
+    // A lista de eventos que a Evolution manda é atualizada na primeira
+    // entrega depois de a API subir (ver `garantirWebhook`).
+    void this.sessao.garantirWebhook().catch(() => undefined);
+
     const evento = body.event?.toUpperCase().replace(/[.-]/g, '_');
     switch (evento) {
       case 'MESSAGES_UPSERT':
@@ -281,6 +287,12 @@ export class EvolutionWebhookController {
         break;
       case 'MESSAGES_DELETE':
         await this.apagadas(body);
+        break;
+      case 'MESSAGES_EDITED':
+        await this.editada(body);
+        break;
+      case 'CHATS_DELETE':
+        await this.conversasApagadas(body);
         break;
       case 'MESSAGES_UPDATE':
         await this.statusDeEntrega(body);
@@ -502,6 +514,46 @@ export class EvolutionWebhookController {
       if (!chave) continue;
 
       await this.conversations.aplicarApagadaExterna(empacotarId(chave));
+    }
+  }
+
+  /**
+   * Editada no celular — pela empresa ou pelo cliente.
+   *
+   * O evento traz a mensagem de protocolo da edição: a chave da ORIGINAL
+   * e o conteúdo novo. Sem tratar, o painel ficava com o texto de antes.
+   */
+  private async editada(body: EventoDaEvolution) {
+    const dados = body.data as
+      | {
+          key?: { remoteJid?: string; fromMe?: boolean; id?: string };
+          editedMessage?: Record<string, unknown> | null;
+        }
+      | undefined;
+    const chave = dados?.key;
+    if (!chave?.id || !chave.remoteJid) return;
+
+    const texto = textoEditado(dados?.editedMessage);
+    if (!texto) return;
+
+    await this.conversations.aplicarEdicaoExterna(
+      empacotarId({
+        remoteJid: chave.remoteJid,
+        fromMe: Boolean(chave.fromMe),
+        id: chave.id,
+      }),
+      texto,
+    );
+  }
+
+  /** Conversa apagada no celular: some do painel também. */
+  private async conversasApagadas(body: EventoDaEvolution) {
+    const jids = Array.isArray(body.data) ? (body.data as unknown[]) : [];
+    for (const jid of jids) {
+      if (typeof jid !== 'string') continue;
+      const destino = identidadeDoDestino(jid);
+      if (!destino) continue;
+      await this.conversations.apagarConversasDoContato(destino.identificador);
     }
   }
 
@@ -1074,4 +1126,28 @@ export async function emParalelo<T>(
   await Promise.all(
     Array.from({ length: Math.min(limite, itens.length) }, trabalhador),
   );
+}
+
+/**
+ * O texto novo de uma edição — onde quer que ele venha: texto simples,
+ * texto "estendido", ou a legenda de uma foto/vídeo/documento.
+ */
+export function textoEditado(
+  mensagem: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!mensagem) return null;
+  // Às vezes vem embrulhado mais uma vez (`editedMessage.message`).
+  const interna = mensagem.message;
+  if (interna && typeof interna === 'object') {
+    const dentro = textoEditado(interna as Record<string, unknown>);
+    if (dentro) return dentro;
+  }
+  if (typeof mensagem.conversation === 'string') return mensagem.conversation;
+  const estendida = mensagem.extendedTextMessage as { text?: unknown } | undefined;
+  if (typeof estendida?.text === 'string') return estendida.text;
+  for (const parte of ['imageMessage', 'videoMessage', 'documentMessage']) {
+    const legenda = (mensagem[parte] as { caption?: unknown } | undefined)?.caption;
+    if (typeof legenda === 'string') return legenda;
+  }
+  return null;
 }

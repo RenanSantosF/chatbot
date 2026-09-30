@@ -367,6 +367,44 @@ export class EvolutionCanal implements CanalDeMensagem {
     }
   }
 
+  async editarMensagem(
+    _para: string,
+    mensagem: IdExterno,
+    texto: string,
+  ): Promise<string | null> {
+    const credenciais = await this.credenciais();
+    if (!credenciais) return 'O WhatsApp não está conectado.';
+
+    const chave = desempacotarId(mensagem);
+    if (!chave) return 'Esta mensagem não tem identificação no WhatsApp.';
+
+    // A chave guardada é a que o próprio WhatsApp deu à mensagem — é a
+    // que a Evolution procura no banco dela pra achar a original.
+    const resposta = await evolution.editarMensagem(credenciais, {
+      chave,
+      texto,
+    });
+    if (resposta.ok) return null;
+    this.logger.warn(`Não deu pra editar pela Evolution: ${resposta.erro}`);
+    return resposta.erro ?? 'O WhatsApp recusou a edição.';
+  }
+
+  async apagarParaTodos(
+    _para: string,
+    mensagem: IdExterno,
+  ): Promise<string | null> {
+    const credenciais = await this.credenciais();
+    if (!credenciais) return 'O WhatsApp não está conectado.';
+
+    const chave = desempacotarId(mensagem);
+    if (!chave) return 'Esta mensagem não tem identificação no WhatsApp.';
+
+    const resposta = await evolution.apagarParaTodos(credenciais, chave);
+    if (resposta.ok) return null;
+    this.logger.warn(`Não deu pra apagar para todos pela Evolution: ${resposta.erro}`);
+    return resposta.erro ?? 'O WhatsApp recusou apagar a mensagem.';
+  }
+
   async marcarComoLida(mensagem: IdExterno): Promise<void> {
     const credenciais = await this.credenciais();
     if (!credenciais) return;

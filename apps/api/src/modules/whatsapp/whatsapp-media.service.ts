@@ -101,6 +101,18 @@ export class WhatsappMediaService {
     });
   }
 
+  /** Apaga arquivos guardados no bucket; falha vira log, nunca exceção. */
+  async apagarArquivos(chaves: string[]): Promise<void> {
+    if (!this.storage.ligado || chaves.length === 0) return;
+    try {
+      await this.storage.apagarChaves(chaves);
+    } catch (erro) {
+      this.logger.warn(
+        `Não deu pra apagar ${chaves.length} arquivo(s) do bucket: ${erro instanceof Error ? erro.message : erro}`,
+      );
+    }
+  }
+
   /**
    * As figurinhas que já passaram por esta conta.
    *

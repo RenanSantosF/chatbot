@@ -19,6 +19,7 @@ import { COR_DA_SITUACAO, situacaoDoAtendimento } from "@/lib/situacao";
 import { cn } from "@/lib/utils";
 import type { ConversationDetail } from "@/lib/types";
 import { abrirGaleria } from "@/lib/galeria";
+import { ApagarConversa } from "./apagar-conversa";
 import { CustomerNotes } from "./customer-notes";
 import { TasksSection } from "./tasks-section";
 
@@ -263,6 +264,8 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
       ) : null}
 
       <TasksSection key={conversation.id} conversationId={conversation.id} />
+
+      <ApagarConversa conversationId={conversation.id} nome={customer.name} />
     </div>
   );
 }

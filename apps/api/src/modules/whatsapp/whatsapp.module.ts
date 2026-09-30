@@ -46,6 +46,9 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
     // o controlador do webhook vive noutro módulo (ver
     // WhatsappWebhookModule), e o app.module.spec pega isso na hora.
     EvolutionCanal,
+    // Também pro webhook: é por ele que a lista de eventos assinados é
+    // atualizada sem ninguém precisar ler o QR code de novo.
+    EvolutionService,
     WhatsappSenderService,
     WhatsappMediaService,
     EstadoDoCanalService,

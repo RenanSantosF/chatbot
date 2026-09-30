@@ -114,6 +114,8 @@ model Tenant {
 enum AuditAction {
   /// Mensagem apagada do painel. O conteúdo vai junto (ver `snapshot`).
   MENSAGEM_APAGADA
+  /// Conversa inteira apagada do painel (mensagens e anexos juntos).
+  CONVERSA_APAGADA
   CONVERSA_TRANSFERIDA
   CONVERSA_ATRIBUIDA
   CONVERSA_RESOLVIDA

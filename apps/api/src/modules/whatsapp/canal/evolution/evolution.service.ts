@@ -58,6 +58,9 @@ const TABELAS_DA_CONVERSA = [
  */
 const VALIDADE_DO_PAREAMENTO_MS = 60_000;
 
+/** Sessões cujo webhook já foi reapontado desde que a API subiu. */
+const WEBHOOKS_ATUALIZADOS = new Set<string>();
+
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
@@ -523,6 +526,42 @@ export class EvolutionService {
       `Tenant ${tenantId}: troca de número confirmada — ${apagadas} linhas e ` +
         `${removidos} anexos do histórico anterior apagados.`,
     );
+  }
+
+  /**
+   * Atualiza a lista de eventos que a Evolution manda pra cá — uma vez
+   * por sessão a cada vez que a API sobe.
+   *
+   * O registro só acontecia ao parear. Um evento novo na lista (como a
+   * edição e a conversa apagada no celular) só chegava pra quem lesse o QR
+   * code de novo; assim, chega pra quem já está conectado, sem ninguém
+   * mexer em nada. Falhar aqui é silencioso: o registro antigo continua
+   * valendo.
+   */
+  async garantirWebhook(): Promise<void> {
+    const config = await this.prisma.db.evolutionSettings.findFirst();
+    if (!config || config.estado !== 'CONECTADO') return;
+    if (WEBHOOKS_ATUALIZADOS.has(config.instance)) return;
+    WEBHOOKS_ATUALIZADOS.add(config.instance);
+
+    try {
+      const credenciais = {
+        baseUrl: config.baseUrl,
+        apiKey: this.encryption.decrypt(config.apiKeyEncrypted),
+        instance: config.instance,
+      };
+      const registro = await evolution.definirWebhook(
+        credenciais,
+        this.urlDoWebhook(config.webhookSecret),
+      );
+      if (!registro.ok) throw new Error(registro.erro);
+    } catch (erro) {
+      // Tenta de novo na próxima vez, em vez de desistir pra sempre.
+      WEBHOOKS_ATUALIZADOS.delete(config.instance);
+      this.logger.warn(
+        `Não deu pra atualizar os eventos do webhook da sessão ${config.instance}: ${erro instanceof Error ? erro.message : erro}`,
+      );
+    }
   }
 
   async conferir() {

@@ -5,6 +5,7 @@ import type { ConversationsService } from '../../../conversations/conversations.
 import {
   EvolutionWebhookController,
   emParalelo,
+  textoEditado,
 } from './evolution-webhook.controller';
 
 const SEGREDO = 'a'.repeat(48);
@@ -16,6 +17,8 @@ function montar() {
     applyDeliveryStatus: jest.fn().mockResolvedValue({}),
     applyReaction: jest.fn().mockResolvedValue({}),
     aplicarApagadaExterna: jest.fn().mockResolvedValue({}),
+    aplicarEdicaoExterna: jest.fn().mockResolvedValue({}),
+    apagarConversasDoContato: jest.fn().mockResolvedValue(1),
     importarHistorico: jest
       .fn()
       .mockResolvedValue({ importadas: 2, conversationId: 'conversa-mock' }),
@@ -67,6 +70,7 @@ function montar() {
     media as never,
     customers as never,
     evolution as never,
+    { garantirWebhook: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   const req = {} as AuthenticatedRequest;
@@ -1434,5 +1438,57 @@ describe('importação em paralelo, com teto', () => {
 
     expect(feitos.sort()).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(pico).toBe(3);
+  });
+});
+
+describe('o que muda no celular aparece no painel', () => {
+  it('mensagem editada no celular troca o texto no painel', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'messages.edited',
+      instance: 'inteliwa-1',
+      data: {
+        key: {
+          remoteJid: '5511999999999@s.whatsapp.net',
+          fromMe: true,
+          id: '3EB0EDIT',
+        },
+        editedMessage: { conversation: 'texto corrigido' },
+      },
+    });
+
+    expect(conversations.aplicarEdicaoExterna).toHaveBeenCalledWith(
+      '5511999999999@s.whatsapp.net|1|3EB0EDIT',
+      'texto corrigido',
+    );
+  });
+
+  it('conversa apagada no celular some do painel', async () => {
+    const { controller, conversations, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      event: 'chats.delete',
+      instance: 'inteliwa-1',
+      data: ['5511999999999@s.whatsapp.net', '120363000@g.us'],
+    });
+
+    expect(conversations.apagarConversasDoContato).toHaveBeenCalledWith(
+      '5511999999999',
+    );
+    expect(conversations.apagarConversasDoContato).toHaveBeenCalledWith(
+      '120363000@g.us',
+    );
+  });
+
+  it('acha o texto novo em qualquer formato de edição', () => {
+    expect(textoEditado({ extendedTextMessage: { text: 'a' } })).toBe('a');
+    expect(textoEditado({ imageMessage: { caption: 'legenda' } })).toBe(
+      'legenda',
+    );
+    expect(textoEditado({ message: { conversation: 'dentro' } })).toBe(
+      'dentro',
+    );
+    expect(textoEditado({})).toBeNull();
   });
 });

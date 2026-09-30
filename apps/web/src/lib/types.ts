@@ -162,6 +162,8 @@ export interface MessageMetadata {
    * de antes da conexão). Com a original aqui, quem manda é `replyTo`.
    */
   citacao?: { texto: string; tipo: MessageType; daEmpresa?: boolean };
+  /** Quando o texto foi editado (pelo painel ou no celular). */
+  editadaEm?: string;
   latitude?: number;
   longitude?: number;
   name?: string;
@@ -206,6 +208,8 @@ export interface ConversationMessage {
   reactions: Record<string, string[]> | null;
   /** Quando foi apagada no painel. O conteúdo não vem mais junto. */
   deletedAt?: string | null;
+  /** O id no WhatsApp — sem ele a mensagem não saiu, e não dá pra editar. */
+  externalId?: string | null;
   /**
    * O áudio em texto, quando já foi transcrito.
    *

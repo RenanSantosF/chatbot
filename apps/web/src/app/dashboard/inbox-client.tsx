@@ -1222,6 +1222,16 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       });
     };
 
+    /*
+     * A conversa foi apagada — no painel (dono/admin) ou no celular. Sai
+     * da lista na hora, e quem estava com ela aberta volta pro vazio.
+     */
+    const onConversationDeleted = ({ conversationId }: { conversationId: string }) => {
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      if (selectedIdRef.current === conversationId) abrirConversa(null);
+      loadCounts(filtersRef.current);
+    };
+
     const onMessageUpdated = ({
       conversationId,
       message,
@@ -1307,6 +1317,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     socket.on("conversation.updated", onConversationUpdated);
     socket.on("message.created", onMessageCreated);
     socket.on("message.updated", onMessageUpdated);
+    socket.on("conversation.deleted", onConversationDeleted);
     socket.on("message.status", onMessageStatus);
     socket.on("message.transcrita", onMessageTranscrita);
 
@@ -1318,6 +1329,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       socket.off("conversation.updated", onConversationUpdated);
       socket.off("message.created", onMessageCreated);
       socket.off("message.updated", onMessageUpdated);
+      socket.off("conversation.deleted", onConversationDeleted);
       socket.off("message.status", onMessageStatus);
       socket.off("message.transcrita", onMessageTranscrita);
     };
@@ -1336,6 +1348,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     loadCounts,
     aquecer,
     preCarregar,
+    abrirConversa,
   ]);
 
   /** Mesma classificação que o servidor faz, só que antes da viagem. */
@@ -1601,12 +1614,37 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    * Apaga do painel. A confirmação (com o aviso de que a mensagem continua
    * no celular do cliente) já aconteceu no ChatPanel — aqui é só a chamada.
    */
-  async function handleDelete(messageId: string) {
+  async function handleEdit(messageId: string, texto: string) {
     if (!selectedId) return;
     try {
-      await apiFetch(`/conversations/${selectedId}/messages/${messageId}`, {
-        method: "DELETE",
-      });
+      const editada = await apiFetch<ConversationMessage>(
+        `/conversations/${selectedId}/messages/${messageId}`,
+        { method: "PATCH", body: JSON.stringify({ texto }) },
+      );
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              messages: prev.messages.map((m) =>
+                m.id === messageId
+                  ? { ...m, content: editada.content, metadata: editada.metadata }
+                  : m,
+              ),
+            }
+          : prev,
+      );
+    } catch (erro) {
+      toast.error(erro instanceof ApiError ? erro.message : "Não deu pra editar a mensagem.");
+    }
+  }
+
+  async function handleDelete(messageId: string, paraTodos = false) {
+    if (!selectedId) return;
+    try {
+      await apiFetch(
+        `/conversations/${selectedId}/messages/${messageId}${paraTodos ? "/para-todos" : ""}`,
+        { method: "DELETE" },
+      );
       setDetail((prev) =>
         prev
           ? {
@@ -1745,6 +1783,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         onReact={handleReact}
         onRead={() => selectedId && marcarLida(selectedId)}
         onDelete={handleDelete}
+        onEdit={handleEdit}
         podeEnviarEncerrada={podeEnviarEncerrada}
         onClose={() => abrirConversa(null)}
         onSend={handleSend}

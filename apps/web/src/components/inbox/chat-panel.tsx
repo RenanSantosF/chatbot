@@ -222,6 +222,7 @@ export function ChatPanel({
   onReact,
   onRead,
   onDelete,
+  onEdit,
   onClose,
   podeEnviarEncerrada,
 }: {
@@ -245,7 +246,8 @@ export function ChatPanel({
   onReact: (messageId: string, emoji: string) => Promise<void>;
   /** Chamada quando o fim da conversa aparece na tela. */
   onRead: () => void;
-  onDelete: (messageId: string) => Promise<void>;
+  onDelete: (messageId: string, paraTodos?: boolean) => Promise<void>;
+  onEdit: (messageId: string, texto: string) => Promise<void>;
   /** Fecha a conversa e volta pro estado vazio (Esc). */
   onClose?: () => void;
   /** A empresa deixa responder em conversa encerrada (reabrindo)? */
@@ -328,6 +330,9 @@ export function ChatPanel({
   const [mudandoEstado, setMudandoEstado] = useState(false);
   // Mensagem escolhida pra apagar — o diálogo só existe enquanto ela existe.
   const [apagando, setApagando] = useState<ConversationMessage | null>(null);
+  const [editando, setEditando] = useState<ConversationMessage | null>(null);
+  const [textoEditado, setTextoEditado] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
   async function comEspera(acao: () => Promise<void>) {
     setMudandoEstado(true);
@@ -1390,6 +1395,14 @@ export function ChatPanel({
                 onReact={selecao ? undefined : reagir}
                 onForward={selecao ? undefined : iniciarSelecao}
                 onDelete={selecao ? undefined : setApagando}
+                onEdit={
+                  selecao
+                    ? undefined
+                    : (alvo) => {
+                        setTextoEditado(alvo.content);
+                        setEditando(alvo);
+                      }
+                }
                 autorDaCitada={
                   message.replyTo
                     ? autorDaCitada(message.replyTo)
@@ -1452,7 +1465,8 @@ export function ChatPanel({
           <SheetHeader>
             <SheetTitle>Apagar mensagem</SheetTitle>
             <SheetDescription>
-              Ela sai do painel e some para toda a equipe.
+              “Para todos” apaga também no celular do cliente; “só do painel” some só aqui,
+              pra equipe.
             </SheetDescription>
           </SheetHeader>
 
@@ -1463,33 +1477,109 @@ export function ChatPanel({
               </p>
             ) : null}
 
-            {/* O limite dito na cara, antes do clique. A API do WhatsApp não
-                tem como apagar mensagem já entregue — só o aplicativo tem.
-                Deixar isso implícito faria alguém apagar achando que o
-                cliente deixaria de ver, que é o pior mal-entendido possível
-                num sistema de atendimento. */}
-            <p className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-pretty">
-              <TriangleAlert className="mt-px size-4 shrink-0 text-amber-600 dark:text-amber-500" />
-              <span>
-                A mensagem <strong>continua no celular do cliente</strong>. O WhatsApp não
-                permite que sistemas apaguem o que já foi entregue — só o aplicativo, na
-                mão de quem enviou.
-              </span>
-            </p>
+            {/* Duas saídas, como no WhatsApp. "Para todos" só aparece
+                enquanto o WhatsApp aceita (até dois dias depois do envio,
+                e só no que de fato saiu); fora disso, fica o aviso de que
+                no celular do cliente ela continua. */}
+            {apagando && podeApagarParaTodos(apagando) ? (
+              <SheetFooter className="flex-col gap-2 px-0">
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    const alvo = apagando;
+                    setApagando(null);
+                    if (alvo) void onDelete(alvo.id, true);
+                  }}
+                >
+                  Apagar para todos
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const alvo = apagando;
+                    setApagando(null);
+                    if (alvo) void onDelete(alvo.id);
+                  }}
+                >
+                  Apagar só do painel
+                </Button>
+              </SheetFooter>
+            ) : (
+              <>
+                <p className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-pretty">
+                  <TriangleAlert className="mt-px size-4 shrink-0 text-amber-600 dark:text-amber-500" />
+                  <span>
+                    Já passou o prazo do WhatsApp pra apagar para todos (dois dias), então ela{" "}
+                    <strong>continua no celular do cliente</strong>. Dá pra apagar só do painel.
+                  </span>
+                </p>
+                <SheetFooter className="px-0">
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      const alvo = apagando;
+                      setApagando(null);
+                      if (alvo) void onDelete(alvo.id);
+                    }}
+                  >
+                    Apagar do painel
+                  </Button>
+                </SheetFooter>
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
+      <Sheet open={editando !== null} onOpenChange={(aberto) => !aberto && setEditando(null)}>
+        <SheetContent className="gap-0">
+          <SheetHeader>
+            <SheetTitle>Editar mensagem</SheetTitle>
+            <SheetDescription>
+              Muda aqui e no celular do cliente, com a marca de editada. O WhatsApp só deixa
+              editar nos primeiros 15 minutos.
+            </SheetDescription>
+          </SheetHeader>
+          <form
+            className="flex flex-col gap-4 px-4 py-2"
+            onSubmit={(evento) => {
+              evento.preventDefault();
+              const alvo = editando;
+              if (!alvo || !textoEditado.trim() || salvandoEdicao) return;
+              setSalvandoEdicao(true);
+              void onEdit(alvo.id, textoEditado.trim()).finally(() => {
+                setSalvandoEdicao(false);
+                setEditando(null);
+              });
+            }}
+          >
+            <textarea
+              autoFocus
+              value={textoEditado}
+              onChange={(evento) => setTextoEditado(evento.target.value)}
+              onKeyDown={(evento) => {
+                // Enter salva, Shift+Enter quebra linha — como no compositor.
+                if (evento.key === "Enter" && !evento.shiftKey) {
+                  evento.preventDefault();
+                  evento.currentTarget.form?.requestSubmit();
+                }
+              }}
+              rows={4}
+              maxLength={4096}
+              className="w-full resize-none rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            />
             <SheetFooter className="px-0">
               <Button
-                variant="destructive"
-                onClick={() => {
-                  const alvo = apagando;
-                  setApagando(null);
-                  if (alvo) void onDelete(alvo.id);
-                }}
+                type="submit"
+                disabled={
+                  salvandoEdicao || !textoEditado.trim() || textoEditado.trim() === editando?.content
+                }
               >
-                Apagar do painel
+                {salvandoEdicao ? <Spinner className="size-3.5" /> : null}
+                Salvar
               </Button>
             </SheetFooter>
-          </div>
+          </form>
         </SheetContent>
       </Sheet>
 
@@ -1718,5 +1808,16 @@ function podeEncaminhar(message: ConversationMessage) {
     message.senderType !== "SYSTEM" &&
     !message.deletedAt &&
     !message.id.startsWith("pending-")
+  );
+}
+
+/** O WhatsApp aceita apagar para todos até cerca de dois dias depois. */
+const PRAZO_PRA_APAGAR_PRA_TODOS_MS = 48 * 60 * 60 * 1000;
+
+function podeApagarParaTodos(message: ConversationMessage) {
+  return (
+    Boolean(message.externalId) &&
+    message.status !== "FAILED" &&
+    Date.now() - new Date(message.createdAt).getTime() < PRAZO_PRA_APAGAR_PRA_TODOS_MS
   );
 }

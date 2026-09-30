@@ -515,6 +515,9 @@ describe('troca de canal', () => {
       'CONTACTS_SET',
       'CONTACTS_UPSERT',
       'CONTACTS_UPDATE',
+      // Editada e conversa apagada no celular — espelhadas no painel.
+      'MESSAGES_EDITED',
+      'CHATS_DELETE',
     ]);
   });
 

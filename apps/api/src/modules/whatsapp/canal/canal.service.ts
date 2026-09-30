@@ -84,6 +84,20 @@ export class CanalService {
     return this.provedor().marcarComoLida(mensagem);
   }
 
+  editarMensagem(para: string, mensagem: IdExterno, texto: string): Promise<string | null> {
+    const canal = this.provedor();
+    return canal.editarMensagem
+      ? canal.editarMensagem(para, mensagem, texto)
+      : Promise.resolve('Este canal do WhatsApp não permite editar mensagens.');
+  }
+
+  apagarParaTodos(para: string, mensagem: IdExterno): Promise<string | null> {
+    const canal = this.provedor();
+    return canal.apagarParaTodos
+      ? canal.apagarParaTodos(para, mensagem)
+      : Promise.resolve('Este canal do WhatsApp não permite apagar para todos.');
+  }
+
   listarModelos(): Promise<ModeloAprovado[]> {
     return this.provedor().listarModelos();
   }

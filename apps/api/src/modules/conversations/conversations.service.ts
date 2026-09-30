@@ -69,6 +69,12 @@ import { mediaIdDe } from './media-id';
 /** Quando tentar de novo um status que chegou antes da mensagem. */
 export const ESPERAS_DO_STATUS_MS = [1_500, 5_000, 20_000];
 
+
+/** O WhatsApp aceita editar só nos primeiros 15 minutos. */
+const PRAZO_PRA_EDITAR_MS = 15 * 60_000;
+/** E apagar para todos até cerca de dois dias — 48 h com folga. */
+const PRAZO_PRA_APAGAR_PRA_TODOS_MS = 48 * 60 * 60_000;
+
 /** O resumo de uma mensagem citada que não está no painel. */
 export interface CitacaoCopiada {
   texto: string;
@@ -2185,6 +2191,123 @@ export class ConversationsService {
     });
 
     return atualizada;
+  }
+
+  /**
+   * A mensagem da empresa que esta pessoa pode mexer — as mesmas regras
+   * de apagar do painel: quem escreveu, ou dono/admin.
+   */
+  private async mensagemDaEmpresa(
+    conversationId: string,
+    messageId: string,
+    quem: { userId: string; role: UserRole },
+  ) {
+    const conversa = await this.requireConversation(conversationId, quem);
+    const mensagem = await this.prisma.db.message.findFirst({
+      where: { id: messageId, conversationId },
+    });
+    if (!mensagem || mensagem.deletedAt) {
+      throw new NotFoundException('Mensagem não encontrada.');
+    }
+    if (mensagem.senderType === 'CUSTOMER' || mensagem.senderType === 'SYSTEM') {
+      throw new BadRequestException('Só dá pra mexer em mensagem enviada pela empresa.');
+    }
+    const minha =
+      mensagem.senderType === 'AGENT' && mensagem.senderId === quem.userId;
+    if (!minha && quem.role !== 'OWNER' && quem.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Só quem escreveu a mensagem (ou um administrador) pode mexer nela.',
+      );
+    }
+    if (!mensagem.externalId) {
+      throw new BadRequestException('Esta mensagem não chegou a sair pelo WhatsApp.');
+    }
+    return { conversa, mensagem, externalId: mensagem.externalId };
+  }
+
+  /**
+   * Edita uma mensagem já enviada — no painel E no aparelho do cliente.
+   *
+   * O WhatsApp só deixa editar texto, e só nos primeiros 15 minutos. A
+   * conferência aqui é pra responder com a frase certa antes de pedir ao
+   * servidor, e não depois de ele recusar sem explicar.
+   */
+  async editarMensagem(
+    conversationId: string,
+    messageId: string,
+    texto: string,
+    quem: { userId: string; role: UserRole },
+  ) {
+    const { conversa, mensagem, externalId } = await this.mensagemDaEmpresa(
+      conversationId,
+      messageId,
+      quem,
+    );
+    if (mensagem.messageType !== 'TEXT') {
+      throw new BadRequestException('Só dá pra editar mensagem de texto.');
+    }
+    if (Date.now() - mensagem.createdAt.getTime() > PRAZO_PRA_EDITAR_MS) {
+      throw new BadRequestException(
+        'O WhatsApp só deixa editar nos primeiros 15 minutos depois do envio.',
+      );
+    }
+    const novo = texto.trim();
+    if (!novo) throw new BadRequestException('A mensagem não pode ficar vazia.');
+    if (novo === mensagem.content) return mensagem;
+
+    const recusa = await this.whatsapp.editarMensagem(
+      conversa.customer.phone,
+      externalId,
+      novo,
+    );
+    if (recusa) throw new BadRequestException(recusa);
+
+    const metadata =
+      mensagem.metadata && typeof mensagem.metadata === 'object'
+        ? (mensagem.metadata as Prisma.JsonObject)
+        : {};
+    const atualizada = await this.prisma.db.message.update({
+      where: { id: messageId },
+      data: {
+        content: novo,
+        metadata: { ...metadata, editadaEm: new Date().toISOString() },
+      },
+    });
+    await this.emitirParaConversaId(conversationId, 'message.updated', {
+      conversationId,
+      message: atualizada,
+    });
+    return atualizada;
+  }
+
+  /**
+   * "Apagar para todos": some do aparelho do cliente e, em seguida, do
+   * painel — pelo mesmo caminho do apagar comum (registro na auditoria
+   * incluído). Se o WhatsApp recusar, nada é apagado aqui.
+   */
+  async apagarParaTodos(
+    conversationId: string,
+    messageId: string,
+    quem: { userId: string; role: UserRole; name?: string },
+  ) {
+    const { conversa, mensagem, externalId } = await this.mensagemDaEmpresa(
+      conversationId,
+      messageId,
+      quem,
+    );
+    if (Date.now() - mensagem.createdAt.getTime() > PRAZO_PRA_APAGAR_PRA_TODOS_MS) {
+      throw new BadRequestException(
+        'O WhatsApp só deixa apagar para todos até dois dias depois do envio. Ainda dá pra apagar só do painel.',
+      );
+    }
+
+    const recusa = await this.whatsapp.apagarParaTodos(
+      conversa.customer.phone,
+      externalId,
+    );
+    if (recusa) throw new BadRequestException(recusa);
+
+    return this.apagarMensagem(conversationId, messageId, quem);
   }
 
   /**
@@ -4318,11 +4441,110 @@ export class ConversationsService {
    * aqui é rotina — mensagem de grupo, de antes da conexão, ou de um tipo
    * que não sabemos traduzir.
    */
-  async aplicarApagadaExterna(externalId: string) {
-    const mensagem = await this.prisma.db.message.findFirst({
-      where: { externalId },
-      select: { id: true, conversationId: true, deletedAt: true },
+  /**
+   * A mensagem foi editada no celular (da empresa ou do cliente): o painel
+   * passa a mostrar o texto novo, com a marca de editada.
+   */
+  async aplicarEdicaoExterna(externalId: string, texto: string) {
+    const mensagem = await this.acharPeloIdExterno(externalId);
+    if (!mensagem || mensagem.deletedAt || !texto.trim()) return null;
+
+    const metadata =
+      mensagem.metadata && typeof mensagem.metadata === 'object'
+        ? (mensagem.metadata as Prisma.JsonObject)
+        : {};
+    const atualizada = await this.prisma.db.message.update({
+      where: { id: mensagem.id },
+      data: {
+        content: texto,
+        metadata: { ...metadata, editadaEm: new Date().toISOString() },
+      },
+      include: messageInclude,
     });
+    await this.emitirParaConversaId(mensagem.conversationId, 'message.updated', {
+      conversationId: mensagem.conversationId,
+      message: this.esconderApagada(atualizada),
+    });
+    return atualizada;
+  }
+
+  /**
+   * Apaga a conversa inteira do painel: mensagens, anexos guardados e o
+   * histórico ainda embrulhado. O cliente continua (é contato, não
+   * conversa) — se ele escrever de novo, nasce uma conversa nova.
+   *
+   * Não existe "apagar conversa" no aparelho de outra pessoa: isto só
+   * mexe no que é da empresa.
+   */
+  async apagarConversa(
+    conversationId: string,
+    quem?: { userId: string; role: UserRole; name?: string },
+  ) {
+    const conversa = quem
+      ? await this.requireConversation(conversationId, quem)
+      : await this.prisma.db.conversation.findFirst({
+          where: { id: conversationId },
+          include: conversationInclude,
+        });
+    if (!conversa) return null;
+
+    // Só quem pode ter anexo guardado: texto não tem arquivo nenhum.
+    const chaves = await this.prisma.db.message.findMany({
+      where: {
+        conversationId,
+        messageType: { in: ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'] },
+      },
+      select: { metadata: true },
+    });
+    const arquivos = chaves
+      .map((m) => (m.metadata as { storageKey?: unknown } | null)?.storageKey)
+      .filter((chave): chave is string => typeof chave === 'string');
+
+    // Citações primeiro: a mensagem que cita outra desta conversa não
+    // pode segurar o DELETE.
+    await this.prisma.db.message.updateMany({
+      where: { conversationId, replyToId: { not: null } },
+      data: { replyToId: null },
+    });
+    await this.prisma.db.historicoGuardado.deleteMany({
+      where: { conversationId },
+    });
+    await this.prisma.db.message.deleteMany({ where: { conversationId } });
+    await this.prisma.db.conversation.delete({ where: { id: conversationId } });
+
+    void this.media.apagarArquivos(arquivos);
+
+    if (quem) {
+      await this.audit.registrar(
+        { userId: quem.userId, name: quem.name },
+        {
+          action: 'CONVERSA_APAGADA',
+          conversationId: null,
+          resumo: `Apagou a conversa com ${conversa.customer.name}.`,
+        },
+      );
+    }
+
+    this.realtime.emitToTenant(this.prisma.tenantId, 'conversation.deleted', {
+      conversationId,
+    });
+    return { apagada: true };
+  }
+
+  /** O chat foi apagado no celular: some do painel também. */
+  async apagarConversasDoContato(identificador: string) {
+    const conversas = await this.prisma.db.conversation.findMany({
+      where: { customer: { phone: identificador } },
+      select: { id: true },
+    });
+    for (const { id } of conversas) {
+      await this.apagarConversa(id);
+    }
+    return conversas.length;
+  }
+
+  async aplicarApagadaExterna(externalId: string) {
+    const mensagem = await this.acharPeloIdExterno(externalId);
     if (!mensagem || mensagem.deletedAt) return null;
 
     const atualizada = await this.prisma.db.message.update({

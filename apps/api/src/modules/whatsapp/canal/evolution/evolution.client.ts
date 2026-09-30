@@ -80,7 +80,16 @@ const EVENTOS = [
  * servidor recusar. Perder os nomes é ruim; perder as mensagens é o
  * produto parado.
  */
-const EVENTOS_DE_CONTATO = ['CONTACTS_SET', 'CONTACTS_UPSERT', 'CONTACTS_UPDATE'];
+const EVENTOS_DE_CONTATO = [
+  'CONTACTS_SET',
+  'CONTACTS_UPSERT',
+  'CONTACTS_UPDATE',
+  // Edição e conversa apagada no celular. Moram aqui, na lista que pode
+  // cair, pelo mesmo motivo dos contatos: se a versão da Evolution não
+  // conhecer os nomes, perder isto não pode custar as mensagens.
+  'MESSAGES_EDITED',
+  'CHATS_DELETE',
+];
 
 const EVENTOS_COM_CONTATOS = [...EVENTOS, ...EVENTOS_DE_CONTATO];
 
@@ -538,6 +547,46 @@ export function enviarReacao(
       reaction: reacao.emoji,
     },
   });
+}
+
+/**
+ * Troca o texto de uma mensagem já enviada — rota `POST /chat/updateMessage`
+ * da v2 (`UpdateMessageDto`). O WhatsApp só aceita nos primeiros 15
+ * minutos, e a Evolution confere a original no banco dela.
+ */
+export function editarMensagem(
+  credenciais: Credenciais,
+  edicao: {
+    chave: { remoteJid: string; fromMe: boolean; id: string };
+    texto: string;
+  },
+): Promise<RespostaDaEvolution> {
+  return chamar(credenciais, `/chat/updateMessage/${credenciais.instance}`, {
+    method: 'POST',
+    body: {
+      number: edicao.chave.remoteJid,
+      key: edicao.chave,
+      text: edicao.texto,
+    },
+  });
+}
+
+/**
+ * "Apagar para todos" — rota `DELETE /chat/deleteMessageForEveryone` da v2
+ * (`DeleteMessage`: a chave achatada).
+ */
+export function apagarParaTodos(
+  credenciais: Credenciais,
+  chave: { remoteJid: string; fromMe: boolean; id: string },
+): Promise<RespostaDaEvolution> {
+  return chamar(
+    credenciais,
+    `/chat/deleteMessageForEveryone/${credenciais.instance}`,
+    {
+      method: 'DELETE',
+      body: { id: chave.id, remoteJid: chave.remoteJid, fromMe: chave.fromMe },
+    },
+  );
 }
 
 export function marcarComoLida(
