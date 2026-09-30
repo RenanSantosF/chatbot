@@ -310,7 +310,19 @@ export function ChatPanel({
     (messageId: string, emoji: string) => onReactAtual.current(messageId, emoji),
     [],
   );
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  /*
+   * Os anexos esperando a legenda — vários de uma vez, como no WhatsApp.
+   * Antes era um só: arrastar ou escolher três documentos mandava o
+   * primeiro e descartava os outros em silêncio.
+   */
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const juntarAnexos = useCallback((novos: File[]) => {
+    if (novos.length === 0) return;
+    setPendingFiles((atuais) => [...atuais, ...novos].slice(0, MAXIMO_DE_ANEXOS));
+    if (novos.length > MAXIMO_DE_ANEXOS) {
+      toast.info(`Dá pra mandar até ${MAXIMO_DE_ANEXOS} arquivos de uma vez.`);
+    }
+  }, []);
   const [dragging, setDragging] = useState(false);
   // O rodapé da conversa está à vista? Decide se mensagem nova arrasta a
   // tela e se a conversa conta como lida.
@@ -477,7 +489,7 @@ export function ChatPanel({
       if (apagando) return setApagando(null);
       if (forwarding) return setForwarding(null);
       if (selecao) return setSelecao(null);
-      if (pendingFile) return setPendingFile(null);
+      if (pendingFiles.length > 0) return setPendingFiles([]);
       if (searchOpen) {
         setSearchOpen(false);
         setNeedle("");
@@ -498,7 +510,7 @@ export function ChatPanel({
     apagando,
     forwarding,
     selecao,
-    pendingFile,
+    pendingFiles,
     searchOpen,
     replyTo,
     onCancelReply,
@@ -986,8 +998,7 @@ export function ChatPanel({
   function handleDrop(event: React.DragEvent) {
     event.preventDefault();
     setDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) setPendingFile(file);
+    juntarAnexos(Array.from(event.dataTransfer.files ?? []));
   }
 
   /**
@@ -995,10 +1006,10 @@ export function ChatPanel({
    * quando há arquivo — colar texto continua funcionando normalmente.
    */
   function handlePaste(event: React.ClipboardEvent) {
-    const file = Array.from(event.clipboardData.files)[0];
-    if (!file) return;
+    const arquivos = Array.from(event.clipboardData.files);
+    if (arquivos.length === 0) return;
     event.preventDefault();
-    setPendingFile(file);
+    juntarAnexos(arquivos);
   }
 
   /**
@@ -1624,6 +1635,22 @@ export function ChatPanel({
         </div>
       </div>
 
+      {/* Fora do compositor: o "adicionar mais" da tela de anexos também
+          abre este mesmo seletor, e ele precisa existir nas duas telas. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={(event) => {
+          const arquivos = Array.from(event.target.files ?? []);
+          // Limpa o input pra o mesmo arquivo poder ser reenviado logo
+          // depois — sem isso o onChange não dispara na segunda vez.
+          event.target.value = "";
+          juntarAnexos(arquivos);
+        }}
+      />
+
       {selecao ? (
         // No lugar do compositor enquanto escolhe o que encaminhar, como no
         // WhatsApp: quantas estão marcadas, cancelar e seguir.
@@ -1655,24 +1682,34 @@ export function ChatPanel({
             Encaminhar
           </Button>
         </div>
-      ) : pendingFile ? (
+      ) : pendingFiles.length > 0 ? (
         <AttachmentComposer
-          file={pendingFile}
+          files={pendingFiles}
           sending={false}
           caption={draft}
           onCaptionChange={setDraft}
+          onRemove={(indice) =>
+            setPendingFiles((atuais) => atuais.filter((_, i) => i !== indice))
+          }
+          onAdd={() => fileInputRef.current?.click()}
           onCancel={() => {
-            setPendingFile(null);
+            setPendingFiles([]);
             // De volta ao campo de mensagem, com o texto que estava na
             // legenda — e o cursor nele, pra continuar escrevendo.
             requestAnimationFrame(() => composerRef.current?.focus());
           }}
           onSend={(caption) => {
-            const file = pendingFile;
-            setPendingFile(null);
+            const arquivos = pendingFiles;
+            setPendingFiles([]);
             // O texto foi junto como legenda: o campo volta vazio.
             setDraft("");
-            void onSendFile(file, caption);
+            // Um de cada vez, na ordem escolhida — em paralelo eles chegavam
+            // embaralhados no celular do cliente. A legenda vai no primeiro.
+            void (async () => {
+              for (const [i, arquivo] of arquivos.entries()) {
+                await onSendFile(arquivo, i === 0 ? caption : undefined);
+              }
+            })();
           }}
         />
       ) : (
@@ -1698,18 +1735,7 @@ export function ChatPanel({
         }}
       />
       <form onSubmit={handleSubmit} data-tour="composer" className="flex items-end gap-2 bg-card p-3">
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            // Limpa o input pra o mesmo arquivo poder ser reenviado logo
-            // depois — sem isso o onChange não dispara na segunda vez.
-            event.target.value = "";
-            if (file) setPendingFile(file);
-          }}
-        />
+
         <Button
           type="button"
           size="icon"
@@ -1821,3 +1847,6 @@ function podeApagarParaTodos(message: ConversationMessage) {
     Date.now() - new Date(message.createdAt).getTime() < PRAZO_PRA_APAGAR_PRA_TODOS_MS
   );
 }
+
+/** Quantos anexos cabem num envio só — o mesmo teto do WhatsApp Web. */
+const MAXIMO_DE_ANEXOS = 30;
