@@ -686,6 +686,22 @@ export class EvolutionWebhookController {
       }
     }
 
+    /*
+     * Terminou é terminou.
+     *
+     * Os lotes chegam fora de ordem: depois do que diz "é o último" ainda
+     * pinga um ou outro atrasado. Reabrir a janela por causa dele trazia
+     * de volta o "Trazendo conversas · 99%" dez minutos depois de a
+     * importação ter acabado — era o aviso que "sumia e voltava ao
+     * recarregar". O atrasado é gravado do mesmo jeito, só que em
+     * silêncio. Quem reabre a janela é um pareamento novo (ver `conexao`).
+     *
+     * E 100% também é fim, mesmo sem o `isLatest`: tem aparelho que não
+     * manda o lote final vazio.
+     */
+    const acabou = ultimo || (progresso !== null && progresso >= 100);
+    const jaTinhaAcabado = config.historicoEstado === 'CONCLUIDO';
+
     const settings = await this.prisma.client.evolutionSettings.update({
       where: { id: config.id },
       data: {
@@ -696,30 +712,29 @@ export class EvolutionWebhookController {
         ...(progresso !== null && progresso > (config.historicoProgresso ?? 0)
           ? { historicoProgresso: progresso }
           : {}),
-        ...(ultimo
-          ? {
-              historicoEstado: 'CONCLUIDO' as const,
-              historicoConcluidoEm: new Date(),
-              // Terminou é cem, mesmo que o último lote não diga.
-              historicoProgresso: 100,
-            }
-          : {
-              historicoEstado: 'IMPORTANDO' as const,
-              /*
-               * Chegou lote sem a janela estar aberta: abre agora.
-               *
-               * A janela normalmente nasce no pareamento (ver `conexao`),
-               * que é onde dá pra saber que ela começou. Mas o aparelho
-               * pode mandar histórico fora desse momento, e aí o
-               * `historicoIniciadoEm` guardado é de horas atrás — a
-               * paciência de dez minutos já venceu, e o painel diria
-               * "importação concluída" com os lotes entrando na frente de
-               * quem está olhando.
-               */
-              ...(config.historicoEstado === 'IMPORTANDO'
-                ? {}
-                : { historicoIniciadoEm: new Date(), historicoConcluidoEm: null }),
-            }),
+        ...(jaTinhaAcabado
+          ? {}
+          : acabou
+            ? {
+                historicoEstado: 'CONCLUIDO' as const,
+                historicoConcluidoEm: new Date(),
+                // Terminou é cem, mesmo que o último lote não diga.
+                historicoProgresso: 100,
+              }
+            : {
+                historicoEstado: 'IMPORTANDO' as const,
+                /*
+                 * Chegou lote sem a janela estar aberta (sessão que nunca
+                 * registrou um pareamento): abre agora, que é quando ela
+                 * é verdade.
+                 */
+                ...(config.historicoEstado === 'IMPORTANDO'
+                  ? {}
+                  : {
+                      historicoIniciadoEm: new Date(),
+                      historicoConcluidoEm: null,
+                    }),
+              }),
       },
       select: {
         historicoMensagens: true,

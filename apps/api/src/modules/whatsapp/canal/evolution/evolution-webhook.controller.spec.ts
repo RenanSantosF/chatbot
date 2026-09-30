@@ -960,6 +960,44 @@ describe('as conversas que já estavam no aparelho', () => {
     );
   });
 
+  it('lote atrasado depois do fim não reabre o "trazendo conversas"', async () => {
+    const { controller, prisma, req } = montar();
+    prisma.client.evolutionSettings.findFirst.mockResolvedValue({
+      id: 'config-1',
+      tenantId: 'tenant-1',
+      instance: 'inteliwa-1',
+      webhookSecret: SEGREDO,
+      historicoEstado: 'CONCLUIDO',
+    });
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      loteDeHistorico([doHistorico('5511999999999', 'atrasada')]),
+    );
+
+    const [[{ data }]] = prisma.client.evolutionSettings.update.mock.calls as [
+      [{ data: Record<string, unknown> }],
+    ];
+    expect(data).not.toHaveProperty('historicoEstado');
+    expect(data).not.toHaveProperty('historicoIniciadoEm');
+  });
+
+  it('100% encerra mesmo sem o lote final', async () => {
+    const { controller, prisma, req } = montar();
+
+    await controller.receber(SEGREDO, req, {
+      ...loteDeHistorico([doHistorico('5511999999999', 'oi')]),
+      progress: 100,
+    });
+
+    expect(prisma.client.evolutionSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ historicoEstado: 'CONCLUIDO' }),
+      }),
+    );
+  });
+
   it('parear abre a janela de importação', async () => {
     const { controller, prisma, req } = montar();
 
