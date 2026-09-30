@@ -275,11 +275,24 @@ describe('o que o banco não alcança', () => {
      */
     const { service, global } = await montar();
     let liberar!: () => void;
-    global.client.tenant.delete.mockImplementation(
-      () => new Promise((pronto) => (liberar = () => pronto({}))),
-    );
+    let chegouAoMeio!: () => void;
+    const noMeio = new Promise<void>((pronto) => (chegouAoMeio = pronto));
+    global.client.tenant.delete.mockImplementation(() => {
+      chegouAoMeio();
+      return new Promise((pronto) => (liberar = () => pronto({})));
+    });
 
     const primeira = service.excluir('user-1', pedido);
+    /*
+     * A segunda só sai quando a primeira JÁ está apagando.
+     *
+     * As duas conferem a senha antes da trava, e o bcrypt leva um tempo
+     * que varia com a carga da máquina. Disparando as duas juntas, às
+     * vezes a segunda terminava a conferência primeiro e ficava com a
+     * trava — o teste falhava, e a trava, presa num pedido que nunca
+     * acabava, derrubava o teste seguinte junto.
+     */
+    await noMeio;
     await expect(service.excluir('user-1', pedido)).rejects.toThrow(
       ConflictException,
     );
