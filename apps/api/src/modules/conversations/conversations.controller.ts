@@ -30,7 +30,10 @@ import {
   type OrdemDoInbox,
   type StatusGroup,
 } from './conversations.service';
-import { IniciarConversaDto } from './dto/iniciar-conversa.dto';
+import {
+  AbrirConversaDto,
+  IniciarConversaDto,
+} from './dto/iniciar-conversa.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SetPriorityDto } from './dto/set-priority.dto';
@@ -176,6 +179,13 @@ export class ConversationsController {
    * Fica antes de `:id` de propósito: o Nest casa na ordem de
    * declaração, e `:id` engoliria "iniciar" como se fosse um id.
    */
+  /** Abre o chat com um contato sem enviar nada — ver `abrirConversa`. */
+  @Post('abrir')
+  @RequiresPermission('conversations.send')
+  abrir(@Body() dto: AbrirConversaDto) {
+    return this.conversationsService.abrirConversa(dto);
+  }
+
   @Post('iniciar')
   @RequiresPermission('conversations.send')
   async iniciar(

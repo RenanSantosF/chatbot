@@ -549,6 +549,10 @@ export class ConversationsService {
 
     return {
       ...recorte,
+      // Conversa sem mensagem nenhuma é a que alguém abriu pra escrever e
+      // ainda não escreveu (ver `abrirConversa`): não entra nas listas até
+      // a primeira mensagem sair.
+      lastMessageAt: { not: null },
       /*
        * Grupo e cliente nunca aparecem na mesma lista, e a busca acontece
        * DENTRO da caixa aberta.
@@ -2610,6 +2614,62 @@ export class ConversationsService {
    * Reaproveita a conversa aberta quando ela existe: abrir uma segunda
    * partiria o histórico do mesmo cliente em dois lugares no painel.
    */
+  /**
+   * Abre o chat com alguém SEM mandar nada ainda.
+   *
+   * "Nova conversa" pedia a primeira mensagem num formulário à parte — sem
+   * anexo, sem ver a foto nem o histórico da pessoa. Agora escolher o
+   * contato abre o chat normal, e a primeira mensagem sai pelo compositor
+   * de sempre (texto, arquivo, áudio).
+   *
+   * Se a pessoa já tem conversa, é ela que abre, com o histórico. Se não,
+   * nasce uma vazia — invisível nas listas até a primeira mensagem (ver
+   * `montarWhere`), pra quem desistir não deixar uma conversa em branco
+   * no Inbox de todo mundo.
+   */
+  async abrirConversa(input: { phone: string; name?: string }) {
+    const phone = input.phone.replace(/\D/g, '');
+    if (phone.length < 12) {
+      throw new BadRequestException(
+        'Informe o telefone com DDI e DDD, por exemplo 5527999998888.',
+      );
+    }
+
+    const customer = await this.customers.findOrCreateByPhone({
+      phone,
+      name: input.name?.trim() || phone,
+    });
+
+    const existente =
+      (await this.prisma.db.conversation.findFirst({
+        where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      })) ??
+      (await this.prisma.db.conversation.findFirst({
+        where: { customerId: customer.id },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      }));
+    if (existente) return this.getById(existente.id);
+
+    // Sem dono e com a IA como estaria pra um contato novo: se ninguém
+    // escrever e o cliente mandar mensagem antes, a conversa segue como
+    // qualquer outra que ele começasse. Quem responder assume na hora
+    // (ver `assumirAoResponder`).
+    const comIa = await this.aiEngine.podeAtender();
+    const criada = await this.prisma.db.conversation.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        customerId: customer.id,
+        channel: 'WHATSAPP',
+        aiMode: comIa ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
+      },
+      select: { id: true },
+    });
+    return this.getById(criada.id);
+  }
+
   async iniciarConversa(
     input: { phone: string; name?: string; content: string },
     agentId: string,

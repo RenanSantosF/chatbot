@@ -26,3 +26,16 @@ export class IniciarConversaDto {
   @MaxLength(4000)
   content!: string;
 }
+
+/** Abrir o chat com alguém, sem mensagem ainda (a primeira sai do chat). */
+export class AbrirConversaDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(30)
+  phone!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+}

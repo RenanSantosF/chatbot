@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, MessageSquarePlus, Search, Send, UserPlus } from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, Search, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Sheet,
   SheetContent,
@@ -51,7 +50,11 @@ function iniciais(nome: string) {
  * já tem essa pessoa na agenda — obrigar a digitar um número que o
  * sistema já conhece é fazer o operador trabalhar pelo sistema.
  *
- * Agora abre na LISTA, como o WhatsApp Web: procura, escolhe, escreve.
+ * Agora abre na LISTA, como o WhatsApp Web: procura, escolhe — e o chat
+ * da pessoa abre na hora, vazio ou com o histórico que ela já tiver. A
+ * primeira mensagem sai do compositor de sempre, que aceita arquivo,
+ * áudio e figurinha; o formulário de texto que existia aqui no meio
+ * deixava de fora tudo isso e escondia a foto e a conversa anterior.
  * Digitar o número continua possível, um toque adiante, pra quem a
  * empresa acabou de anotar num papel.
  */
@@ -67,7 +70,6 @@ export function StartConversationDialog({
   gatilho?: React.ReactElement;
 }) {
   const [open, setOpen] = useState(false);
-  const [destino, setDestino] = useState<Destino | null>(null);
   const [digitandoNumero, setDigitandoNumero] = useState(false);
 
   const [contatos, setContatos] = useState<Customer[] | null>(null);
@@ -75,8 +77,8 @@ export function StartConversationDialog({
 
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  const [content, setContent] = useState("");
-  const [sending, setSending] = useState(false);
+  /** O telefone que está sendo aberto agora — pra mostrar o giro no lugar certo. */
+  const [abrindo, setAbrindo] = useState<string | null>(null);
 
   const carregar = useCallback((termo: string) => {
     const q = termo.trim();
@@ -96,19 +98,30 @@ export function StartConversationDialog({
   }, [open, busca, carregar, customer]);
 
   function reiniciar() {
-    setDestino(null);
     setDigitandoNumero(false);
     setBusca("");
     setPhone("");
     setName("");
-    setContent("");
   }
 
-  function abrirMudou(aberto: boolean) {
-    setOpen(aberto);
-    if (!aberto) reiniciar();
-    // Com contato definido de fora, não há o que escolher.
-    else if (customer) setDestino(customer);
+  async function abrir(destino: Destino) {
+    if (abrindo) return;
+    setAbrindo(destino.phone);
+    try {
+      const conversa = await apiFetch<ConversationDetail>("/conversations/abrir", {
+        method: "POST",
+        body: JSON.stringify({ phone: destino.phone, name: destino.name }),
+      });
+      setOpen(false);
+      reiniciar();
+      onStarted(conversa.id);
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "Não deu pra abrir a conversa.",
+      );
+    } finally {
+      setAbrindo(null);
+    }
   }
 
   function confirmarNumero(event: React.FormEvent) {
@@ -118,38 +131,46 @@ export function StartConversationDialog({
       toast.error("Informe o telefone com DDI e DDD, por exemplo 5527999998888.");
       return;
     }
-    setDestino({ name: name.trim() || limpo, phone: limpo });
+    void abrir({ name: name.trim() || limpo, phone: limpo });
   }
 
-  async function enviar(event: React.FormEvent) {
-    event.preventDefault();
-    if (sending || !destino || !content.trim()) return;
-
-    setSending(true);
-    try {
-      const conversa = await apiFetch<ConversationDetail>("/conversations/iniciar", {
-        method: "POST",
-        body: JSON.stringify({
-          phone: destino.phone,
-          name: destino.name,
-          content: content.trim(),
-        }),
-      });
-      toast.success("Mensagem enviada.");
-      setOpen(false);
-      reiniciar();
-      onStarted(conversa.id);
-    } catch (error) {
-      toast.error(
-        error instanceof ApiError ? error.message : "Não deu pra enviar a mensagem.",
-      );
-    } finally {
-      setSending(false);
-    }
+  // Com o contato já escolhido de fora (a ficha do cliente), não há o que
+  // escolher: o botão abre o chat direto, sem painel no meio.
+  if (customer) {
+    const botao = gatilho ?? (
+      <Button size="sm" variant="outline">
+        <MessageSquarePlus className="size-4" />
+        Mensagem
+      </Button>
+    );
+    return (
+      <span
+        className="contents"
+        onClickCapture={(event) => {
+          event.preventDefault();
+          void abrir({ name: customer.name, phone: customer.phone });
+        }}
+      >
+        {abrindo ? (
+          <Button size="sm" variant="outline" disabled>
+            <Spinner className="size-3.5" />
+            Abrindo…
+          </Button>
+        ) : (
+          botao
+        )}
+      </span>
+    );
   }
 
   return (
-    <Sheet open={open} onOpenChange={abrirMudou}>
+    <Sheet
+      open={open}
+      onOpenChange={(aberto) => {
+        setOpen(aberto);
+        if (!aberto) reiniciar();
+      }}
+    >
       <SheetTrigger
         render={
           gatilho ?? (
@@ -163,60 +184,29 @@ export function StartConversationDialog({
       <SheetContent className="flex flex-col gap-0 overflow-hidden p-0">
         <SheetHeader className="shrink-0">
           <div className="flex items-center gap-2">
-            {/* Voltar só existe quando há pra onde: com contato vindo de
-                fora, esta é a única etapa. */}
-            {destino && !customer ? (
+            {digitandoNumero ? (
               <Button
                 size="icon-sm"
                 variant="ghost"
                 aria-label="Voltar"
-                onClick={() => {
-                  setDestino(null);
-                  setDigitandoNumero(false);
-                }}
+                onClick={() => setDigitandoNumero(false)}
               >
                 <ArrowLeft className="size-4" />
               </Button>
             ) : null}
             <div className="min-w-0">
-              <SheetTitle>
-                {destino ? destino.name : digitandoNumero ? "Novo contato" : "Nova conversa"}
-              </SheetTitle>
+              <SheetTitle>{digitandoNumero ? "Novo contato" : "Nova conversa"}</SheetTitle>
               <SheetDescription>
-                {destino
-                  ? destino.phone
-                  : digitandoNumero
-                    ? "Pra um número que ainda não está na lista."
-                    : "Escolha com quem falar."}
+                {digitandoNumero
+                  ? "Pra um número que ainda não está na lista."
+                  : "Escolha com quem falar — o chat abre na hora."}
               </SheetDescription>
             </div>
           </div>
         </SheetHeader>
 
-        {/* ETAPA 3 — escrever. */}
-        {destino ? (
-          <form onSubmit={enviar} className="flex flex-col gap-4 px-4 py-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="nova-conversa-texto">Mensagem</Label>
-              <Textarea
-                id="nova-conversa-texto"
-                autoFocus
-                rows={5}
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                placeholder="Escreva a primeira mensagem..."
-                maxLength={4000}
-              />
-            </div>
-            <SheetFooter className="px-0">
-              <Button type="submit" disabled={sending || !content.trim()}>
-                {sending ? <Spinner /> : <Send className="size-4" />}
-                Enviar
-              </Button>
-            </SheetFooter>
-          </form>
-        ) : digitandoNumero ? (
-          /* ETAPA 2 — o número que não está na lista. */
+        {digitandoNumero ? (
+          /* O número que não está na lista. */
           <form onSubmit={confirmarNumero} className="flex flex-col gap-4 px-4 py-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="nova-conversa-telefone">Telefone</Label>
@@ -244,13 +234,14 @@ export function StartConversationDialog({
               />
             </div>
             <SheetFooter className="px-0">
-              <Button type="submit" disabled={!phone.trim()}>
-                Continuar
+              <Button type="submit" disabled={!phone.trim() || abrindo !== null}>
+                {abrindo ? <Spinner /> : null}
+                Abrir conversa
               </Button>
             </SheetFooter>
           </form>
         ) : (
-          /* ETAPA 1 — a lista, que é o caminho comum. */
+          /* A lista, que é o caminho comum. */
           <>
             <div className="flex shrink-0 flex-col gap-2 px-4 pt-1 pb-2">
               <div className="relative">
@@ -294,9 +285,8 @@ export function StartConversationDialog({
                   <button
                     key={contato.id}
                     type="button"
-                    onClick={() =>
-                      setDestino({ name: contato.name, phone: contato.phone })
-                    }
+                    disabled={abrindo !== null}
+                    onClick={() => void abrir({ name: contato.name, phone: contato.phone })}
                     className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent"
                   >
                     <Avatar className="size-9 shrink-0">
@@ -312,6 +302,7 @@ export function StartConversationDialog({
                         {contato.phone}
                       </span>
                     </span>
+                    {abrindo === contato.phone ? <Spinner className="size-4" /> : null}
                   </button>
                 ))
               )}
