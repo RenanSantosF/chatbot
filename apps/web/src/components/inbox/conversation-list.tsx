@@ -159,6 +159,7 @@ const LinhaDaConversa = memo(function LinhaDaConversa({
         className="size-11 shrink-0"
         tamanho={44}
         textoClassName="text-xs"
+        conferirAoAparecer
       />
       <div className="min-w-0 flex-1">
         {/* Linha 1: quem é, e quando falou. Nada mais.

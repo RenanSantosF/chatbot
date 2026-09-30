@@ -2,7 +2,10 @@ import { ForbiddenException } from '@nestjs/common';
 import type { PrismaService } from '../../../../common/prisma/prisma.service';
 import type { AuthenticatedRequest } from '../../../auth/auth.types';
 import type { ConversationsService } from '../../../conversations/conversations.service';
-import { EvolutionWebhookController } from './evolution-webhook.controller';
+import {
+  EvolutionWebhookController,
+  emParalelo,
+} from './evolution-webhook.controller';
 
 const SEGREDO = 'a'.repeat(48);
 
@@ -1412,5 +1415,24 @@ describe('foto de perfil', () => {
     await esvaziarFila();
 
     expect(conversations.receiveInbound).toHaveBeenCalled();
+  });
+});
+
+describe('importação em paralelo, com teto', () => {
+  it('processa todos os itens sem passar do limite ao mesmo tempo', async () => {
+    let agora = 0;
+    let pico = 0;
+    const feitos: number[] = [];
+
+    await emParalelo([1, 2, 3, 4, 5, 6, 7], 3, async (n) => {
+      agora += 1;
+      pico = Math.max(pico, agora);
+      await new Promise((resolver) => setTimeout(resolver, 5));
+      feitos.push(n);
+      agora -= 1;
+    });
+
+    expect(feitos.sort()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(pico).toBe(3);
   });
 });

@@ -1,12 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ImageLightbox } from "@/components/inbox/image-lightbox";
 import { avatarColor, initials } from "@/lib/avatar";
-import { assinarFotos, atualizarFoto, fotoConhecida } from "@/lib/fotos-de-perfil";
+import {
+  assinarFotos,
+  atualizarFoto,
+  atualizarFotoNaFila,
+  fotoConhecida,
+} from "@/lib/fotos-de-perfil";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,6 +33,7 @@ export function AvatarDoCliente({
   textoClassName,
   colorido = true,
   conferir = false,
+  conferirAoAparecer = false,
   ampliavel = false,
   tamanho = 48,
 }: {
@@ -43,6 +49,11 @@ export function AvatarDoCliente({
    * trinta perguntas de uma vez.
    */
   conferir?: boolean;
+  /**
+   * Pra lista: busca a foto quando a linha aparece na tela, se não houver
+   * foto nenhuma (ou a guardada não abrir), numa fila de poucas por vez.
+   */
+  conferirAoAparecer?: boolean;
   /** Clicar abre a foto inteira, buscando a versão mais nova. */
   ampliavel?: boolean;
   /** Diâmetro desenhado, em px — é o tamanho em que a miniatura é pedida. */
@@ -66,6 +77,24 @@ export function AvatarDoCliente({
   useEffect(() => {
     if (conferir) void atualizarFoto(cliente.id);
   }, [conferir, cliente.id]);
+
+  // Sem foto (ou com uma que não abre — a URL do WhatsApp expira): pede
+  // uma nova quando a linha entra na tela. Com foto boa, nada acontece.
+  const semFoto = !url;
+  const raizRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!conferirAoAparecer || !semFoto) return;
+    const alvo = raizRef.current;
+    if (!alvo || typeof IntersectionObserver === "undefined") return;
+    const observador = new IntersectionObserver((entradas) => {
+      if (entradas.some((entrada) => entrada.isIntersecting)) {
+        observador.disconnect();
+        atualizarFotoNaFila(cliente.id);
+      }
+    });
+    observador.observe(alvo);
+    return () => observador.disconnect();
+  }, [conferirAoAparecer, semFoto, cliente.id]);
 
   async function ampliar() {
     // Abre na hora com a foto que já está na tela, e troca pela nova se o
@@ -109,7 +138,17 @@ export function AvatarDoCliente({
     </Avatar>
   );
 
-  if (!ampliavel) return avatar;
+  if (!ampliavel) {
+    return conferirAoAparecer ? (
+      // Uma caixa de verdade em volta: o observador de visibilidade não
+      // enxerga `display: contents`, que não tem caixa nenhuma.
+      <span ref={raizRef} className="flex shrink-0">
+        {avatar}
+      </span>
+    ) : (
+      avatar
+    );
+  }
 
   return (
     <>

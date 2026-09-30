@@ -68,3 +68,33 @@ export function atualizarFoto(
   emAndamento.set(clienteId, pedido);
   return pedido;
 }
+
+/**
+ * A mesma busca, mas numa fila com poucas de cada vez — pra lista.
+ *
+ * A foto só era buscada quando chegava mensagem nova ou alguém abria a
+ * conversa. Quem veio do histórico, a agenda e principalmente os GRUPOS
+ * ficavam com as iniciais pra sempre na lista. Agora a linha que aparece
+ * na tela pede a foto; a fila segura em duas por vez, pra rolar a lista
+ * não virar trinta perguntas simultâneas ao WhatsApp.
+ */
+const SIMULTANEAS = 2;
+const fila: string[] = [];
+let rodando = 0;
+
+function andar() {
+  while (rodando < SIMULTANEAS && fila.length > 0) {
+    const id = fila.shift()!;
+    rodando += 1;
+    void atualizarFoto(id).finally(() => {
+      rodando -= 1;
+      andar();
+    });
+  }
+}
+
+export function atualizarFotoNaFila(clienteId: string) {
+  if (conferidos.has(clienteId) || fila.includes(clienteId)) return;
+  fila.push(clienteId);
+  andar();
+}

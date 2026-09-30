@@ -666,7 +666,16 @@ export class EvolutionWebhookController {
     // reconciliar sem recarregar a página (ver F02). `Set` porque o mesmo
     // contato pode aparecer mais de uma vez entre lotes que se sobrepõem.
     const conversasAfetadas = new Set<string>();
-    for (const [telefone, registro] of porContato) {
+    /*
+     * Algumas conversas ao mesmo tempo, e não uma atrás da outra.
+     *
+     * Um lote traz centenas de contatos, e cada um custa algumas idas ao
+     * banco. Em fila, a lista do Inbox enchia no ritmo da soma de todas —
+     * era o "as conversas demoram muito pra vir" de quem tem muita
+     * mensagem. O teto é baixo de propósito: o pool da API tem 5 conexões
+     * (ver PrismaService), e sobram duas pra quem está atendendo agora.
+     */
+    await emParalelo([...porContato], IMPORTACOES_SIMULTANEAS, async ([telefone, registro]) => {
       try {
         const resultado = await this.conversations.importarHistorico({
           customerPhone: telefone,
@@ -682,7 +691,7 @@ export class EvolutionWebhookController {
           `Não deu pra importar o histórico de ${telefone}: ${erro instanceof Error ? erro.message : erro}`,
         );
       }
-    }
+    });
 
     /*
      * Terminou é terminou.
@@ -1044,4 +1053,25 @@ function citacaoDaMensagem(
         }
       : undefined,
   };
+}
+
+/** Quantos contatos de um lote do histórico são gravados ao mesmo tempo. */
+const IMPORTACOES_SIMULTANEAS = 3;
+
+/** Roda `fazer` em cada item, com no máximo `limite` ao mesmo tempo. */
+export async function emParalelo<T>(
+  itens: T[],
+  limite: number,
+  fazer: (item: T) => Promise<void>,
+): Promise<void> {
+  let proximo = 0;
+  const trabalhador = async () => {
+    while (proximo < itens.length) {
+      const item = itens[proximo++];
+      await fazer(item);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limite, itens.length) }, trabalhador),
+  );
 }
