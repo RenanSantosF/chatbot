@@ -172,12 +172,12 @@ describe('anúncio de encerramento', () => {
     expect(verificacao.precisaHandoff).toBe(false);
   });
 
-  it('não encerra uma despedida comum', () => {
-    // "Fico à disposição" não é encerramento — se fosse, toda conversa
-    // educada sairia da fila.
+  it('não encerra a resposta longa que só termina com "fico à disposição"', () => {
+    // O cliente perguntou e ainda vai ler a resposta — talvez responder. A
+    // despedida educada no fim não quer dizer que o assunto acabou.
     const verificacao = verificarResposta(
-      'De nada! Fico à disposição se precisar de mais alguma coisa.',
-      'Obrigado',
+      'O prazo pra contestar é de 15 dias úteis a partir da citação. Precisamos da cópia do processo e dos seus documentos pessoais pra começar, e a primeira consulta pode ser presencial ou por vídeo, como for melhor pra você. Fico à disposição.',
+      'Qual o prazo pra contestar a ação?',
       semFerramenta,
     );
 
@@ -199,7 +199,8 @@ describe('anúncio de encerramento', () => {
 });
 
 describe('dado inventado', () => {
-  const SEM_BASE = 'Você é a assistente do escritório. Atendemos das 08h às 17h.';
+  const SEM_BASE =
+    'Você é a assistente do escritório. Atendemos das 08h às 17h.';
 
   it('barra o endereço que não está em lugar nenhum — o caso relatado', () => {
     const verificacao = verificarResposta(
@@ -237,5 +238,76 @@ describe('dado inventado', () => {
     );
 
     expect(verificacao.substituirPor).toBeUndefined();
+  });
+});
+
+/**
+ * O relato: o cliente deu o assunto por terminado, a IA respondeu "Se
+ * precisar de alguma orientação jurídica no futuro, é só chamar. Estamos à
+ * disposição!" e a conversa continuou aberta, esperando um "ok" que não
+ * precisava vir.
+ */
+describe('despedida da IA encerra o atendimento', () => {
+  const semFerramenta: string[] = [];
+
+  it('a despedida do relato encerra', () => {
+    expect(
+      verificarResposta(
+        'Entendi, Vinicio. Se precisar de alguma orientação jurídica ou tiver alguma dúvida no futuro, é só chamar. Estamos à disposição!',
+        'não, era só isso mesmo',
+        semFerramenta,
+      ),
+    ).toMatchObject({ encerrar: true, precisaHandoff: false });
+  });
+
+  it.each([
+    'Por nada! Qualquer dúvida, é só mandar mensagem.',
+    'Imagina! Fico à disposição.',
+    'Combinado. Tenha uma ótima semana!',
+    'Obrigada você! Até logo.',
+  ])('"%s" encerra', (resposta) => {
+    expect(
+      verificarResposta(resposta, 'obrigado', semFerramenta).encerrar,
+    ).toBe(true);
+  });
+
+  it('com pergunta na resposta, a conversa continua', () => {
+    expect(
+      verificarResposta(
+        'Estou à disposição. Qual o melhor dia pra você vir ao escritório?',
+        'quero marcar',
+        semFerramenta,
+      ).encerrar,
+    ).toBeFalsy();
+  });
+
+  it('"até mais tarde" no meio da frase não é despedida', () => {
+    expect(
+      verificarResposta(
+        'Hoje atendemos até mais tarde, até as 20h.',
+        'vocês abrem hoje',
+        semFerramenta,
+      ).encerrar,
+    ).toBeFalsy();
+  });
+
+  it('prometeu retorno e se despediu: quem manda é a promessa (vai pra equipe)', () => {
+    const verificacao = verificarResposta(
+      'Vou verificar com o advogado e te retorno. Qualquer coisa, é só chamar!',
+      'preciso de uma resposta',
+      semFerramenta,
+    );
+    expect(verificacao.encerrar).toBeFalsy();
+    expect(verificacao.precisaHandoff).toBe(true);
+  });
+
+  it('urgência não encerra, mesmo com despedida', () => {
+    expect(
+      verificarResposta(
+        'Entendi. Estamos à disposição.',
+        'estou preso na delegacia',
+        semFerramenta,
+      ).encerrar,
+    ).toBeFalsy();
   });
 });

@@ -38,10 +38,7 @@ const AVISO_DO_QUE_FALTA =
 
 /** Normaliza pra comparar sem acento e sem caixa. */
 function simplificar(texto: string): string {
-  return texto
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
+  return texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
 /**
@@ -105,6 +102,54 @@ const ANUNCIOS_DE_ENCERRAMENTO = [
   'finalizo (o|seu) atendimento',
   'por aqui (entao|então)? ?encerr',
 ];
+
+/**
+ * Despedidas: a IA fechou o assunto sem dizer a palavra "encerrado".
+ *
+ * Observado em produção: o cliente deu o assunto por terminado e a IA
+ * respondeu "Se precisar de alguma orientação no futuro, é só chamar.
+ * Estamos à disposição!" — e não chamou a ferramenta de encerrar. A
+ * conversa ficou aberta no painel à espera de um "ok" que não precisava
+ * vir. O modelo rápido esquece a ferramenta com frequência justamente
+ * nessa hora, em que a resposta em texto já parece completa.
+ *
+ * Só vale sem pergunta na resposta (ver `verificarResposta`): "Estou à
+ * disposição. Qual o melhor dia pra você?" continua a conversa. E errar
+ * pra mais custa pouco — se o cliente escrever de novo, a mesma conversa
+ * reabre com a IA atendendo, com o histórico à vista.
+ */
+const DESPEDIDAS = [
+  'e so (me )?(chamar|mandar|escrever|falar|entrar em contato|avisar)',
+  '(estamos|estou|fico|ficamos|seguimos|sigo) a (sua )?disposicao',
+  'qualquer (coisa|duvida|necessidade)[^.!?]{0,40}(e so|estamos|estou|fico|pode)',
+  '(tenha|desejo|desejamos) (um|uma) (otim[oa]|bo[ma]|excelente|linda)',
+  '(otimo|bom|boa|excelente) (dia|tarde|noite|semana|fim de semana)[!.]*$',
+  // No começo da frase: "atendemos até mais tarde" não é despedida.
+  '(^|[.!]\\s*)ate (mais|logo|a proxima|breve)\\b',
+  'foi um prazer',
+];
+
+/**
+ * O cliente dando o assunto por terminado: "ok", "obrigado", "era só isso".
+ *
+ * É o que separa a despedida de verdade do "fico à disposição" educado no
+ * fim de uma resposta longa — que o cliente ainda vai ler e talvez
+ * responder. Só a resposta curta, que é SÓ despedida, dispensa este sinal.
+ */
+const CLIENTE_ENCERRANDO = [
+  '^(ok|okay|blz|beleza|certo|entendi|perfeito|show|combinado|ta bom|tudo bem|tudo certo|nao|valeu|vlw|obg)\\b',
+  'obrigad',
+  'agradec',
+  '(era|e) so isso',
+  'so isso',
+  'nao preciso',
+  'por enquanto (e )?so',
+  'mais nada',
+  '👍',
+];
+
+/** Resposta curta o bastante pra ser só a despedida. */
+const TAMANHO_DE_DESPEDIDA = 200;
 
 /**
  * Sinais de urgência real na fala do CLIENTE. Não é análise de sentimento
@@ -243,6 +288,22 @@ export function verificarResposta(
       precisaHandoff: false,
       encerrar: true,
       motivo: 'O cliente foi avisado de que o atendimento estava encerrado.',
+    };
+  }
+
+  // Despedida sem pergunta nenhuma: o assunto acabou, mesmo sem a palavra
+  // "encerrado". Urgência não encerra — ela sobe a prioridade abaixo.
+  if (
+    !urgenciaNoPedido &&
+    !resposta.includes('?') &&
+    bate(resposta, DESPEDIDAS) &&
+    (bate(doCliente.trim(), CLIENTE_ENCERRANDO) ||
+      resposta.trim().length <= TAMANHO_DE_DESPEDIDA)
+  ) {
+    return {
+      precisaHandoff: false,
+      encerrar: true,
+      motivo: 'O assunto foi concluído e a IA se despediu do cliente.',
     };
   }
 

@@ -340,7 +340,7 @@ export class AiToolsService {
       key: 'resolveConversation',
       name: 'Encerrar atendimento',
       description:
-        'Marca o atendimento como resolvido. Use SÓ quando o assunto do cliente foi de fato respondido e ele não pediu mais nada — uma despedida ("obrigado", "ok", "era só isso") é o sinal típico. Nunca use se prometeu que alguém entraria em contato, se transferiu a conversa, ou se ficou alguma pergunta em aberto: encerrar nesses casos tira o caso da fila e ninguém volta nele.',
+        'Marca o atendimento como resolvido. Use SÓ quando o assunto do cliente foi de fato respondido e ele não pediu mais nada — uma despedida ("obrigado", "ok", "era só isso") é o sinal típico. Quando for se despedir, encerre na MESMA resposta: não espere o cliente confirmar. Nunca use se prometeu que alguém entraria em contato, se transferiu a conversa, ou se ficou alguma pergunta em aberto: encerrar nesses casos tira o caso da fila e ninguém volta nele.',
       parametersSchema: {
         type: 'object',
         properties: {
