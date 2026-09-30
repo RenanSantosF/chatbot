@@ -102,9 +102,8 @@ export function QuickRepliesCard() {
           Respostas rápidas
         </CardTitle>
         <CardDescription>
-          Textos prontos que quem atende insere digitando <code className="rounded bg-muted px-1">/atalho</code>{" "}
-          no início da mensagem. A lista aparece sozinha ao digitar a barra e se ordena pelas mais
-          usadas — ninguém precisa organizar nada.
+          Textos prontos: digite <code className="rounded bg-muted px-1">/atalho</code> na conversa pra
+          usar.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -112,7 +111,7 @@ export function QuickRepliesCard() {
           <p className="text-xs text-muted-foreground">Carregando…</p>
         ) : respostas.length === 0 && !rascunho ? (
           <p className="text-xs text-muted-foreground text-pretty">
-            Nenhuma ainda. As primeiras costumam ser a saudação, os dados de pagamento e o endereço.
+            Nenhuma ainda. Comece pela saudação, os dados de pagamento e o endereço.
           </p>
         ) : null}
 

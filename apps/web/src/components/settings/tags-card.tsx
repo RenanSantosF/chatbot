@@ -64,9 +64,8 @@ export function TagsCard() {
           Etiquetas
         </CardTitle>
         <CardDescription>
-          Classificam a conversa por assunto — &ldquo;Orçamento&rdquo;, &ldquo;Reclamação&rdquo;,
-          &ldquo;Segunda via&rdquo;. Quem atende cria e aplica direto na conversa; aqui você ajusta
-          cor e nome, e tira as que não pegaram.
+          Organizam as conversas por assunto. São criadas dentro da conversa; aqui você ajusta ou
+          apaga.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -74,8 +73,7 @@ export function TagsCard() {
           <p className="text-xs text-muted-foreground">Carregando…</p>
         ) : tags.length === 0 ? (
           <p className="text-xs text-muted-foreground text-pretty">
-            Nenhuma ainda. Elas nascem no botão de etiqueta dentro da conversa, com quem está
-            atendendo.
+            Nenhuma ainda. Crie pelo botão de etiqueta dentro da conversa.
           </p>
         ) : null}
 

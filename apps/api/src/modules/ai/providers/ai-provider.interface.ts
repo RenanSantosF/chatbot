@@ -35,6 +35,17 @@ export interface AiGenerateInput {
   model?: string;
   tools?: AiToolDeclaration[];
   executeTool?: AiToolExecutor;
+  /**
+   * Quanto o modelo pensa antes de escrever. O padrão é o mínimo (ver
+   * `configDeRaciocinio`); "baixo" é pra tarefa em que acertar vale mais
+   * que a fração de centavo — a correção de texto, que sem pensar deixava
+   * passar concordância.
+   */
+  raciocinio?: 'minimo' | 'baixo';
+  /** Sobrepõe a temperatura padrão do atendimento. */
+  temperatura?: number;
+  /** Sobrepõe o teto de saída padrão do atendimento. */
+  maximoDeSaida?: number;
 }
 
 export interface AiGenerateResult {

@@ -61,6 +61,21 @@ describe('correção de texto por IA', () => {
     expect(data).not.toHaveProperty('aiRepliesUsed');
   });
 
+  it('pede revisão com raciocínio, sem variação e sem cortar o texto', async () => {
+    // Sem pensar, o modelo deixava passar "os produtos tava".
+    const { service, generateReply } = montar();
+
+    await service.corrigir('os produto tava tudo caro', 'u1');
+
+    expect(generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        raciocinio: 'baixo',
+        temperatura: 0,
+        maximoDeSaida: expect.any(Number) as number,
+      }),
+    );
+  });
+
   it('marca que a pessoa já usou, pra dica parar de aparecer', async () => {
     const { service, updateUsuario } = montar();
 

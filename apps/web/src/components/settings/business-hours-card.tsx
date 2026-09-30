@@ -131,9 +131,7 @@ export function BusinessHoursCard({
           Horário de atendimento
         </CardTitle>
         <CardDescription>
-          A IA passa a saber quando a empresa está aberta: ela responde &ldquo;que horas vocês
-          atendem?&rdquo; com o que estiver aqui e, fora do expediente, diz quando a equipe volta em vez
-          de prometer resposta imediata. Sem isso configurado, o sistema atende em qualquer horário.
+          A IA usa pra responder o horário e, fora do expediente, dizer quando a equipe volta.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -141,7 +139,7 @@ export function BusinessHoursCard({
           <span className="min-w-0">
             <span className="block text-sm font-medium">Definir horário de atendimento</span>
             <span className="block text-xs text-muted-foreground text-pretty">
-              Desligado, a empresa é tratada como aberta o tempo todo.
+              Desligado, a empresa fica sempre aberta.
             </span>
           </span>
           <Switch

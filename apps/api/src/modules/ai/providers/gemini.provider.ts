@@ -210,6 +210,7 @@ export class GeminiProvider
   private async gerarConteudo(
     client: GoogleGenAI,
     params: GenerateContentParameters,
+    minimo: 'minimo' | 'baixo' = 'minimo',
   ): Promise<GenerateContentResponse> {
     const modelo = params.model;
     const comNivel = (nivel: 'minimo' | 'baixo') =>
@@ -222,6 +223,8 @@ export class GeminiProvider
       });
 
     const geracaoAtual = configDeRaciocinio(modelo)?.thinkingLevel;
+    // Quem pediu pra pensar mais não passa pelo MINIMAL.
+    if (geracaoAtual && minimo === 'baixo') return comNivel('baixo');
     if (!geracaoAtual || soAceitamNivelBaixo.has(modelo)) {
       return comNivel(soAceitamNivelBaixo.has(modelo) ? 'baixo' : 'minimo');
     }
@@ -246,6 +249,9 @@ export class GeminiProvider
     model,
     tools,
     executeTool,
+    raciocinio,
+    temperatura,
+    maximoDeSaida,
   }: AiGenerateInput): Promise<AiGenerateResult> {
     const client = new GoogleGenAI({ apiKey });
     const resolvedModel = model ?? DEFAULT_MODEL;
@@ -280,17 +286,21 @@ export class GeminiProvider
 
     try {
       for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
-        const response = await this.gerarConteudo(client, {
-          model: resolvedModel,
-          contents,
-          config: {
-            systemInstruction: systemPrompt,
-            tools: geminiTools,
-            temperature: TEMPERATURA,
-            maxOutputTokens: MAXIMO_DE_SAIDA,
-            abortSignal: AbortSignal.timeout(TEMPO_LIMITE_MS),
+        const response = await this.gerarConteudo(
+          client,
+          {
+            model: resolvedModel,
+            contents,
+            config: {
+              systemInstruction: systemPrompt,
+              tools: geminiTools,
+              temperature: temperatura ?? TEMPERATURA,
+              maxOutputTokens: maximoDeSaida ?? MAXIMO_DE_SAIDA,
+              abortSignal: AbortSignal.timeout(TEMPO_LIMITE_MS),
+            },
           },
-        });
+          raciocinio,
+        );
 
         const uso = response.usageMetadata;
         consumo.entrada += uso?.promptTokenCount ?? 0;

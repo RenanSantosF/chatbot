@@ -18,28 +18,55 @@ import {
  * Quantas correções uma conta pode pedir por mês.
  *
  * Não é limite de uso normal — é trava contra abuso. Uma correção custa
- * cerca de R$ 0,001; três mil no mês somam uns R$ 3, enquanto uma equipe
- * de cinco pessoas usando bastante fica bem abaixo disso.
+ * cerca de R$ 0,003 (com o raciocínio ligado); três mil no mês somam uns
+ * R$ 9, enquanto uma equipe de cinco pessoas usando bastante fica bem
+ * abaixo disso.
  */
 export const LIMITE_DE_CORRECOES_POR_MES = 3000;
 
 /** Texto mais comprido que isso não é mensagem de WhatsApp, é documento. */
 const MAXIMO_DE_CARACTERES = 2000;
 
-const INSTRUCOES = `Você corrige mensagens que um atendente vai mandar para um cliente pelo WhatsApp.
+/**
+ * O que a IA recebe pra corrigir.
+ *
+ * A primeira versão pedia "sem perder o jeito de quem escreveu", e o
+ * modelo leu isso como licença pra manter o erro: "os produtos tava" e
+ * "os negócio" passaram intactos, porque soavam como o jeito da pessoa.
+ * O pedido de verdade é o contrário — tom simples e simpático, português
+ * SEM erro. Por isso a lista é explícita sobre o que é erro (concordância,
+ * regência, conjugação) e o que é só tom (frase curta, "a gente"), e os
+ * exemplos mostram o nível de exigência.
+ */
+const INSTRUCOES = `Você é um revisor de português do Brasil. Corrige a mensagem que um atendente vai mandar a um cliente pelo WhatsApp.
 
-Devolva SOMENTE o texto corrigido — sem aspas, sem explicação, sem "Aqui está".
+Devolva SOMENTE o texto corrigido — sem aspas, sem comentário, sem explicar o que mudou.
 
-O que fazer:
-- Corrigir ortografia, acentuação, pontuação, concordância e letras maiúsculas.
-- Deixar a frase mais clara e bem escrita, sem perder o jeito de quem escreveu: mensagem informal continua informal, curta continua curta.
+O resultado precisa estar 100% correto na norma padrão, com tom natural e simpático de atendimento (nem robótico, nem formal demais). Corrija TODOS os erros, inclusive os que parecem "jeito de falar":
+- Ortografia, acentos e letras maiúsculas.
+- Pontuação: vírgulas, pontos, e frases longas divididas quando ficarem confusas.
+- Concordância verbal: "os produtos tava" → "os produtos estavam"; "a gente fomos" → "a gente foi".
+- Concordância nominal: "umas coisa" → "umas coisas"; "os negócio" → "as coisas".
+- Conjugação e forma do verbo: "eu foi" → "eu fui"; "fui paga" → "fui pagar"; "se eu ver" → "se eu vir".
+- Regência: "fui no mercado" → "fui ao mercado"; "prefiro mais X do que Y" → "prefiro X a Y".
+- Troca de palavras parecidas: "mais" (quantidade) × "mas" (oposição); "mal" × "mau"; "há" × "a"; "porque" × "por que".
+- Abreviações de internet por extenso: vc → você, q → que, tb → também, pq → porque, blz → beleza.
+- Gíria ou palavra vaga que fica errada ou pouco clara pode ser trocada por uma palavra comum que diga a mesma coisa.
 
 O que NUNCA fazer:
-- Inventar informação, prometer algo, ou acrescentar saudação/despedida que não estava lá.
+- Mudar o sentido, inventar informação, prometer algo, ou acrescentar saudação/despedida que não estava lá.
 - Mudar valores, preços, datas, horários, endereços, nomes, números, links ou emojis.
-- Trocar o idioma.
+- Trocar o idioma, ou deixar o texto rebuscado ("prezado", "venho por meio desta").
 
-Se o texto já estiver bom, devolva igual.`;
+Exemplo
+Texto: oi tudo bem? os documento que vc pediu ja chegou aqui, amanha eu te mando eles pq hj o sistema ta fora
+Corrigido: Oi, tudo bem? Os documentos que você pediu já chegaram aqui. Amanhã eu te mando, porque hoje o sistema está fora do ar.
+
+Exemplo
+Texto: a gente fomos no cliente ontem mais ele não tava, dai deixamos os papel com a secretaria dele
+Corrigido: A gente foi ao cliente ontem, mas ele não estava. Aí deixamos os papéis com a secretária dele.
+
+Se o texto já estiver correto, devolva igual.`;
 
 /**
  * "Corrige isso pra mim" — o botão ✨ do compositor.
@@ -92,6 +119,14 @@ export class CorrecaoDeTextoService {
         history: [{ role: 'user', content: original }],
         apiKey: resolucao.credentials.apiKey,
         model: resolucao.credentials.model,
+        // Pensar um pouco é o que pega a concordância que escapa numa
+        // leitura só; custa uns décimos de centavo a mais por correção.
+        raciocinio: 'baixo',
+        // Revisão tem uma resposta certa: nada de variar a cada clique.
+        temperatura: 0,
+        // O raciocínio conta no teto de saída, e o texto pode ter 2.000
+        // caracteres — o teto do atendimento (700) cortaria no meio.
+        maximoDeSaida: 3000,
       });
       corrigido = limpar(resposta.content);
       uso = resposta.usage;

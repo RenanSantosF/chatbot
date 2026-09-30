@@ -60,7 +60,11 @@ describe('GeminiProvider — modelo que recusa MINIMAL', () => {
   }
 
   type ComGerar = {
-    gerarConteudo: (c: unknown, p: unknown) => Promise<{ text: string }>;
+    gerarConteudo: (
+      c: unknown,
+      p: unknown,
+      minimo?: 'minimo' | 'baixo',
+    ) => Promise<{ text: string }>;
   };
 
   it('tenta LOW depois do 400 e lembra pra próxima vez', async () => {
@@ -84,6 +88,19 @@ describe('GeminiProvider — modelo que recusa MINIMAL', () => {
       ThinkingLevel.LOW,
       ThinkingLevel.LOW,
     ]);
+  });
+
+  it('quem pede raciocínio baixo vai direto de LOW', async () => {
+    // A correção de texto: pensar um pouco é o que pega a concordância.
+    const provider = new GeminiProvider() as unknown as ComGerar;
+    const { client, niveis } = clienteFalso(false);
+
+    await provider.gerarConteudo(
+      client,
+      { model: 'gemini-3.1-flash-lite', contents: [] },
+      'baixo',
+    );
+    expect(niveis).toEqual([ThinkingLevel.LOW]);
   });
 
   it('modelo que aceita MINIMAL faz uma chamada só', async () => {
