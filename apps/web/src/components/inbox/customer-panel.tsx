@@ -200,6 +200,10 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
               value={
                 conversation.status === "WAITING_CUSTOMER" ? (
                   "O cliente"
+                ) : situacao.tom === "ia" ? (
+                  // Com a IA no comando, a vez é dela — "A equipe · há 1
+                  // min" em âmbar dizia que alguém devia estar respondendo.
+                  "A IA"
                 ) : conversation.waitingSince ? (
                   // "há N min" conta a partir de AGORA: entre o servidor
                   // desenhar e o navegador assumir, o minuto pode virar.

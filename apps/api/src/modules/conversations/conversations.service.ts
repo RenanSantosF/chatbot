@@ -3655,6 +3655,7 @@ export class ConversationsService {
       conversation = await this.reabrirParaAgrupamento(
         customer.id,
         input.grupo,
+        input.createdAt,
       );
     }
 
@@ -3931,7 +3932,12 @@ export class ConversationsService {
    * desliga o agrupamento inteiro (`groupByCustomer`); não existe meio
    * termo por tempo.
    */
-  private async reabrirParaAgrupamento(customerId: string, grupo = false) {
+  private async reabrirParaAgrupamento(
+    customerId: string,
+    grupo = false,
+    /** Quando o cliente ESCREVEU a mensagem que reabre (ver a nota abaixo). */
+    escritaEm?: Date,
+  ) {
     const settings = await this.inboxSettings.get();
     if (!settings.groupByCustomer) return null;
 
@@ -4032,6 +4038,26 @@ export class ConversationsService {
           ? 'O cliente voltou a escrever. O atendimento foi reaberto e devolvido à fila.'
           : 'O cliente voltou a escrever e o atendimento foi reaberto.',
         messageType: 'TEXT',
+        /*
+         * A nota vem ANTES da mensagem que reabriu — no histórico e no
+         * relógio.
+         *
+         * A mensagem do cliente é gravada com a hora em que ele escreveu,
+         * que o WhatsApp informa, e ela chega aqui alguns segundos depois.
+         * Com a hora do servidor, a nota caía DEPOIS do "oi" — e a IA só lê
+         * o que veio depois da última reabertura (é a fronteira do
+         * atendimento, ver `inicioDoAtendimentoAtual`): o "oi" ficava do
+         * lado de fora, ela concluía que não havia pergunta e se calava.
+         * Era o relato de "encerrei, o cliente escreveu, a situação diz
+         * 'com a IA' e ninguém respondeu".
+         */
+        ...(escritaEm
+          ? {
+              createdAt: new Date(
+                Math.min(Date.now(), escritaEm.getTime() - 1),
+              ),
+            }
+          : {}),
       },
     });
 

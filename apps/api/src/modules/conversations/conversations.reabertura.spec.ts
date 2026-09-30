@@ -26,6 +26,8 @@ function montar(
     agrupar?: boolean;
     /** A conversa reaberta é de um GRUPO do WhatsApp? */
     grupo?: boolean;
+    /** A hora em que o cliente escreveu a mensagem que reabre. */
+    escritaEm?: Date;
   } = {},
 ) {
   const atualizacoes: Record<string, unknown>[] = [];
@@ -90,9 +92,17 @@ function montar(
   const reabrir = () =>
     (
       service as unknown as {
-        reabrirParaAgrupamento: (id: string, grupo?: boolean) => Promise<unknown>;
+        reabrirParaAgrupamento: (
+          id: string,
+          grupo?: boolean,
+          escritaEm?: Date,
+        ) => Promise<unknown>;
       }
-    ).reabrirParaAgrupamento('cliente-1', estado.grupo ?? false);
+    ).reabrirParaAgrupamento(
+      'cliente-1',
+      estado.grupo ?? false,
+      estado.escritaEm,
+    );
 
   return { reabrir, prisma, atualizacoes, notas, aiEngine };
 }
@@ -270,6 +280,48 @@ describe('a IA volta a atender quem escreve depois de resolvido', () => {
     await reabrir();
 
     expect(atualizacoes[0]).not.toHaveProperty('aiMode');
+  });
+});
+
+/**
+ * O relato: "encerrei, o cliente escreveu 'oi', a situação dizia 'com a
+ * IA' e ninguém respondeu".
+ *
+ * A IA só lê o que veio depois da última nota de reabertura. A mensagem do
+ * cliente leva a hora em que ele escreveu (a do WhatsApp, segundos antes
+ * de chegar aqui), e a nota levava a hora do servidor — caía depois do
+ * "oi", e o "oi" ficava fora do que a IA lê.
+ */
+describe('a nota de reabertura vem antes da mensagem que reabriu', () => {
+  it('é gravada um instante antes da hora em que o cliente escreveu', async () => {
+    const escritaEm = new Date(Date.now() - 3000);
+    const { reabrir, notas } = montar({ escritaEm });
+
+    await reabrir();
+
+    const hora = notas[0].createdAt as Date;
+    expect(hora.getTime()).toBeLessThan(escritaEm.getTime());
+    expect(escritaEm.getTime() - hora.getTime()).toBeLessThan(1000);
+  });
+
+  it('nunca no futuro, mesmo com o relógio do aparelho adiantado', async () => {
+    const { reabrir, notas } = montar({
+      escritaEm: new Date(Date.now() + 60_000),
+    });
+
+    await reabrir();
+
+    expect((notas[0].createdAt as Date).getTime()).toBeLessThanOrEqual(
+      Date.now(),
+    );
+  });
+
+  it('sem a hora do cliente, fica com a do banco (a mensagem vem depois)', async () => {
+    const { reabrir, notas } = montar();
+
+    await reabrir();
+
+    expect(notas[0]).not.toHaveProperty('createdAt');
   });
 });
 
