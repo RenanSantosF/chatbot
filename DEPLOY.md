@@ -485,9 +485,11 @@ confirmada pelo webhook. Sem `STRIPE_SECRET_KEY`/`STRIPE_PRICE_ID`/
 `STRIPE_WEBHOOK_SECRET` configuradas, **ninguém consegue criar conta** —
 essas três variáveis são obrigatórias, não opcionais.
 
-**Preço sugerido**: R$ 197/mês, incluindo 3.000 respostas automáticas de
-IA. Pacote avulso: R$ 49,90 por 1.000 respostas extras (pra quem bate no
-teto antes do mês virar, sem esperar). Os dois números vêm da margem sobre
+**Preço**: R$ 147/mês (é o que o site e o cadastro anunciam — o preço
+cadastrado no Stripe precisa ser esse), incluindo 5.000 respostas
+automáticas de IA e 20 GB de armazenamento. Pacotes avulsos sugeridos:
+1.000 = R$ 49,90 · 3.000 = R$ 119,90 · 10.000 = R$ 299,90 (ver
+`STRIPE_PACOTES`). Os dois números vêm da margem sobre
 o custo real do provedor de IA — ver o comentário em
 `apps/api/src/modules/ai/ai-usage.service.ts` — e de comparação com o
 mercado brasileiro de chatbot de WhatsApp com IA (R$ 100–500/mês,

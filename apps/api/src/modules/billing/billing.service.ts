@@ -192,10 +192,10 @@ export class BillingService {
    * abrir e sincronizar continua a mesma.
    *
    * O VALOR em si vive só no Stripe (o código não tem número nenhum
-   * fixo), mas a recomendação registrada em DEPLOY.md é R$197/mês com
-   * 3.000 respostas de IA incluídas — parity com o concorrente direto mais
+   * fixo), mas o site e o cadastro anunciam R$147/mês com 5.000 respostas
+   * de IA incluídas (ver DEPLOY.md) — abaixo do concorrente direto mais
    * próximo (chatbot de WhatsApp por QR code com IA, ~R$190-200/mês no
-   * mercado brasileiro), e margem folgada sobre o custo real do provedor
+   * mercado brasileiro), e com margem folgada sobre o custo real do provedor
    * (ver o comentário de `aiMonthlyMessageLimit` no schema e o de
    * AiUsageService).
    */
