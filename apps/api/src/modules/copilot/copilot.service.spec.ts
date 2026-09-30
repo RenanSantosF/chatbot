@@ -18,8 +18,19 @@ function montar(
     semChave?: boolean;
     /** Permissões que o papel TEM (o resto é negado). */
     permite?: string[];
+    iaAtiva?: boolean;
+    saudacaoLigada?: boolean;
   } = {},
 ) {
+  const aiSettings =
+    opcoes.iaAtiva === undefined ? null : { id: 'ia', active: opcoes.iaAtiva };
+  const inbox = {
+    get: jest
+      .fn()
+      .mockResolvedValue({ greetingEnabled: opcoes.saudacaoLigada ?? false }),
+    update: jest.fn().mockResolvedValue({}),
+  };
+  const aiUpdate = jest.fn().mockResolvedValue({});
   const generateReply = jest
     .fn()
     .mockImplementation(
@@ -30,7 +41,39 @@ function montar(
     {
       tenantId: 'tenant-teste',
       db: {
-        aiSettings: { findFirst: jest.fn().mockResolvedValue(null) },
+        aiSettings: {
+          findFirst: jest.fn().mockResolvedValue(aiSettings),
+          update: aiUpdate,
+        },
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue({ canal: 'EVOLUTION' }),
+        },
+        evolutionSettings: {
+          findFirst: jest.fn().mockResolvedValue({
+            estado: 'DESCONECTADO',
+            connectedPhone: null,
+            lastError: 'sessão expirou',
+          }),
+        },
+        whatsAppSettings: { findFirst: jest.fn().mockResolvedValue(null) },
+        billingAccount: {
+          findFirst: jest.fn().mockResolvedValue({
+            aiMonthlyMessageLimit: 5000,
+            aiExtraMessagesThisPeriod: 0,
+            aiRepliesUsed: 5000,
+            aiUsagePeriodStart: new Date(),
+            usedBytes: 19n * 1024n ** 3n,
+            quotaBytes: 20n * 1024n ** 3n,
+            planLabel: 'Pro',
+            stripeSubscriptionId: 'sub_1',
+          }),
+        },
+        retentionSettings: {
+          findFirst: jest.fn().mockResolvedValue({
+            autoPurgeOnFull: true,
+            keepMessagesDays: null,
+          }),
+        },
         conversation: {
           groupBy: jest.fn().mockResolvedValue([]),
           count: jest.fn().mockResolvedValue(0),
@@ -43,7 +86,7 @@ function montar(
         credentials: opcoes.semChave ? null : { apiKey: 'chave', model: 'x' },
       }),
     } as never,
-    { get: jest.fn().mockResolvedValue({}), update: jest.fn() } as never,
+    inbox as never,
     {
       can: jest.fn((_role: string, chave: string) =>
         Promise.resolve(
@@ -56,7 +99,34 @@ function montar(
     { generateReply },
   );
 
-  return { service, generateReply };
+  return { service, generateReply, inbox, aiUpdate };
+}
+
+/** Faz o "modelo" chamar uma ferramenta e devolve o que ela respondeu. */
+async function usar(
+  nome: string,
+  args: object,
+  opcoes: Parameters<typeof montar>[0] & { papel?: 'OWNER' | 'AGENT' } = {},
+) {
+  let resultado: unknown;
+  const montado = montar({
+    ...opcoes,
+    provedor: async ({ executeTool }) => {
+      resultado = await executeTool(nome, args);
+      return { content: 'ok' };
+    },
+  });
+  await montado.service.ask(
+    [{ role: 'user', content: 'pedido' }],
+    opcoes.papel ?? 'OWNER',
+  );
+  return {
+    resultado: resultado as {
+      output: Record<string, Record<string, unknown>>;
+      error?: string;
+    },
+    ...montado,
+  };
 }
 
 const perguntar = (service: CopilotService) =>
@@ -182,7 +252,12 @@ describe('o assistente respeita as permissões de quem pergunta', () => {
       [{ tools: { name: string }[] }],
     ];
     const nomes = entrada.tools.map((tool) => tool.name);
-    expect(nomes).toEqual(['lerConfiguracoes']);
+    expect(nomes).toEqual([
+      'lerConfiguracoes',
+      'lerSituacao',
+      'lerEquipe',
+      'lerAtalhos',
+    ]);
   });
 
   it('e mesmo que o modelo tente, a execução é recusada', async () => {
@@ -198,5 +273,75 @@ describe('o assistente respeita as permissões de quem pergunta', () => {
     expect(resultado).toEqual({
       error: 'Seu perfil não tem permissão para esta ação.',
     });
+  });
+});
+
+describe('o assistente diz a situação da conta', () => {
+  it('mostra WhatsApp desconectado e respostas do mês acabadas', async () => {
+    const { resultado } = await usar('lerSituacao', {});
+
+    expect(resultado.output.whatsapp).toMatchObject({
+      conectado: false,
+      ultimoErro: 'sessão expirou',
+    });
+    expect(resultado.output.respostasDeIaNoMes).toMatchObject({
+      acabou: true,
+      restantes: 0,
+    });
+    expect(resultado.output.armazenamento).toMatchObject({ porcento: 95 });
+  });
+
+  it('atendente não vê espaço nem plano', async () => {
+    const { resultado } = await usar('lerSituacao', {}, { papel: 'AGENT' });
+
+    expect(resultado.output.armazenamento).toBeUndefined();
+    expect(resultado.output.plano).toBeUndefined();
+  });
+});
+
+describe('o assistente só grava o que a tela aceitaria', () => {
+  it('recusa valor fora da faixa, sem gravar nada', async () => {
+    const { resultado, inbox } = await usar('ajustarAtendimento', {
+      autoCloseHours: 48,
+    });
+
+    expect(resultado.error).toMatch(/inválido/);
+    expect(inbox.update).not.toHaveBeenCalled();
+  });
+
+  it('grava o que é válido', async () => {
+    const { resultado, inbox } = await usar('ajustarAtendimento', {
+      autoCloseIdle: true,
+      autoCloseHours: 12,
+    });
+
+    expect(resultado.output.ok).toBe(true);
+    expect(inbox.update).toHaveBeenCalledWith({
+      autoCloseIdle: true,
+      autoCloseHours: 12,
+    });
+  });
+
+  it('não liga a saudação automática com a IA ligada', async () => {
+    const { resultado, inbox } = await usar(
+      'ajustarAtendimento',
+      { greetingEnabled: true },
+      { iaAtiva: true },
+    );
+
+    expect(resultado.error).toMatch(/IA ligada/);
+    expect(inbox.update).not.toHaveBeenCalled();
+  });
+
+  it('ligar a IA desliga a saudação, como a tela faz', async () => {
+    const { resultado, inbox, aiUpdate } = await usar(
+      'ajustarIa',
+      { active: true },
+      { iaAtiva: false, saudacaoLigada: true },
+    );
+
+    expect(aiUpdate).toHaveBeenCalled();
+    expect(inbox.update).toHaveBeenCalledWith({ greetingEnabled: false });
+    expect(resultado.output.observacao).toMatch(/saudação/);
   });
 });

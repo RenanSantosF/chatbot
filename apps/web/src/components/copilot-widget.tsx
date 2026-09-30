@@ -25,9 +25,10 @@ interface Turn {
 }
 
 const SUGESTOES = [
+  "O que você consegue fazer?",
+  "Por que a IA não está respondendo?",
+  "Como está configurado o atendimento?",
   "Como está a fila hoje?",
-  "Desliga a confirmação de leitura",
-  "O que a IA está configurada pra fazer?",
 ];
 
 /**
@@ -143,7 +144,8 @@ export function CopilotWidget() {
         {turns.length === 0 ? (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">
-              Pergunte como algo funciona ou peça uma mudança — eu mexo na configuração por você.
+              Pergunte como está configurado, se algo não está funcionando, ou peça um ajuste
+              simples — eu confiro e, quando dá, mudo por você.
             </p>
             {SUGESTOES.map((sugestao) => (
               <button

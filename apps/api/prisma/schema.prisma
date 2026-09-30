@@ -1316,8 +1316,8 @@ model BillingAccount {
   aiUsagePeriodStart        DateTime?
   /// Respostas extras compradas avulsas pra este período, além do que o
   /// plano já inclui (ver BillingService.criarCheckoutExtra) — pra quem
-  /// bate no teto do mês não precisar esperar o mês virar. Some junto com
-  /// o resto do período quando o mês muda (ver AiUsageService).
+  /// bate no teto do mês não precisar esperar o mês virar. O que não foi
+  /// usado passa pro mês seguinte (ver extrasQueSobraram, em AiUsageService).
   aiExtraMessagesThisPeriod Int       @default(0)
 
   /// Quando a assinatura foi vista pela primeira vez fora de "active"
