@@ -47,6 +47,10 @@ describe('galeria da conversa', () => {
       conversationId: 'conversa-1',
       deletedAt: null,
       messageType: { in: ['IMAGE', 'VIDEO'] },
+      // Figurinha (WebP) não entra na grade.
+      NOT: {
+        metadata: { path: ['mimeType'], string_starts_with: 'image/webp' },
+      },
     });
   });
 

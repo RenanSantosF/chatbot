@@ -10,6 +10,7 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { EvolutionCanal } from './canal/evolution/evolution.canal';
 import { StorageService } from '../storage/storage.service';
 import { motivoDaMeta } from './meta-erro';
+import { impressaoDigital, sha256 } from './impressao-digital';
 
 const GRAPH_API_VERSION = 'v21.0';
 // Base sobrescrevível pra apontar num ambiente de teste da Meta ou num
@@ -134,15 +135,21 @@ export class WhatsappMediaService {
     const figurinhas: { mediaId: string }[] = [];
 
     for (const mensagem of candidatas) {
-      const metadata = (mensagem.metadata ?? {}) as { mimeType?: string };
+      const metadata = (mensagem.metadata ?? {}) as Record<string, unknown>;
       // Toda figurinha do WhatsApp é WebP — está no protocolo, e é o
       // mesmo acordo que o painel usa pra desenhá-las sem moldura.
-      if (!metadata.mimeType?.startsWith('image/webp')) continue;
+      const mime =
+        typeof metadata.mimeType === 'string' ? metadata.mimeType : '';
+      if (!mime.startsWith('image/webp')) continue;
 
       const mediaId = mensagem.mediaId;
-      if (!mediaId || vistas.has(mediaId)) continue;
+      if (!mediaId) continue;
+      // Pelo ARQUIVO, e não pela mensagem: reenviar uma figurinha cria
+      // outra mensagem com outro mediaId, e a lista a repetia a cada envio.
+      const arquivo = impressaoDigital(metadata, mediaId);
+      if (vistas.has(arquivo)) continue;
 
-      vistas.add(mediaId);
+      vistas.add(arquivo);
       figurinhas.push({ mediaId });
       if (figurinhas.length >= limite) break;
     }
@@ -186,6 +193,7 @@ export class WhatsappMediaService {
             ...metadata,
             storageKey: chave,
             storageBytes: buffer.length,
+            conteudoSha256: sha256(buffer),
           },
         },
       });
@@ -244,7 +252,24 @@ export class WhatsappMediaService {
 
       if (typeof metadata.storageKey === 'string') {
         const guardado = await this.storage.buscar(metadata.storageKey);
-        if (guardado) return guardado;
+        if (guardado) {
+          // Guardado antes de o hash existir: grava agora, de carona na
+          // leitura, pra a lista de figurinhas deixar de repeti-lo.
+          if (typeof metadata.conteudoSha256 !== 'string') {
+            void this.prisma.db.message
+              .update({
+                where: { id: dona.id },
+                data: {
+                  metadata: {
+                    ...metadata,
+                    conteudoSha256: sha256(guardado.buffer),
+                  },
+                },
+              })
+              .catch(() => undefined);
+          }
+          return guardado;
+        }
         this.logger.warn(
           `Chave ${metadata.storageKey} não achada no bucket; tentando a Meta.`,
         );

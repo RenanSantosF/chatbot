@@ -12,11 +12,17 @@ import { WhatsappMediaService } from './whatsapp-media.service';
  * calado: uma foto comum aparecendo entre as figurinhas, ou a mesma
  * figurinha repetida vinte vezes porque foi mandada vinte vezes.
  */
-function montar(mensagens: { mediaId: string | null; mimeType?: string }[]) {
+function montar(
+  mensagens: {
+    mediaId: string | null;
+    mimeType?: string;
+    extra?: Record<string, unknown>;
+  }[],
+) {
   const findMany = jest.fn().mockResolvedValue(
     mensagens.map((m) => ({
       mediaId: m.mediaId,
-      metadata: m.mimeType ? { mimeType: m.mimeType } : null,
+      metadata: m.mimeType ? { mimeType: m.mimeType, ...m.extra } : null,
     })),
   );
 
@@ -98,5 +104,58 @@ describe('as figurinhas que já passaram pela conta', () => {
         orderBy: { createdAt: 'desc' },
       }),
     );
+  });
+
+  it('reenviada é outra mensagem com o MESMO arquivo: aparece uma vez', async () => {
+    // Cada reenvio tem mediaId novo; era isso que multiplicava a lista.
+    const { service } = montar([
+      {
+        mediaId: 'envio-3',
+        mimeType: FIGURINHA,
+        extra: { conteudoSha256: 'abc' },
+      },
+      {
+        mediaId: 'envio-2',
+        mimeType: FIGURINHA,
+        extra: { conteudoSha256: 'abc' },
+      },
+      {
+        mediaId: 'original',
+        mimeType: FIGURINHA,
+        extra: { conteudoSha256: 'abc' },
+      },
+      {
+        mediaId: 'outra',
+        mimeType: FIGURINHA,
+        extra: { conteudoSha256: 'def' },
+      },
+    ]);
+
+    expect(await service.figurinhas()).toEqual([
+      { mediaId: 'envio-3' },
+      { mediaId: 'outra' },
+    ]);
+  });
+
+  it('o hash que o WhatsApp manda vale igual ao que gravamos', async () => {
+    const hash = Buffer.from('mesmo arquivo');
+    const { service } = montar([
+      {
+        mediaId: 'recebida',
+        mimeType: FIGURINHA,
+        extra: {
+          evolutionMedia: {
+            stickerMessage: { fileSha256: hash.toString('base64') },
+          },
+        },
+      },
+      {
+        mediaId: 'reenviada',
+        mimeType: FIGURINHA,
+        extra: { conteudoSha256: hash.toString('hex') },
+      },
+    ]);
+
+    expect(await service.figurinhas()).toEqual([{ mediaId: 'recebida' }]);
   });
 });

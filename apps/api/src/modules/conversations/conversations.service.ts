@@ -17,6 +17,7 @@ import type {
   Prisma,
   UserRole,
 } from '../../../generated/prisma/client';
+import { sha256 } from '../whatsapp/impressao-digital';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AiEngineService } from '../ai/ai-engine.service';
 import { TranscricaoService } from '../ai/transcricao.service';
@@ -869,7 +870,15 @@ export class ConversationsService {
 
     const base = { conversationId, deletedAt: null };
     const recortes: Record<string, Prisma.MessageWhereInput> = {
-      MIDIA: { ...base, messageType: { in: ['IMAGE', 'VIDEO'] } },
+      // Figurinha não é mídia de galeria: ela tem aba própria no seletor, e
+      // na grade enchia a tela — repetida a cada vez que era mandada.
+      MIDIA: {
+        ...base,
+        messageType: { in: ['IMAGE', 'VIDEO'] },
+        NOT: {
+          metadata: { path: ['mimeType'], string_starts_with: 'image/webp' },
+        },
+      },
       DOCUMENTO: { ...base, messageType: 'DOCUMENT' },
       AUDIO: { ...base, messageType: 'AUDIO' },
       LINK: {
@@ -2403,6 +2412,10 @@ export class ConversationsService {
           mimeType: toUpload.mimetype,
           fileName: file.originalname,
           size: file.size,
+          // O que identifica o arquivo (ver impressaoDigital): a figurinha
+          // reenviada pelo seletor tem o mesmo hash da original, e a lista
+          // de figurinhas não a repete.
+          conteudoSha256: sha256(file.buffer),
           // O porquê fica junto da mensagem, não só no log do servidor:
           // é o que transforma o triângulo vermelho em algo acionável pra
           // quem está atendendo e não tem acesso ao Railway.
