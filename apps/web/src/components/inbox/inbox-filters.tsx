@@ -217,13 +217,25 @@ export function InboxFilterBar({
    * situação exata ganhar do grupo) e os botões diziam outra. Ninguém
    * escolhe isso de propósito; dá pra chegar lá clicando duas vezes.
    */
-  const escolherAba = (aba: (typeof ABAS)[number]) => onChange(filtrosDaAba(value, aba));
+  const buscando = Boolean(value.search.trim());
+  // Clicar numa aba no meio da busca é pedir aquela aba: a busca sai, senão
+  // o clique não mudaria nada (a busca ignora a situação — ver buildQuery).
+  const escolherAba = (aba: (typeof ABAS)[number]) =>
+    onChange({ ...filtrosDaAba(value, aba), ...(buscando ? { search: "" } : {}) });
 
   const escolherStatus = (status: InboxFilters["status"]) =>
     onChange({ ...value, status, grupo: "ALL" });
 
-  /** Qual aba está acesa. Os grupos ganham do grupo de situação. */
-  const abaAtiva = value.grupos ? "GRUPOS" : value.grupo;
+  /**
+   * Qual aba está acesa. Os grupos ganham do grupo de situação.
+   *
+   * Buscando, nenhuma das abas de situação fica acesa: a busca procura em
+   * todas (ver buildQuery), e "Pendentes" aceso sobre uma lista com
+   * conversa resolvida dizia uma coisa e mostrava outra. A aba escolhida
+   * continua guardada no filtro — apagou a busca, ela volta a acender.
+   * "Grupos" continua acesa, porque é outra caixa, e a busca é dentro dela.
+   */
+  const abaAtiva = value.grupos ? "GRUPOS" : buscando ? null : value.grupo;
 
   const contagemDaAba: Record<string, number> = {
     PENDING: counts.pendentes,

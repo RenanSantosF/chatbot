@@ -121,6 +121,19 @@ describe('encerramento por inatividade', () => {
     expect(encerradas).toEqual(['c1']);
   });
 
+  it('grupo fica de fora — não é atendimento pra encerrar', async () => {
+    const { service, client } = servicoCom([
+      { id: 'c1', lastMessageAt: horasAtras(21) },
+    ]);
+
+    await service.varrer();
+
+    const [[{ where }]] = client.conversation.findMany.mock.calls as [
+      [{ where: Record<string, unknown> }],
+    ];
+    expect(where.customer).toEqual({ isGroup: false });
+  });
+
   it('avisa quem ainda está dentro da janela de 24h', async () => {
     const { service, mensagens } = servicoCom([
       { id: 'c1', lastMessageAt: horasAtras(21) },

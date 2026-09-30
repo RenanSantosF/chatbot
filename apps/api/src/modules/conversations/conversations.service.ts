@@ -3155,6 +3155,14 @@ export class ConversationsService {
    * amanhã não sabe como chegou ali.
    */
   private async registrarNota(conversationId: string, texto: string) {
+    // Em grupo não há atendimento pra narrar: "reaberto", "assumiu",
+    // "encerrado" no meio da conversa de um grupo só atrapalha a leitura.
+    const conversa = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { customer: { select: { isGroup: true } } },
+    });
+    if (conversa?.customer?.isGroup) return;
+
     const nota = await this.prisma.db.message.create({
       data: {
         tenantId: this.prisma.tenantId,
@@ -3810,6 +3818,10 @@ export class ConversationsService {
         ...(iaAssume ? { aiMode: 'AI_ACTIVE' as const } : {}),
       },
     });
+
+    // Grupo não ganha a tarja: ele não tem atendimento pra reabrir (ver
+    // `registrarNota`).
+    if (grupo) return reaberta;
 
     await this.prisma.db.message.create({
       data: {

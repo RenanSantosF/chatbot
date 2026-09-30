@@ -94,6 +94,9 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
           tenantId: config.tenantId,
           status: { in: ['OPEN', 'WAITING_CUSTOMER', 'WAITING_AGENT'] },
           lastMessageAt: { lt: limite },
+          // Grupo não é atendimento: não tem o que encerrar, e a tarja de
+          // "encerrado automaticamente" no meio dele não faz sentido.
+          customer: { isGroup: false },
         },
         select: {
           id: true,
