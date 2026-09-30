@@ -33,6 +33,15 @@ const DA_PLATAFORMA = new CacheCurto<boolean>(60_000);
  */
 const MINIMO_PRO_ADIAMENTO_NO_CHECKOUT_MS = 49 * 60 * 60 * 1000;
 
+/** O Stripe respondeu que o cliente informado não existe (nesta conta/modo). */
+export function clienteSumiu(erro: unknown): boolean {
+  const e = erro as { code?: string; param?: string; message?: string } | null;
+  return (
+    (e?.code === 'resource_missing' && e.param === 'customer') ||
+    /No such customer/i.test(e?.message ?? '')
+  );
+}
+
 /**
  * Quantas respostas o pacote avulso acrescenta, e por quanto.
  *
@@ -204,12 +213,13 @@ export class BillingService {
     // E-mail só é enviado quando ainda NÃO existe cliente no Stripe: uma
     // vez criado, é o próprio Stripe quem sabe o e-mail de cobrança, e o
     // dono pode ter trocado o e-mail de login sem trocar o de pagamento.
-    const dono = conta.stripeCustomerId
-      ? null
-      : await this.global.client.user.findFirst({
+    const emailDoDono = async () =>
+      (
+        await this.global.client.user.findFirst({
           where: { tenantId, role: 'OWNER' },
           select: { email: true },
-        });
+        })
+      )?.email ?? null;
 
     // Quem assina DURANTE uma liberação manual (teste, folga) não paga em
     // dobro: a primeira cobrança fica pro dia em que a liberação acaba.
@@ -220,23 +230,42 @@ export class BillingService {
         ? Math.floor(conta.liberadoAte.getTime() / 1000)
         : null;
 
-    const sessao = await this.stripe().checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [{ price: precoId, quantity: 1 }],
-      ...(primeiraCobranca
-        ? { subscription_data: { trial_end: primeiraCobranca } }
-        : {}),
-      // É como o webhook liga o evento de volta a ESTA empresa (ver
-      // processarEvento) — o Stripe não sabe nada sobre tenant.
-      client_reference_id: tenantId,
-      ...(conta.stripeCustomerId
-        ? { customer: conta.stripeCustomerId }
-        : dono?.email
-          ? { customer_email: dono.email }
+    const abrir = async (clienteId: string | null) => {
+      const email = clienteId ? null : await emailDoDono();
+      return this.stripe().checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [{ price: precoId, quantity: 1 }],
+        ...(primeiraCobranca
+          ? { subscription_data: { trial_end: primeiraCobranca } }
           : {}),
-      success_url: `${base}/dashboard/settings/account?assinatura=sucesso`,
-      cancel_url: `${base}/dashboard/settings/account?assinatura=cancelada`,
-    });
+        // O campo "Adicionar código promocional" do Checkout: cupons
+        // criados no Stripe (teste de ponta a ponta sem cobrança real,
+        // campanhas de desconto) valem aqui sem mudar código.
+        allow_promotion_codes: true,
+        // É como o webhook liga o evento de volta a ESTA empresa (ver
+        // processarEvento) — o Stripe não sabe nada sobre tenant.
+        client_reference_id: tenantId,
+        ...(clienteId
+          ? { customer: clienteId }
+          : email
+            ? { customer_email: email }
+            : {}),
+        success_url: `${base}/dashboard/settings/account?assinatura=sucesso`,
+        cancel_url: `${base}/dashboard/settings/account?assinatura=cancelada`,
+      });
+    };
+
+    let sessao: Stripe.Checkout.Session;
+    try {
+      sessao = await abrir(conta.stripeCustomerId);
+    } catch (erro) {
+      // O cliente guardado não existe mais neste Stripe (veio do modo
+      // teste, ou foi apagado no painel dele): esquece e abre como cliente
+      // novo, em vez de deixar a empresa sem conseguir pagar.
+      if (!conta.stripeCustomerId || !clienteSumiu(erro)) throw erro;
+      await this.esquecerClienteDoStripe(conta.id, conta.stripeCustomerId);
+      sessao = await abrir(null);
+    }
 
     if (!sessao.url) {
       throw new BadRequestException(
@@ -273,14 +302,24 @@ export class BillingService {
     }
 
     const base = this.urlBase();
-    const sessao = await this.stripe().checkout.sessions.create({
-      mode: 'payment',
-      line_items: [{ price: precoId, quantity: 1 }],
-      client_reference_id: this.prisma.tenantId,
-      customer: conta.stripeCustomerId,
-      success_url: `${base}/dashboard/settings/ai?pacoteExtra=sucesso`,
-      cancel_url: `${base}/dashboard/settings/ai?pacoteExtra=cancelado`,
-    });
+    let sessao: Stripe.Checkout.Session;
+    try {
+      sessao = await this.stripe().checkout.sessions.create({
+        mode: 'payment',
+        line_items: [{ price: precoId, quantity: 1 }],
+        allow_promotion_codes: true,
+        client_reference_id: this.prisma.tenantId,
+        customer: conta.stripeCustomerId,
+        success_url: `${base}/dashboard/settings/ai?pacoteExtra=sucesso`,
+        cancel_url: `${base}/dashboard/settings/ai?pacoteExtra=cancelado`,
+      });
+    } catch (erro) {
+      if (!clienteSumiu(erro)) throw erro;
+      await this.esquecerClienteDoStripe(conta.id, conta.stripeCustomerId);
+      throw new BadRequestException(
+        'Não encontramos a sua assinatura no Stripe. Assine de novo em Conta e depois compre o pacote.',
+      );
+    }
 
     if (!sessao.url) {
       throw new BadRequestException(
@@ -306,11 +345,43 @@ export class BillingService {
       );
     }
 
-    const sessao = await this.stripe().billingPortal.sessions.create({
-      customer: conta.stripeCustomerId,
-      return_url: `${this.urlBase()}/dashboard/settings/account`,
+    try {
+      const sessao = await this.stripe().billingPortal.sessions.create({
+        customer: conta.stripeCustomerId,
+        return_url: `${this.urlBase()}/dashboard/settings/account`,
+      });
+      return { url: sessao.url };
+    } catch (erro) {
+      if (!clienteSumiu(erro)) throw erro;
+      await this.esquecerClienteDoStripe(conta.id, conta.stripeCustomerId);
+      throw new BadRequestException(
+        'Não encontramos a sua assinatura no Stripe. Recarregue a página e assine de novo.',
+      );
+    }
+  }
+
+  /**
+   * Apaga da conta o cliente (e a assinatura) que o Stripe não conhece.
+   *
+   * Acontece quando a chave muda de modo teste pra produção: os `cus_` e
+   * `sub_` guardados eram do outro mundo. A assinatura vai junto porque
+   * um cliente inexistente não tem assinatura real — mantê-la faria a
+   * empresa parecer pagante pra sempre, sem nunca ser cobrada. Quem
+   * estiver liberado à mão ou for da plataforma continua liberado (ver
+   * decidirAcesso).
+   */
+  private async esquecerClienteDoStripe(contaId: string, clienteId: string) {
+    this.logger.warn(
+      `Cliente ${clienteId} não existe neste Stripe (tenant ${this.prisma.tenantId}) — esquecido; a empresa assina como cliente novo.`,
+    );
+    await this.global.client.billingAccount.update({
+      where: { id: contaId },
+      data: {
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        planLabel: 'Grátis',
+      },
     });
-    return { url: sessao.url };
   }
 
   /** Confere que o webhook veio mesmo do Stripe antes de confiar em uma vírgula do corpo. */

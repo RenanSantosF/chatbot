@@ -299,7 +299,9 @@ describe('BillingService.status', () => {
         planLabel: 'Grátis',
         assinaturaVencidaEm: null,
       });
-      Object.assign(global.client.user, { count: jest.fn().mockResolvedValue(1) });
+      Object.assign(global.client.user, {
+        count: jest.fn().mockResolvedValue(1),
+      });
 
       const resultado = await service.status();
 
@@ -536,5 +538,80 @@ describe('BillingService.verificarAssinatura', () => {
     expect(() =>
       service.verificarAssinatura(Buffer.from('{}'), 'qualquer'),
     ).toThrow(BadRequestException);
+  });
+});
+
+describe('BillingService: cupom e cliente que o Stripe não conhece', () => {
+  const semCliente = Object.assign(new Error('No such customer: cus_teste'), {
+    code: 'resource_missing',
+    param: 'customer',
+  });
+
+  beforeEach(() => {
+    process.env.STRIPE_SECRET_KEY = 'sk_live_123';
+    process.env.STRIPE_PRICE_ID = 'price_123';
+    process.env.STRIPE_TOPUP_PRICE_ID = 'price_topup_123';
+    process.env.WEB_APP_URL = 'https://app.exemplo.com';
+    sessionsCreate.mockReset();
+    portalCreate.mockReset();
+  });
+
+  it('o checkout aceita código promocional (assinatura e pacote)', async () => {
+    sessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/x' });
+    const { service } = montar({ id: 'billing-1', stripeCustomerId: 'cus_1' });
+
+    await service.criarCheckout();
+    await service.criarCheckoutExtra();
+
+    expect(sessionsCreate.mock.calls[0][0].allow_promotion_codes).toBe(true);
+    expect(sessionsCreate.mock.calls[1][0].allow_promotion_codes).toBe(true);
+  });
+
+  it('cliente do modo teste: esquece e assina como cliente novo, sem erro', async () => {
+    sessionsCreate
+      .mockRejectedValueOnce(semCliente)
+      .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/novo' });
+    const { service, global } = montar({
+      id: 'billing-1',
+      stripeCustomerId: 'cus_teste',
+      stripeSubscriptionId: 'sub_teste',
+    });
+
+    const resultado = await service.criarCheckout();
+
+    expect(resultado.url).toBe('https://checkout.stripe.com/novo');
+    expect(global.client.billingAccount.update).toHaveBeenCalledWith({
+      where: { id: 'billing-1' },
+      data: {
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        planLabel: 'Grátis',
+      },
+    });
+    const segunda = sessionsCreate.mock.calls[1][0];
+    expect(segunda.customer).toBeUndefined();
+    expect(segunda.customer_email).toBe('dona@empresa.com');
+  });
+
+  it('portal com cliente do modo teste: esquece e explica, em vez de erro cru', async () => {
+    portalCreate.mockRejectedValueOnce(semCliente);
+    const { service, global } = montar({
+      id: 'billing-1',
+      stripeCustomerId: 'cus_teste',
+    });
+
+    await expect(service.criarPortal()).rejects.toThrow(/assine de novo/);
+    expect(global.client.billingAccount.update).toHaveBeenCalled();
+  });
+
+  it('outros erros do Stripe continuam subindo, sem apagar nada', async () => {
+    sessionsCreate.mockRejectedValueOnce(new Error('rede caiu'));
+    const { service, global } = montar({
+      id: 'billing-1',
+      stripeCustomerId: 'cus_1',
+    });
+
+    await expect(service.criarCheckout()).rejects.toThrow('rede caiu');
+    expect(global.client.billingAccount.update).not.toHaveBeenCalled();
   });
 });
