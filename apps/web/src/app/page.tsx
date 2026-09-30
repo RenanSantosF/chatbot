@@ -37,7 +37,7 @@ const RECURSOS = [
   { icone: Users, titulo: "Atendentes ilimitados no mesmo número" },
   { icone: LayoutGrid, titulo: "Filas por setor, sem confusão" },
   { icone: Zap, titulo: "Respostas rápidas e padronizadas" },
-  { icone: Archive, titulo: "Histórico e anexos que não somem" },
+  { icone: Archive, titulo: "Documentos e conversas guardados, mesmo depois que somem do WhatsApp" },
 ];
 
 /**
@@ -87,7 +87,8 @@ const PRECO_MENSAL = "147";
  */
 const PLANO_INCLUI = [
   "Atendentes ilimitados, sem custo por usuário",
-  "3.000 respostas de IA por mês",
+  "5.000 respostas de IA por mês",
+  "20 GB para guardar conversas, fotos e documentos",
   "Setores e filas à vontade",
   "Conexão por QR code, no seu número",
   "Etiquetas, filas e respostas rápidas",
@@ -109,7 +110,12 @@ const PERGUNTAS = [
   {
     pergunta: "Quanto custa?",
     resposta:
-      `R$ ${PRECO_MENSAL} por mês, com 3.000 respostas de IA inclusas, sem taxa de instalação e sem fidelidade. Precisou de mais no meio do mês? Compra um pacote extra na hora.`,
+      `R$ ${PRECO_MENSAL} por mês, com 5.000 respostas de IA inclusas, sem taxa de instalação e sem fidelidade. Precisou de mais no meio do mês? Compra um pacote extra na hora.`,
+  },
+  {
+    pergunta: "Os arquivos somem depois de um tempo, como no WhatsApp?",
+    resposta:
+      "Não. Fotos, áudios, vídeos e documentos que chegam ficam guardados no painel, mesmo depois que o WhatsApp apaga dos servidores dele. O plano inclui 20 GB — espaço pra anos de atendimento — e você escolhe se quer guardar pra sempre ou por um prazo.",
   },
   {
     pergunta: "Tem limite de atendentes?",

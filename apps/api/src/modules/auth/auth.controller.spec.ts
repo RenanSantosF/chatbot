@@ -22,6 +22,8 @@ function montar(tourVistoEm: Date | null) {
         update: jest.fn().mockResolvedValue({}),
         updateMany,
       },
+      billingAccount: { findFirst: jest.fn().mockResolvedValue(null) },
+      retentionSettings: { findFirst: jest.fn().mockResolvedValue(null) },
     },
   };
   const controller = new AuthController(

@@ -179,7 +179,15 @@ export class WhatsappMediaService {
 
       await this.prisma.db.message.update({
         where: { id: mensagem.id },
-        data: { metadata: { ...metadata, storageKey: chave } },
+        // O tamanho vai junto: é o que a medição do armazenamento soma
+        // (ver RetentionSweepService.medir), sem precisar listar o bucket.
+        data: {
+          metadata: {
+            ...metadata,
+            storageKey: chave,
+            storageBytes: buffer.length,
+          },
+        },
       });
     } catch (erro) {
       this.logger.warn(

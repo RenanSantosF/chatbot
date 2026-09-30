@@ -1,12 +1,14 @@
 "use client";
 
-import { HardDrive, Trash2, TriangleAlert } from "lucide-react";
+import { FileText, HardDrive, Paperclip, Trash2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SelectField } from "@/components/ui/select-field";
+import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
+import { AVISAR_A_PARTIR_DE, tamanhoLegivel } from "@/lib/armazenamento";
 import { cn } from "@/lib/utils";
 
 interface RetentionData {
@@ -19,6 +21,8 @@ interface RetentionData {
   billing: { planLabel: string; quotaBytes: number };
   usage: {
     usedBytes: number;
+    textBytes?: number;
+    fileBytes?: number;
     quotaBytes: number;
     messages: number;
     conversations: number;
@@ -26,12 +30,7 @@ interface RetentionData {
   };
 }
 
-function humanBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
+const humanBytes = tamanhoLegivel;
 
 const PRAZOS = [
   { value: "", label: "Guardar para sempre" },
@@ -93,7 +92,9 @@ export default function StoragePage() {
 
   const { usage, settings, billing } = data;
   const percent = Math.min(100, (usage.usedBytes / usage.quotaBytes) * 100);
-  const apertado = percent > 80;
+  const apertado = percent >= AVISAR_A_PARTIR_DE * 100;
+  const textBytes = usage.textBytes ?? usage.usedBytes;
+  const fileBytes = usage.fileBytes ?? 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -106,19 +107,38 @@ export default function StoragePage() {
           Plano {billing.planLabel} — {humanBytes(usage.quotaBytes)} contratados.
         </p>
 
-        <div className="h-2 overflow-hidden rounded-full bg-muted">
+        {/* Duas cores na mesma barra: arquivos (o que pesa de verdade) e
+            texto — pra quem olha saber de onde vem o espaço. */}
+        <div className="flex h-2 overflow-hidden rounded-full bg-muted">
           <div
             className={cn(
-              "h-full rounded-full transition-[width] duration-500",
-              apertado ? "bg-destructive" : "bg-primary",
+              "h-full transition-[width] duration-500",
+              apertado ? "bg-amber-500" : "bg-primary",
             )}
-            style={{ width: `${Math.max(percent, 0.5)}%` }}
+            style={{ width: `${Math.max((fileBytes / usage.quotaBytes) * 100, 0)}%` }}
+          />
+          <div
+            className={cn(
+              "h-full transition-[width] duration-500",
+              apertado ? "bg-amber-500/60" : "bg-primary/50",
+            )}
+            style={{ width: `${Math.max((textBytes / usage.quotaBytes) * 100, 0.5)}%` }}
           />
         </div>
         <p className="mt-2 text-sm">
           <strong>{humanBytes(usage.usedBytes)}</strong> de {humanBytes(usage.quotaBytes)} (
-          {percent.toFixed(1)}%)
+          {percent.toFixed(1).replace(".", ",")}%)
         </p>
+        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <Paperclip className="size-3.5" />
+            Arquivos (fotos, áudios, documentos): {humanBytes(fileBytes)}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FileText className="size-3.5" />
+            Texto das conversas: {humanBytes(textBytes)}
+          </span>
+        </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           {[
@@ -135,13 +155,10 @@ export default function StoragePage() {
           ))}
         </div>
 
-        {/* Sinceridade sobre a conta: mensagem é texto e texto ocupa pouco.
-            Sem isso o dono compraria espaço achando que resolve o volume de
-            fotos, que é onde o peso está de verdade. */}
         <p className="mt-4 rounded-md bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground">
-          A conta acima é do texto das conversas, que ocupa pouco: mesmo uma operação movimentada
-          leva anos pra encostar em 1 GB. Anexos hoje não contam aqui porque ficam nos servidores da
-          Meta, que os guarda por 30 dias — depois disso a foto some do painel.
+          Tudo o que chega fica guardado aqui, inclusive os arquivos — mesmo depois que somem do
+          WhatsApp. O texto ocupa pouco; quem pesa são fotos, áudios e vídeos. Arquivos recebidos
+          antes desta medição entram na conta aos poucos, nas próximas horas.
         </p>
       </section>
 
@@ -163,13 +180,25 @@ export default function StoragePage() {
             options={PRAZOS}
           />
 
-          {/* Havia aqui um interruptor "Liberar espaço sozinho quando
-              encher". Ele gravava no banco e NADA no sistema lia esse
-              campo — nem a cota era aplicada em lugar nenhum, então
-              "encher" não acontecia. Um interruptor que não faz nada é
-              pior que a ausência dele: quem o liga passa a contar com uma
-              proteção que não existe. O campo continua no banco, esperando
-              a implementação de verdade. */}
+          {/* De volta, agora de verdade: a varredura (a cada 6 h, e na
+              hora em que é ligado) apaga das mais antigas pras mais novas
+              até sobrar 90% — ver RetentionSweepService.liberarEspaco. */}
+          <label className="flex items-start gap-3 rounded-lg border p-3">
+            <Switch
+              checked={settings.autoPurgeOnFull}
+              onCheckedChange={(ligado) => void patch({ autoPurgeOnFull: ligado })}
+              disabled={saving}
+              className="mt-0.5"
+            />
+            <span className="flex flex-col gap-0.5 text-sm">
+              <span className="font-medium">Liberar espaço sozinho quando encher</span>
+              <span className="text-xs text-muted-foreground">
+                Ao chegar a {humanBytes(usage.quotaBytes)}, as mensagens mais antigas (e os arquivos
+                delas) são apagadas, das mais velhas pras mais novas, até sobrar 10% livre. O painel
+                avisa a partir de 90%.
+              </span>
+            </span>
+          </label>
 
           {settings.keepMessagesDays ? (
             <div className="flex flex-wrap items-center gap-3">

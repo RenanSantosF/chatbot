@@ -2,6 +2,7 @@ import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -137,6 +138,19 @@ export class StorageService {
       buffer: Buffer.from(await saida.Body.transformToByteArray()),
       mimeType: saida.ContentType ?? 'application/octet-stream',
     };
+  }
+
+  /** Tamanho em bytes de um arquivo já guardado (null se não existe). */
+  async tamanho(chave: string): Promise<number | null> {
+    if (!this.cliente || !this.bucket) return null;
+    try {
+      const saida = await this.cliente.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: chave }),
+      );
+      return saida.ContentLength ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async apagar(chave: string): Promise<void> {

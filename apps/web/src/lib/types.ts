@@ -1,3 +1,5 @@
+import type { EstadoDoArmazenamento } from "@/lib/armazenamento";
+
 export type UserRole = "OWNER" | "ADMIN" | "AGENT";
 
 export interface SessionUser {
@@ -78,6 +80,8 @@ export interface MeResponse {
   cobranca: EstadoDaCobranca;
   /** Dono da plataforma: vê o item "Plataforma" no menu. */
   plataforma?: boolean;
+  /** Último espaço medido (texto + arquivos), pro aviso de "quase cheio". */
+  armazenamento?: EstadoDoArmazenamento | null;
 }
 
 export interface TeamMember {

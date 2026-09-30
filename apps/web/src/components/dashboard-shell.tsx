@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ChartNoAxesColumn,
   Gauge,
+  HardDrive,
   MessageCircleMore,
   LogOut,
   Monitor,
@@ -50,6 +51,7 @@ import { conversationCache } from "@/lib/conversation-cache";
 import { inboxListCache } from "@/lib/inbox-list-cache";
 import { ApiError } from "@/lib/api-error";
 import { avisoDeFimDaLiberacao } from "@/lib/liberacao";
+import { avisoDeArmazenamento, type EstadoDoArmazenamento } from "@/lib/armazenamento";
 import { iniciarTour } from "@/lib/tour";
 import { TourGuiado } from "@/components/tour/tour-guiado";
 import { cn } from "@/lib/utils";
@@ -281,6 +283,46 @@ function CanalCaido({ role }: { role: UserRole }) {
           Reconectar
         </Link>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * O espaço da empresa passou de 90% — ou encheu.
+ *
+ * Só pra quem decide (dono e admin): o atendente não tem o que fazer com
+ * isso. Discreto enquanto há folga, âmbar quando enche. Nunca bloqueia —
+ * mensagem continua chegando; o aviso é pra a limpeza não pegar ninguém
+ * de surpresa (ver avisoDeArmazenamento).
+ */
+function ArmazenamentoApertado({
+  estado,
+  role,
+}: {
+  estado: EstadoDoArmazenamento | null | undefined;
+  role: UserRole;
+}) {
+  const pathname = usePathname();
+  const aviso = avisoDeArmazenamento(estado);
+  if (!aviso || (role !== "OWNER" && role !== "ADMIN")) return null;
+  if (pathname.startsWith("/dashboard/settings/storage")) return null;
+
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b px-4 py-2 text-center text-xs",
+        aviso.cheio
+          ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+          : "border-border bg-muted/50 text-foreground",
+      )}
+    >
+      <HardDrive className="size-3.5 shrink-0" />
+      <span className="font-medium">{aviso.titulo}.</span>
+      <span className="opacity-80">{aviso.detalhe}</span>
+      <Link href="/dashboard/settings/storage" className="font-medium underline underline-offset-2">
+        Ver armazenamento
+      </Link>
     </div>
   );
 }
@@ -699,12 +741,14 @@ function Shell({
   tenant,
   cobranca,
   plataforma,
+  armazenamento,
   children,
 }: {
   user: SessionUser;
   tenant: SessionTenant;
   cobranca: EstadoDaCobranca;
   plataforma: boolean;
+  armazenamento?: EstadoDoArmazenamento | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -814,6 +858,7 @@ function Shell({
         <CobrancaVencida cobranca={cobranca} role={user.role} />
         <LiberacaoAcabando cobranca={cobranca} role={user.role} />
         <CanalCaido role={user.role} />
+        <ArmazenamentoApertado estado={armazenamento} role={user.role} />
         {user.mustChangePassword && pathname !== "/dashboard/profile" ? (
           <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
             <span className="text-amber-800 dark:text-amber-300">
@@ -870,6 +915,7 @@ export function DashboardShell(props: {
   canal: EstadoDoCanalSessao;
   cobranca: EstadoDaCobranca;
   plataforma: boolean;
+  armazenamento?: EstadoDoArmazenamento | null;
   children: React.ReactNode;
 }) {
   return (

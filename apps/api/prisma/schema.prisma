@@ -1282,11 +1282,12 @@ model BillingAccount {
   tenantId String @unique
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  /// Bytes contratados. O padrão cobre bem uma operação pequena: mensagem
-  /// é texto, e texto ocupa pouco — 1 GB dá na casa de milhões de linhas.
-  quotaBytes BigInt @default(1073741824)
+  /// Bytes contratados: 20 GB. Conta o texto das mensagens E os arquivos
+  /// guardados (fotos, áudios, documentos) — ver RetentionSweepService.medir.
+  quotaBytes BigInt @default(21474836480)
 
-  /// Medido pelo tamanho real das linhas no Postgres, não estimado.
+  /// Texto (tamanho real das linhas no Postgres) + arquivos (tamanho gravado
+  /// ao guardar cada um no bucket). Atualizado pela varredura e pela tela.
   usedBytes  BigInt    @default(0)
   measuredAt DateTime?
 
@@ -1301,7 +1302,7 @@ model BillingAccount {
   /// calcula esse número a partir do preço real do modelo). Um valor por
   /// conta, e não uma constante fixa no código, porque planos diferentes
   /// (quando o Stripe entrar) vão incluir quantidades diferentes.
-  aiMonthlyMessageLimit     Int       @default(3000)
+  aiMonthlyMessageLimit     Int       @default(5000)
   /// Respostas da IA já contadas no período corrente.
   aiRepliesUsed             Int       @default(0)
   /// Somados só pra visibilidade/depuração de custo — a trava usa

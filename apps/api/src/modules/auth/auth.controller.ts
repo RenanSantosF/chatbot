@@ -149,20 +149,31 @@ export class AuthController {
   @BillingExempt()
   @Get('me')
   async me(@CurrentUser() user: RequestUser) {
-    const [tenant, account, canal, cobranca] = await Promise.all([
-      this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } }),
-      this.prisma.client.user.findUnique({
-        where: { id: user.userId },
-        select: { name: true, mustChangePassword: true, tourVistoEm: true },
-      }),
-      // O estado do WhatsApp vem JUNTO com a sessão, e não só por evento
-      // de tempo real. Sem isto, quem abria o painel com a sessão já caída
-      // não via aviso nenhum — o evento tinha passado antes de a página
-      // existir, e a faixa só aparecia por acaso, se a sessão oscilasse
-      // com a aba aberta.
-      this.estadoDoCanal.doTenant(user.tenantId),
-      this.billing.status(),
-    ]);
+    const [tenant, account, canal, cobranca, espaco, limpeza] =
+      await Promise.all([
+        this.prisma.client.tenant.findUnique({ where: { id: user.tenantId } }),
+        this.prisma.client.user.findUnique({
+          where: { id: user.userId },
+          select: { name: true, mustChangePassword: true, tourVistoEm: true },
+        }),
+        // O estado do WhatsApp vem JUNTO com a sessão, e não só por evento
+        // de tempo real. Sem isto, quem abria o painel com a sessão já caída
+        // não via aviso nenhum — o evento tinha passado antes de a página
+        // existir, e a faixa só aparecia por acaso, se a sessão oscilasse
+        // com a aba aberta.
+        this.estadoDoCanal.doTenant(user.tenantId),
+        this.billing.status(),
+        // O último número medido (a varredura e a tela de armazenamento
+        // mantêm em dia), não uma medição nova a cada tela aberta.
+        this.prisma.client.billingAccount.findFirst({
+          where: { tenantId: user.tenantId },
+          select: { usedBytes: true, quotaBytes: true },
+        }),
+        this.prisma.client.retentionSettings.findFirst({
+          where: { tenantId: user.tenantId },
+          select: { autoPurgeOnFull: true },
+        }),
+      ]);
     if (!tenant || !account) {
       throw new UnauthorizedException();
     }
@@ -184,6 +195,14 @@ export class AuthController {
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       canal,
       cobranca,
+      // Pro aviso de "armazenamento quase cheio" do painel.
+      armazenamento: espaco
+        ? {
+            usadoBytes: Number(espaco.usedBytes),
+            cotaBytes: Number(espaco.quotaBytes),
+            limpezaAutomatica: limpeza?.autoPurgeOnFull ?? false,
+          }
+        : null,
       // Mostra o painel da plataforma no menu. A proteção de verdade é o
       // PlataformaGuard na API; isto só decide se o item aparece.
       plataforma: ehDaPlataforma(user.email),

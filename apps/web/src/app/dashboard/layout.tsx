@@ -41,6 +41,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       canal={session.canal}
       cobranca={session.cobranca}
       plataforma={session.plataforma ?? false}
+      armazenamento={session.armazenamento ?? null}
     >
       {children}
     </DashboardShell>
