@@ -181,6 +181,9 @@ const LinhaDaConversa = memo(function LinhaDaConversa({
               "shrink-0 text-[12px] tabular-nums",
               unread > 0 ? "font-medium text-primary" : "text-muted-foreground",
             )}
+            // A hora é do relógio de quem olha: o servidor desenha no fuso
+            // dele. Ver instrumentation.ts.
+            suppressHydrationWarning
           >
             {timeLabel(conversation.lastMessageAt)}
           </span>

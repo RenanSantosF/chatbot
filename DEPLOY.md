@@ -57,6 +57,7 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | Variável | Valor |
    |---|---|
    | `DATABASE_URL` | a connection string do Supabase (passo 1) |
+   | `DATABASE_POOL_MAX` | opcional — quantas conexões a API segura no banco (padrão 5, ou o `connection_limit` da URL). Somado ao `connection_limit` da Evolution, tem que ficar abaixo dos 15 clientes do pooler gratuito do Supabase |
    | `JWT_SECRET` | gere com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `JWT_EXPIRES_IN` | `7d` |
    | `PORT` | `3001` |

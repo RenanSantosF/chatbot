@@ -86,7 +86,10 @@ function DaySeparator({ label }: { label: string }) {
     // primeira mensagem do dia. Separador que tapa conteúdo não separa
     // nada — melhor ocupar a própria linha.
     <div className="flex justify-center py-2">
-      <span className="rounded-full bg-bubble-in px-3 py-1 text-xs font-medium text-muted-foreground capitalize shadow-xs">
+      <span
+        className="rounded-full bg-bubble-in px-3 py-1 text-xs font-medium text-muted-foreground capitalize shadow-xs"
+        suppressHydrationWarning
+      >
         {label}
       </span>
     </div>

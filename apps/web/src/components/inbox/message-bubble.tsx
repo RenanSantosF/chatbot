@@ -308,7 +308,7 @@ export const MessageBubble = memo(function MessageBubble({
       >
         <Ban className="size-3.5 shrink-0" />
         Mensagem apagada
-        <span className="ml-1 text-[11px] not-italic opacity-70">
+        <span className="ml-1 text-[11px] not-italic opacity-70" suppressHydrationWarning>
           {timeLabel(message.createdAt)}
         </span>
       </div>
@@ -618,7 +618,7 @@ export const MessageBubble = memo(function MessageBubble({
         )}
       >
         {message.senderType === "AI" ? <span className="font-medium">IA</span> : null}
-        <span>{timeLabel(message.createdAt)}</span>
+        <span suppressHydrationWarning>{timeLabel(message.createdAt)}</span>
         {fromCustomer ? null : (
           <DeliveryTicks status={message.status} motivo={message.metadata?.falha} />
         )}

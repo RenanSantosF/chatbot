@@ -183,7 +183,9 @@ export function CustomerPanel({ conversation }: { conversation: ConversationDeta
                 conversation.status === "WAITING_CUSTOMER" ? (
                   "O cliente"
                 ) : conversation.waitingSince ? (
-                  <span className="text-amber-600 dark:text-amber-400">
+                  // "há N min" conta a partir de AGORA: entre o servidor
+                  // desenhar e o navegador assumir, o minuto pode virar.
+                  <span className="text-amber-600 dark:text-amber-400" suppressHydrationWarning>
                     A equipe · {ha(conversation.waitingSince)}
                   </span>
                 ) : (
