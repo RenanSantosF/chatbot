@@ -72,8 +72,10 @@ describe('baixar anexo', () => {
 
     await service.download('mídia-1');
 
-    expect(evolution.baixarMidia).toHaveBeenCalledWith('mídia-1', {
-      imageMessage: { url: 'wa://x' },
-    });
+    expect(evolution.baixarMidia).toHaveBeenCalledWith(
+      'mídia-1',
+      { imageMessage: { url: 'wa://x' } },
+      expect.any(Function),
+    );
   });
 });

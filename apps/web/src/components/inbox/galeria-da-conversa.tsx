@@ -199,7 +199,9 @@ export function GaleriaDaConversa({
                 {itens.map((item) => {
                   const mediaId = item.metadata?.mediaId;
                   const video = item.messageType === "VIDEO";
-                  const indisponivel = Boolean(mediaId && indisponiveis.has(mediaId));
+                  const indisponivel =
+                    Boolean(item.metadata?.midiaIndisponivelEm) ||
+                    Boolean(mediaId && indisponiveis.has(mediaId));
                   return (
                     <button
                       key={item.id}

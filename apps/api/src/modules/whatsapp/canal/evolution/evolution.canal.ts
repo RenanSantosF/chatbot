@@ -303,6 +303,13 @@ export class EvolutionCanal implements CanalDeMensagem {
   async baixarMidia(
     handle: string,
     pista?: unknown,
+    /**
+     * Avisa POR QUE não veio. `definitiva`: a Evolution respondeu que não
+     * tem como entregar (o WhatsApp já apagou o arquivo, a mensagem não
+     * existe) — tentar de novo dá no mesmo. Senão foi a rede ou o tempo
+     * limite, e vale tentar mais tarde.
+     */
+    aoFalhar?: (definitiva: boolean) => void,
   ): Promise<MidiaBaixada | null> {
     const credenciais = await this.credenciais();
     if (!credenciais) return null;
@@ -325,6 +332,8 @@ export class EvolutionCanal implements CanalDeMensagem {
 
     const resposta = await evolution.baixarMidia(credenciais, chave, midia);
     if (!resposta.ok || !resposta.dados?.base64) {
+      // Com status, quem respondeu foi a Evolution; sem, nem chegou nela.
+      aoFalhar?.(resposta.status !== undefined);
       this.logger.warn(
         `Não deu pra buscar a mídia na Evolution: ${resposta.erro ?? 'resposta sem o arquivo'}` +
           (midia ? '' : ' (a mensagem foi gravada sem o endereço do arquivo)'),
@@ -351,7 +360,9 @@ export class EvolutionCanal implements CanalDeMensagem {
 
     const chave = desempacotarId(mensagem);
     if (!chave) {
-      this.logger.warn(`Reação ignorada: id externo em formato antigo (${mensagem}).`);
+      this.logger.warn(
+        `Reação ignorada: id externo em formato antigo (${mensagem}).`,
+      );
       return;
     }
 
@@ -401,7 +412,9 @@ export class EvolutionCanal implements CanalDeMensagem {
 
     const resposta = await evolution.apagarParaTodos(credenciais, chave);
     if (resposta.ok) return null;
-    this.logger.warn(`Não deu pra apagar para todos pela Evolution: ${resposta.erro}`);
+    this.logger.warn(
+      `Não deu pra apagar para todos pela Evolution: ${resposta.erro}`,
+    );
     return resposta.erro ?? 'O WhatsApp recusou apagar a mensagem.';
   }
 
@@ -414,7 +427,9 @@ export class EvolutionCanal implements CanalDeMensagem {
 
     const resposta = await evolution.marcarComoLida(credenciais, chave);
     if (!resposta.ok) {
-      this.logger.warn(`Não deu pra marcar como lida pela Evolution: ${resposta.erro}`);
+      this.logger.warn(
+        `Não deu pra marcar como lida pela Evolution: ${resposta.erro}`,
+      );
     }
   }
 

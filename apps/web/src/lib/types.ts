@@ -146,6 +146,12 @@ export interface MessageMetadata {
    */
   participante?: string;
   mediaId?: string;
+  /**
+   * Quando o servidor descobriu que o WhatsApp não tem mais o arquivo (e
+   * ele nunca foi guardado). Com isto a tela nem pede: mostra direto
+   * "indisponível" em vez de esperar uma busca que vai falhar.
+   */
+  midiaIndisponivelEm?: string;
   mimeType?: string;
   fileName?: string;
   size?: number;

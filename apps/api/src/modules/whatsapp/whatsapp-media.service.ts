@@ -17,6 +17,50 @@ const GRAPH_API_VERSION = 'v21.0';
 // servidor de mentira em teste automatizado. Em produção fica no padrão.
 const GRAPH_BASE = process.env.META_GRAPH_URL ?? 'https://graph.facebook.com';
 
+/**
+ * Quanto tempo acreditar que um arquivo sumiu de vez antes de tentar de
+ * novo. Longo: o que o WhatsApp apagou não volta — mas não pra sempre, pra
+ * um engano (uma Evolution fora do ar respondendo erro) se corrigir sozinho.
+ */
+const INDISPONIVEL_POR_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Falha de rede ou tempo limite: espera um pouco antes de insistir. */
+const FALHA_TEMPORARIA_POR_MS = 10 * 60 * 1000;
+
+/**
+ * Anexos que falharam há pouco por motivo passageiro, em memória.
+ *
+ * Sem isto, cada miniatura da galeria e cada balão refazia a busca — e uma
+ * busca que não vai dar certo pode ficar pendurada até o tempo limite de
+ * mídia (60 s). Abrir uma galeria com dezenas assim enchia o servidor de
+ * espera e deixava o painel inteiro lento por um tempo.
+ */
+const falhasRecentes = new Map<string, number>();
+
+function lembrarFalha(chave: string) {
+  const agora = Date.now();
+  for (const [outra, ate] of falhasRecentes) {
+    if (ate < agora) falhasRecentes.delete(outra);
+  }
+  falhasRecentes.set(chave, agora + FALHA_TEMPORARIA_POR_MS);
+}
+
+function falhouHaPouco(chave: string): boolean {
+  const ate = falhasRecentes.get(chave);
+  return ate !== undefined && ate > Date.now();
+}
+
+/** A mensagem já foi marcada como "o WhatsApp não tem mais o arquivo"? */
+export function midiaIndisponivel(
+  metadata: Record<string, unknown>,
+  agora = Date.now(),
+): boolean {
+  const em = metadata.midiaIndisponivelEm;
+  if (typeof em !== 'string') return false;
+  const quando = new Date(em).getTime();
+  return Number.isFinite(quando) && agora - quando < INDISPONIVEL_POR_MS;
+}
+
 export interface DownloadedMedia {
   buffer: Buffer;
   mimeType: string;
@@ -72,11 +116,37 @@ export class WhatsappMediaService {
     const dona = await this.mensagemDaMidia(handle);
     const metadata = (dona?.metadata ?? {}) as Record<string, unknown>;
 
+    const chaveDaFalha = `${this.prisma.tenantId}:${handle}`;
+    if (midiaIndisponivel(metadata) || falhouHaPouco(chaveDaFalha)) {
+      throw new NotFoundException('O WhatsApp não tem mais este arquivo.');
+    }
+
+    let definitiva = false;
     const baixada = await this.evolution.baixarMidia(
       handle,
       metadata.evolutionMedia,
+      (motivo) => {
+        definitiva = motivo;
+      },
     );
     if (!baixada) {
+      if (definitiva && dona) {
+        // Gravado na mensagem: a galeria e o balão já sabem, sem pedir
+        // de novo, e a busca não se repete pelos próximos dias.
+        await this.prisma.db.message
+          .update({
+            where: { id: dona.id },
+            data: {
+              metadata: {
+                ...metadata,
+                midiaIndisponivelEm: new Date().toISOString(),
+              },
+            },
+          })
+          .catch(() => undefined);
+      } else {
+        lembrarFalha(chaveDaFalha);
+      }
       throw new NotFoundException(
         'Não deu pra buscar este anexo no WhatsApp. Ele pode ter sido apagado no aparelho.',
       );
@@ -406,10 +476,12 @@ export class WhatsappMediaService {
     try {
       const id = (JSON.parse(body) as { id?: string }).id;
       this.logger.log(`Mídia subida como "${tipo}": id=${id ?? 'ausente'}.`);
-      return { id: id ?? undefined, erro: id ? undefined : 'sem id na resposta' };
+      return {
+        id: id ?? undefined,
+        erro: id ? undefined : 'sem id na resposta',
+      };
     } catch {
       return { erro: 'resposta da Meta ilegível' };
     }
   }
-
 }

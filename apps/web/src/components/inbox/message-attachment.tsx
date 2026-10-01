@@ -51,7 +51,13 @@ function humanSize(bytes?: number): string {
 }
 
 export function MessageAttachment({ message }: { message: ConversationMessage }) {
-  const [failed, setFailed] = useState(false);
+  // Já se sabe que o WhatsApp não tem mais o arquivo: nem pede, mostra o
+  // aviso direto (ver `midiaIndisponivelEm`).
+  const [failed, setFailed] = useState(
+    () =>
+      Boolean(message.metadata?.midiaIndisponivelEm) &&
+      (message.messageType === "IMAGE" || message.messageType === "VIDEO"),
+  );
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [proporcao, setProporcao] = useState<number | null>(null);
