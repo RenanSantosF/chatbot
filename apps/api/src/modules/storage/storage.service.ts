@@ -26,6 +26,16 @@ const VALIDADE_DO_LINK_EM_SEGUNDOS = 10 * 60;
  * próprio prefixo, e o painel recebe link assinado de vida curta em vez do
  * arquivo direto.
  */
+/** As quatro variáveis que ligam o armazenamento próprio dos anexos. */
+export function armazenamentoConfigurado(): boolean {
+  return Boolean(
+    process.env.S3_BUCKET &&
+    process.env.S3_REGION &&
+    process.env.S3_ACCESS_KEY_ID &&
+    process.env.S3_SECRET_ACCESS_KEY,
+  );
+}
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);

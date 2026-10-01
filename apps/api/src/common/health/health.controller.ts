@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { armazenamentoConfigurado } from '../../modules/storage/storage.service';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../auth/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -50,7 +51,16 @@ export class HealthController {
     try {
       // A consulta mais barata que ainda prova que a conexão funciona.
       await this.prisma.client.$queryRaw`SELECT 1`;
-      return { status: 'ok', banco: 'ok' };
+      return {
+        status: 'ok',
+        banco: 'ok',
+        // Sem as variáveis S3_*, nenhum anexo é guardado: tudo vem do
+        // WhatsApp, que apaga o arquivo depois de um tempo. Não derruba o
+        // status (o atendimento funciona), mas fica à vista de quem confere.
+        armazenamentoDeAnexos: armazenamentoConfigurado()
+          ? 'ligado'
+          : 'desligado (faltam as variáveis S3_*)',
+      };
     } catch (erro) {
       return {
         status: 'degradado',

@@ -74,6 +74,7 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `PLATFORM_ADMIN_EMAILS` | o(s) e-mail(s) de quem vê o painel da plataforma (receita, funil, origem das contas, erros), separados por vírgula — ex.: `voce@empresa.com`. Sem ela, ninguém vê; o item "Plataforma" só aparece no menu pra esses e-mails. **As empresas desses e-mails usam o sistema de graça, pra sempre** — são as únicas liberadas sem assinatura (fora as que você liberar por alguns dias na aba Contas do painel) |
    | `PLANO_PRECO_MENSAL` | opcional — o preço do plano em reais, usado só pra estimar a receita mensal (MRR) no painel da plataforma. Padrão `167` |
    | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
+   | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT` | **obrigatórias pra guardar fotos, áudios e documentos.** Sem elas NADA é guardado: todo anexo é buscado no WhatsApp na hora, e o WhatsApp apaga o arquivo depois de um tempo — a foto vira "indisponível". Ver seção 9 abaixo |
    | `RESEND_API_KEY` | **obrigatória pra "Esqueci minha senha"** — a chave (`re_...`) do Resend. Sem ela o e-mail de recuperação não sai e quem esquecer a senha fica sem acesso — ver seção 7 abaixo |
    | `EMAIL_FROM` | o remetente dos e-mails, com o domínio verificado no Resend — ex.: `Inteliwa <nao-responda@inteliwa.com.br>` |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
@@ -560,6 +561,29 @@ Sem isto, quem descobre que a API ou o WhatsApp caiu é o cliente. Grátis, 5 mi
 4. **New Monitor → HTTP(s)**, URL do site (`https://SEU-SITE/`).
 5. Intervalo de 5 minutos e alerta pelo app e por e-mail.
 
+## 9. Guardar os anexos (Cloudflare R2)
+
+É o que faz a promessa "anexos guardados além dos 30 dias do WhatsApp" ser verdade. Com isto ligado:
+
+- **Toda mídia que chega ou sai daqui pra frente** é copiada na hora pro bucket.
+- **Mídia antiga** (de antes de ligar, ou que veio do histórico do celular) é copiada **na primeira vez que alguém a abre** no painel — desde que o WhatsApp ainda a tenha. O que o WhatsApp já apagou não tem como recuperar: aparece como "Indisponível".
+
+Sem isto, nada é guardado, e a foto de hoje some daqui a algumas semanas.
+
+O R2 da Cloudflare é o recomendado: 10 GB grátis por mês e **sem cobrança por download** (a AWS cobra cada vez que o painel abre uma foto).
+
+1. Crie a conta em [cloudflare.com](https://dash.cloudflare.com) → menu **R2 Object Storage** → ative (pede cartão, mas os 10 GB são grátis).
+2. **Create bucket** → nome `inteliwa-anexos` (qualquer nome serve) → localização automática.
+3. Em **R2 → Manage API tokens → Create API token**: permissão **Object Read & Write**, só pra esse bucket. Copie o **Access Key ID** e o **Secret Access Key** (o secret só aparece uma vez).
+4. Na mesma tela aparece o endpoint: `https://<ID-DA-CONTA>.r2.cloudflarestorage.com`.
+5. No serviço da **API** no Railway:
+   - `S3_BUCKET` = `inteliwa-anexos`
+   - `S3_REGION` = `auto`
+   - `S3_ACCESS_KEY_ID` = o Access Key ID
+   - `S3_SECRET_ACCESS_KEY` = o Secret
+   - `S3_ENDPOINT` = o endpoint do passo 4
+6. Depois do redeploy, abra `https://SUA-API/api/health/ready`: tem que aparecer `"armazenamentoDeAnexos":"ligado"`. Em Configurações › Armazenamento o espaço usado começa a subir conforme as mídias chegam.
+
 ## Checklist rápido pra saber se está tudo certo
 
 - [ ] `https://sua-api.up.railway.app/api` responde (qualquer rota autenticada deve dar 401, não erro de conexão)
@@ -570,6 +594,7 @@ Sem isto, quem descobre que a API ou o WhatsApp caiu é o cliente. Grátis, 5 mi
 - [ ] Handshake do webhook: a Meta aceitou a URL sem erro ao salvar
 - [ ] Mensagem real do WhatsApp chega no Inbox
 - [ ] `/dashboard/settings/account` abre o Portal do Stripe sem erro pra uma conta já assinante ("Gerenciar assinatura")
+- [ ] `/api/health/ready` mostra `"armazenamentoDeAnexos":"ligado"` (seção 9)
 - [ ] "Esqueci minha senha" em `/login` manda o e-mail, e o link troca a senha (seção 7)
 - [ ] O UptimeRobot mostra os três monitores verdes (seção 8)
 

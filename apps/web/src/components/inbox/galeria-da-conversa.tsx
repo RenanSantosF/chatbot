@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, FileText, Link2, MessageSquareText, Play } from "lucide-react";
+import { ExternalLink, FileText, ImageOff, Link2, MessageSquareText, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,6 +85,8 @@ export function GaleriaDaConversa({
   const [contagens, setContagens] = useState<Partial<Record<Tipo, number>>>({});
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [ampliada, setAmpliada] = useState<ItemDaGaleria | null>(null);
+  // Miniaturas que voltaram erro: o arquivo não existe mais em lugar nenhum.
+  const [indisponiveis, setIndisponiveis] = useState<Set<string>>(() => new Set());
 
   const buscar = useCallback(
     async (qual: Tipo, depoisDe?: string | null) => {
@@ -197,20 +199,38 @@ export function GaleriaDaConversa({
                 {itens.map((item) => {
                   const mediaId = item.metadata?.mediaId;
                   const video = item.messageType === "VIDEO";
+                  const indisponivel = Boolean(mediaId && indisponiveis.has(mediaId));
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      title={dataCurta(item.createdAt)}
-                      onClick={() => (video || !mediaId ? irPara(item.id) : setAmpliada(item))}
+                      title={
+                        indisponivel
+                          ? `${dataCurta(item.createdAt)} — o WhatsApp não tem mais este arquivo`
+                          : dataCurta(item.createdAt)
+                      }
+                      onClick={() =>
+                        video || !mediaId || indisponivel ? irPara(item.id) : setAmpliada(item)
+                      }
                       className="group relative aspect-square overflow-hidden rounded-md bg-muted"
                     >
-                      {mediaId && !video ? (
+                      {indisponivel ? (
+                        <span className="flex size-full flex-col items-center justify-center gap-1 px-2 text-center text-muted-foreground">
+                          <ImageOff className="size-5" />
+                          <span className="text-[10px] leading-tight">Indisponível</span>
+                        </span>
+                      ) : mediaId && !video ? (
                         // eslint-disable-next-line @next/next/no-img-element -- vem do nosso proxy, já redimensionado
                         <img
                           src={urlDaMidia(mediaId, 320)}
                           alt=""
                           loading="lazy"
+                          // O arquivo que o WhatsApp já apagou (ou que nunca
+                          // foi guardado) volta 404: em vez do ícone de
+                          // imagem quebrada, um quadro que diz o que houve.
+                          onError={() =>
+                            setIndisponiveis((atual) => new Set(atual).add(mediaId))
+                          }
                           className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
                         />
                       ) : (
