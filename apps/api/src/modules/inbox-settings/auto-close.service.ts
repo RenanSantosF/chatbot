@@ -92,7 +92,19 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
       const paradas = await this.prisma.client.conversation.findMany({
         where: {
           tenantId: config.tenantId,
-          status: { in: ['OPEN', 'WAITING_CUSTOMER', 'WAITING_AGENT'] },
+          /*
+           * Só quem deixou a EMPRESA esperando: ela respondeu por último e
+           * o cliente não voltou.
+           *
+           * Antes valia qualquer conversa aberta parada — inclusive a do
+           * cliente que escreveu e ficou sem resposta. Duas horas depois
+           * ele recebia "vamos encerrar por aqui" de quem nunca respondeu,
+           * e a conversa sumia da fila de quem devia atender. Esperando a
+           * equipe (`waitingSince` preenchido, ou WAITING_AGENT), nunca
+           * encerra sozinha.
+           */
+          status: 'WAITING_CUSTOMER',
+          waitingSince: null,
           lastMessageAt: { lt: limite },
           // Grupo não é atendimento: não tem o que encerrar, e a tarja de
           // "encerrado automaticamente" no meio dele não faz sentido.

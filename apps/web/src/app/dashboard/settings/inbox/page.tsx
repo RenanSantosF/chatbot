@@ -212,8 +212,8 @@ export default function InboxSettingsPage() {
             onChange={(ligada) => patch({ queueVisibility: ligada ? "OWN_QUEUES" : "ALL" })}
           />
           <Opcao
-            titulo="Encerrar conversas paradas"
-            descricao="Resolve sozinho depois de um tempo sem movimento."
+            titulo="Encerrar quando o cliente não responde"
+            descricao="Se a equipe ou a IA respondeu e o cliente sumiu, a conversa é resolvida sozinha. Quem está esperando resposta nunca é encerrado."
             ligada={settings.autoCloseIdle}
             onChange={(ligada) => patch({ autoCloseIdle: ligada })}
           >
@@ -221,7 +221,7 @@ export default function InboxSettingsPage() {
               <div className="flex flex-col gap-3 border-l-2 pl-3">
                 <NumberField
                   id="auto-close"
-                  sufixo="horas"
+                  sufixo="horas sem resposta do cliente"
                   value={settings.autoCloseHours}
                   min={1}
                   max={23}
@@ -410,7 +410,7 @@ function NumberField({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm whitespace-nowrap text-muted-foreground">Depois de</span>
         <Input
           id={id}
@@ -422,7 +422,7 @@ function NumberField({
           onChange={(event) => setRascunho(event.target.value)}
           className="h-9 w-20"
         />
-        <span className="text-sm whitespace-nowrap text-muted-foreground">{sufixo}</span>
+        <span className="text-sm text-muted-foreground">{sufixo}</span>
         <Button
           size="sm"
           variant="outline"

@@ -134,6 +134,26 @@ describe('encerramento por inatividade', () => {
     expect(where.customer).toEqual({ isGroup: false });
   });
 
+  /**
+   * O relato: "o correto é só se o CLIENTE demorar pra responder". Antes
+   * qualquer conversa parada encerrava — inclusive a do cliente que
+   * escreveu e ficou sem resposta da equipe.
+   */
+  it('só encerra quando a empresa respondeu por último e o cliente sumiu', async () => {
+    const { service, client } = servicoCom([
+      { id: 'c1', lastMessageAt: horasAtras(21) },
+    ]);
+
+    await service.varrer();
+
+    const [[{ where }]] = client.conversation.findMany.mock.calls as [
+      [{ where: Record<string, unknown> }],
+    ];
+    // Esperando o cliente, e ninguém do lado de lá esperando a equipe.
+    expect(where.status).toBe('WAITING_CUSTOMER');
+    expect(where.waitingSince).toBeNull();
+  });
+
   it('avisa quem ainda está dentro da janela de 24h', async () => {
     const { service, mensagens } = servicoCom([
       { id: 'c1', lastMessageAt: horasAtras(21) },
