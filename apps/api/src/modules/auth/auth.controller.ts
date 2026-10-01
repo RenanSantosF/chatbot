@@ -19,6 +19,12 @@ import { AuthService, type AuthResult } from './auth.service';
 import type { RequestUser } from './auth.types';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import {
+  ConferirRedefinicaoDto,
+  PedirRedefinicaoDto,
+  RedefinirSenhaDto,
+} from './dto/redefinicao-de-senha.dto';
+import { RedefinicaoDeSenhaService } from './redefinicao-de-senha.service';
 import { EstadoDoCanalService } from '../whatsapp/canal/estado-do-canal.service';
 import { ehDaPlataforma } from '../plataforma/plataforma.guard';
 import {
@@ -47,7 +53,41 @@ export class AuthController {
     private readonly estadoDoCanal: EstadoDoCanalService,
     private readonly billing: BillingService,
     private readonly eventos: RegistroDeEventos,
+    private readonly redefinicao: RedefinicaoDeSenhaService,
   ) {}
+
+  /**
+   * "Esqueci minha senha". Três por minuto por IP: cada pedido manda um
+   * e-mail, e e-mail em rajada pra caixa de alguém é assédio, não
+   * esquecimento.
+   *
+   * Responde igual exista ou não a conta (ver RedefinicaoDeSenhaService).
+   */
+  @Public()
+  @Throttle({ curto: { ttl: seconds(60), limit: 3 } })
+  @Post('esqueci-senha')
+  @HttpCode(HttpStatus.OK)
+  async esqueciSenha(@Body() dto: PedirRedefinicaoDto) {
+    await this.redefinicao.pedir(dto.email);
+    return { ok: true };
+  }
+
+  @Public()
+  @Throttle({ curto: { ttl: seconds(60), limit: 20 } })
+  @Post('redefinir-senha/conferir')
+  @HttpCode(HttpStatus.OK)
+  conferirRedefinicao(@Body() dto: ConferirRedefinicaoDto) {
+    return this.redefinicao.conferir(dto.token);
+  }
+
+  @Public()
+  @Throttle({ curto: { ttl: seconds(60), limit: 10 } })
+  @Post('redefinir-senha')
+  @HttpCode(HttpStatus.OK)
+  async redefinirSenha(@Body() dto: RedefinirSenhaDto) {
+    await this.redefinicao.redefinir(dto.token, dto.senha);
+    return { ok: true };
+  }
 
   /** O acesso ao painel, pro painel da plataforma. Não segura a resposta. */
   private registrarAcesso(user: RequestUser) {

@@ -420,6 +420,11 @@ model User {
   /// A primeira vez que esta pessoa usou a correção de texto por IA. Com
   /// ela preenchida, a dica que ensina o atalho não aparece mais.
   usouCorrecaoEm     DateTime?
+  /// Sessões (tokens) emitidas antes disto não valem mais. Preenchido ao
+  /// redefinir a senha pelo e-mail: quem pede isso pode estar suspeitando
+  /// que alguém entrou na conta, e a senha nova tem que derrubar quem
+  /// estiver logado com a antiga.
+  sessoesValidasDesde DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
@@ -430,6 +435,7 @@ model User {
   customerNotes         CustomerNote[]
   auditLogs             AuditLog[]         @relation("AuditActor")
   pushSubscriptions     PushSubscription[]
+  redefinicoesDeSenha   RedefinicaoDeSenha[]
 
   // Email é único globalmente (não só por tenant): simplifica o login, que não
   // exige saber a qual empresa o usuário pertence antes de autenticar.
@@ -1474,4 +1480,23 @@ model ErroDaPlataforma {
 
   @@index([ultimaVez])
   @@map("erros_da_plataforma")
+}
+
+/// Um pedido de "esqueci minha senha".
+///
+/// Guarda só o HASH do token: o link vai por e-mail, e quem ler o banco
+/// (um backup vazado, um acesso indevido) não consegue usá-lo. Vale 30
+/// minutos e uma vez só.
+model RedefinicaoDeSenha {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiraEm  DateTime
+  usadoEm   DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("redefinicoes_de_senha")
 }

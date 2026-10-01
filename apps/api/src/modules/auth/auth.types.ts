@@ -5,6 +5,8 @@ export interface JwtPayload {
   sub: string;
   tenantId: string;
   role: UserRole;
+  /** Quando o token foi emitido (segundos) — o jwt preenche sozinho. */
+  iat?: number;
 }
 
 export interface RequestUser {

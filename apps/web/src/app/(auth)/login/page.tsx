@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,12 +18,23 @@ import { Spinner } from "@/components/ui/spinner";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
 
+/** `useSearchParams` pede um limite de Suspense pra a página poder ser pré-renderizada. */
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <Entrar />
+    </Suspense>
+  );
+}
+
+function Entrar() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Vindo da tela de senha nova: confirma que deu certo.
+  const senhaRedefinida = useSearchParams().get("senha") === "redefinida";
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -66,8 +77,21 @@ export default function LoginPage() {
               required
             />
           </div>
+          {senhaRedefinida ? (
+            <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-foreground">
+              Senha nova salva. Entre com ela.
+            </p>
+          ) : null}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password">Senha</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="password">Senha</Label>
+              <Link
+                href="/esqueci-senha"
+                className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                Esqueci minha senha
+              </Link>
+            </div>
             <Input
               id="password"
               type="password"

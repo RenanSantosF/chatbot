@@ -74,6 +74,8 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `PLATFORM_ADMIN_EMAILS` | o(s) e-mail(s) de quem vê o painel da plataforma (receita, funil, origem das contas, erros), separados por vírgula — ex.: `voce@empresa.com`. Sem ela, ninguém vê; o item "Plataforma" só aparece no menu pra esses e-mails. **As empresas desses e-mails usam o sistema de graça, pra sempre** — são as únicas liberadas sem assinatura (fora as que você liberar por alguns dias na aba Contas do painel) |
    | `PLANO_PRECO_MENSAL` | opcional — o preço do plano em reais, usado só pra estimar a receita mensal (MRR) no painel da plataforma. Padrão `167` |
    | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
+   | `RESEND_API_KEY` | **obrigatória pra "Esqueci minha senha"** — a chave (`re_...`) do Resend. Sem ela o e-mail de recuperação não sai e quem esquecer a senha fica sem acesso — ver seção 7 abaixo |
+   | `EMAIL_FROM` | o remetente dos e-mails, com o domínio verificado no Resend — ex.: `Inteliwa <nao-responda@inteliwa.com.br>` |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
    | `VAPID_SUBJECT` | um e-mail seu. **O `mailto:` na frente faz parte do valor** (`mailto:voce@seudominio.com`) — a norma pede uma URL, não um e-mail solto. Se você esquecer, o sistema completa sozinho e registra no log |
 
@@ -536,6 +538,28 @@ pra isso funcionar, é automático a partir dos mesmos três eventos do passo
 
 ---
 
+## 7. E-mail (Resend) — "Esqueci minha senha"
+
+O sistema manda um e-mail só, por enquanto: o link de redefinição de senha. Sem ele, quem esquece a senha — inclusive o dono da empresa — fica trancado pra fora.
+
+1. Crie a conta em [resend.com](https://resend.com) (grátis até 3.000 e-mails por mês).
+2. **Domains → Add Domain**: o seu domínio (ex.: `inteliwa.com.br`). O Resend mostra 3 registros DNS (SPF, DKIM e MX/Return-Path) — cadastre no painel do seu domínio (Registro.br, Cloudflare...) e espere ficar **Verified**. Sem domínio verificado, o Resend só entrega pro e-mail da sua própria conta.
+3. **API Keys → Create API Key** (permissão "Sending access"). Copie (`re_...`).
+4. No serviço da **API** no Railway: `RESEND_API_KEY` = a chave, e `EMAIL_FROM` = `Inteliwa <nao-responda@seudominio.com.br>` (o domínio tem que ser o verificado).
+5. Teste: em `/login`, clique em **Esqueci minha senha** com o seu e-mail. O link vale 30 minutos e uma vez só; usar derruba as sessões abertas com a senha antiga.
+
+Se o e-mail não chegar, o log da API diz o motivo (`Resend recusou o e-mail ...`) — quase sempre é domínio não verificado ou `EMAIL_FROM` com outro domínio.
+
+## 8. Saber quando algo cai (UptimeRobot)
+
+Sem isto, quem descobre que a API ou o WhatsApp caiu é o cliente. Grátis, 5 minutos:
+
+1. Crie a conta em [uptimerobot.com](https://uptimerobot.com) e instale o app no celular (é por ele que chega o alerta).
+2. **New Monitor → Keyword**, URL `https://SUA-API/api/health/ready`, palavra-chave `"banco":"ok"` (com as aspas), alertar quando **não** existir. Pega a API fora do ar E a API de pé sem conseguir falar com o banco.
+3. **New Monitor → HTTP(s)**, URL do servidor da Evolution (a raiz, `https://SUA-EVOLUTION/`). Se ela cair, nenhuma mensagem entra nem sai.
+4. **New Monitor → HTTP(s)**, URL do site (`https://SEU-SITE/`).
+5. Intervalo de 5 minutos e alerta pelo app e por e-mail.
+
 ## Checklist rápido pra saber se está tudo certo
 
 - [ ] `https://sua-api.up.railway.app/api` responde (qualquer rota autenticada deve dar 401, não erro de conexão)
@@ -546,6 +570,8 @@ pra isso funcionar, é automático a partir dos mesmos três eventos do passo
 - [ ] Handshake do webhook: a Meta aceitou a URL sem erro ao salvar
 - [ ] Mensagem real do WhatsApp chega no Inbox
 - [ ] `/dashboard/settings/account` abre o Portal do Stripe sem erro pra uma conta já assinante ("Gerenciar assinatura")
+- [ ] "Esqueci minha senha" em `/login` manda o e-mail, e o link troca a senha (seção 7)
+- [ ] O UptimeRobot mostra os três monitores verdes (seção 8)
 
 ## Coisas pra saber antes de escalar de verdade
 
@@ -559,7 +585,7 @@ O botão de escalar horizontalmente no Railway parece inofensivo e não é: hoje
 
 Para escalar de verdade seria preciso, no mínimo, um adaptador de Redis no gateway e mover os dois trabalhos periódicos pra fora do processo web (um serviço próprio, ou um agendador externo chamando uma rota). Enquanto isso não existe: **uma réplica**.
 
-- **Custo do Gemini**: cada empresa paga a própria conta do Google AI Studio — a plataforma não intermedia cobrança de IA.
+- **Custo do Gemini**: a chave é da PLATAFORMA (`GEMINI_API_KEY`), e quem paga o Google é a Inteliwa. O que segura a conta é o limite de cada empresa: 5.000 respostas de IA por mês no plano (mais os pacotes comprados) e 3.000 correções de texto — ver o comentário em `apps/api/src/modules/ai/ai-usage.service.ts`. Acompanhe o gasto no painel do Google AI Studio e coloque um alerta de orçamento lá.
 - **Números de teste da Meta**: por padrão, um app novo só manda mensagem pra até 5 números cadastrados como testadores, até passar pela revisão do Meta (App Review) pedindo a permissão `whatsapp_business_messaging` pra produção.
 ### ⚠️ O número pode ser bloqueado, e isso não é hipótese remota
 

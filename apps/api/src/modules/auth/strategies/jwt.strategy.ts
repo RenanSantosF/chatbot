@@ -49,7 +49,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * acesso imediatamente, mesmo com um token ainda válido.
    */
   async validate(payload: JwtPayload): Promise<RequestUser> {
-    const chave = `${payload.sub}:${payload.tenantId}`;
+    // Com a hora de emissão na chave: depois de uma redefinição de senha,
+    // o token novo entra no cache e o antigo não pode pegar carona nele.
+    const chave = `${payload.sub}:${payload.tenantId}:${payload.iat ?? 0}`;
     const lembrado = usuariosValidados.get(chave);
     if (lembrado) return lembrado;
 
@@ -63,6 +65,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       user.tenantId !== payload.tenantId
     ) {
       throw new UnauthorizedException('Sessão inválida.');
+    }
+
+    // Senha redefinida pelo e-mail derruba quem entrou antes dela.
+    if (
+      user.sessoesValidasDesde &&
+      (payload.iat ?? 0) * 1000 < user.sessoesValidasDesde.getTime()
+    ) {
+      throw new UnauthorizedException('Sessão encerrada. Entre de novo.');
     }
 
     const validado: RequestUser = {

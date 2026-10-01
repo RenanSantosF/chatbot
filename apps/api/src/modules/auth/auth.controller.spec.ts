@@ -32,6 +32,7 @@ function montar(tourVistoEm: Date | null) {
     { doTenant: jest.fn().mockResolvedValue(null) } as never,
     { status: jest.fn().mockResolvedValue({ bloqueado: false }) } as never,
     { registrar: jest.fn().mockResolvedValue(undefined) } as never,
+    {} as never,
   );
   const user = {
     userId: 'u1',
