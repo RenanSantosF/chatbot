@@ -246,7 +246,11 @@ describe('eco do celular (coexistência)', () => {
       customerPhone: '5527999998888',
       content: 'te amoo',
       replyToExternalId: ['a|1|X', 'a|0|X'],
-      citacao: { texto: 'Se é demais sério mesmo', tipo: 'TEXT', daEmpresa: false },
+      citacao: {
+        texto: 'Se é demais sério mesmo',
+        tipo: 'TEXT',
+        daEmpresa: false,
+      },
     });
 
     expect(criadas[0].metadata).toMatchObject({
@@ -701,6 +705,97 @@ describe('entrega repetida do webhook', () => {
     });
 
     expect(resultado.message).toBeNull();
+  });
+
+  /**
+   * Pelo pooler do Supabase (porta 6543) a duplicidade chega embrulhada:
+   * "Transaction already closed" no lugar do P2002. Foi o erro que apareceu
+   * no painel da plataforma, duas vezes no mesmo segundo.
+   */
+  it('a duplicidade embrulhada pelo pooler também é reconhecida', async () => {
+    const { service, prisma } = montar({ mensagemJaGravada: null });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+      },
+    });
+    // A conferência de antes não acha; a de depois do erro, sim.
+    prisma.db.message.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'gravada-pela-outra' });
+    prisma.db.message.create.mockRejectedValue(
+      Object.assign(
+        new Error(
+          'Transaction API error: Transaction already closed: A rollback cannot be executed on a transaction that was rolled back.',
+        ),
+        { code: 'P2028' },
+      ),
+    );
+
+    const resultado = await service.receiveInbound({
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'Oi',
+      externalId: 'wamid.POOLER',
+    });
+
+    expect(resultado.message).toBeNull();
+  });
+
+  it('o mesmo erro, sem a mensagem gravada, continua subindo', async () => {
+    // Aí não foi duplicidade: algo deu errado de verdade e precisa aparecer.
+    const { service, prisma } = montar({ mensagemJaGravada: null });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest.fn().mockResolvedValue({ id: 'cliente-1' }),
+      },
+    });
+    prisma.db.message.findFirst.mockResolvedValue(null);
+    prisma.db.message.create.mockRejectedValue(
+      Object.assign(new Error('Transaction already closed'), { code: 'P2028' }),
+    );
+
+    await expect(
+      service.receiveInbound({
+        customerPhone: '5527999998888',
+        customerName: 'Ana',
+        content: 'Oi',
+        externalId: 'wamid.SEM_GRAVAR',
+      }),
+    ).rejects.toThrow('Transaction already closed');
+  });
+
+  it('duas entregas da mesma mensagem ao mesmo tempo: só uma é processada', async () => {
+    const { service, criadas } = montar({ mensagemJaGravada: null });
+    let liberar: () => void = () => undefined;
+    const segura = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest.fn(async () => {
+          await segura;
+          return { id: 'cliente-1' };
+        }),
+      },
+      aiEngine: {
+        generateReply: jest.fn().mockResolvedValue({ tipo: 'semPergunta' }),
+      },
+    });
+    const entrada = {
+      customerPhone: '5527999998888',
+      customerName: 'Ana',
+      content: 'Oi',
+      externalId: 'wamid.DUPLA',
+    };
+
+    const primeira = service.receiveInbound(entrada);
+    const segunda = await service.receiveInbound(entrada);
+    liberar();
+    await primeira;
+
+    expect(segunda).toEqual({ conversation: null, message: null });
+    expect(criadas).toHaveLength(1);
   });
 
   it('erro que não é duplicidade continua subindo', async () => {

@@ -223,6 +223,36 @@ const OPEN_STATUSES: ConversationStatus[] = [
  * a Evolution reenviar, e reenviar é como o problema começou. Quem chama
  * trata como o que é — a mesma entrega, de novo.
  */
+/**
+ * O erro que o pooler do Supabase devolve no lugar do original.
+ *
+ * Pela porta 6543 (modo transação), quando a gravação falha dentro da
+ * transação implícita do Prisma, o erro de verdade — quase sempre a
+ * duplicidade de uma entrega repetida — chega embrulhado como "Transaction
+ * already closed: A rollback cannot be executed…" (P2028). Sem reconhecê-lo,
+ * a duplicidade inofensiva virava erro 500 no painel da plataforma.
+ */
+function transacaoFechada(erro: unknown): boolean {
+  if (typeof erro !== 'object' || erro === null) return false;
+  const { code, message } = erro as { code?: unknown; message?: unknown };
+  return (
+    code === 'P2028' ||
+    (typeof message === 'string' &&
+      message.includes('Transaction already closed'))
+  );
+}
+
+/**
+ * Entregas sendo processadas agora, por empresa + id da mensagem.
+ *
+ * O servidor de mensagens às vezes avisa a mesma mensagem duas vezes no
+ * mesmo instante. A conferência "já está gravada?" não pega esse caso — as
+ * duas passam por ela antes de qualquer uma gravar —, e a segunda morria na
+ * trava de duplicidade do banco. Em memória basta: a API roda numa réplica
+ * só (ver DEPLOY.md).
+ */
+const entregasEmAndamento = new Set<string>();
+
 function entregaRepetida(erro: unknown): boolean {
   return (
     typeof erro === 'object' &&
@@ -3573,7 +3603,27 @@ export class ConversationsService {
    * WhatsApp chama (ver WhatsappWebhookController) e que o simulador de
    * teste usa.
    */
-  async receiveInbound(input: {
+  async receiveInbound(
+    input: Parameters<ConversationsService['receberInbound']>[0],
+  ) {
+    const chave = input.externalId
+      ? `${this.prisma.tenantId}:${input.externalId}`
+      : null;
+    if (chave && entregasEmAndamento.has(chave)) {
+      this.logger.log(
+        `Entrega repetida ignorada: ${input.externalId} já está sendo processada.`,
+      );
+      return { conversation: null, message: null };
+    }
+    if (chave) entregasEmAndamento.add(chave);
+    try {
+      return await this.receberInbound(input);
+    } finally {
+      if (chave) entregasEmAndamento.delete(chave);
+    }
+  }
+
+  private async receberInbound(input: {
     customerPhone: string;
     customerName: string;
     content: string;
@@ -3736,7 +3786,19 @@ export class ConversationsService {
       // A conferência lá em cima perdeu a corrida pra outra entrega da
       // mesma mensagem — ver `entregaRepetida`. Ela está gravada, a IA já
       // foi acordada pela outra, e o que falta aqui é só não estourar.
-      if (!entregaRepetida(erro)) throw erro;
+      // Pelo pooler o mesmo caso chega como `transacaoFechada`: aí só vale
+      // se a mensagem de fato já estiver gravada.
+      const repetida =
+        entregaRepetida(erro) ||
+        (transacaoFechada(erro) &&
+          Boolean(input.externalId) &&
+          Boolean(
+            await this.prisma.db.message.findFirst({
+              where: { externalId: input.externalId },
+              select: { id: true },
+            }),
+          ));
+      if (!repetida) throw erro;
       this.logger.log(
         `Entrega repetida ignorada no ato de gravar: ${input.externalId}.`,
       );
