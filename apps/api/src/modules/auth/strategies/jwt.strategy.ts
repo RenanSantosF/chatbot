@@ -49,40 +49,48 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * acesso imediatamente, mesmo com um token ainda válido.
    */
   async validate(payload: JwtPayload): Promise<RequestUser> {
-    // Com a hora de emissão na chave: depois de uma redefinição de senha,
-    // o token novo entra no cache e o antigo não pode pegar carona nele.
-    const chave = `${payload.sub}:${payload.tenantId}:${payload.iat ?? 0}`;
-    const lembrado = usuariosValidados.get(chave);
-    if (lembrado) return lembrado;
-
-    const user = await this.prisma.client.user.findUnique({
-      where: { id: payload.sub },
-    });
-
-    if (
-      !user ||
-      user.status !== 'ACTIVE' ||
-      user.tenantId !== payload.tenantId
-    ) {
-      throw new UnauthorizedException('Sessão inválida.');
-    }
-
-    // Senha redefinida pelo e-mail derruba quem entrou antes dela.
-    if (
-      user.sessoesValidasDesde &&
-      (payload.iat ?? 0) * 1000 < user.sessoesValidasDesde.getTime()
-    ) {
-      throw new UnauthorizedException('Sessão encerrada. Entre de novo.');
-    }
-
-    const validado: RequestUser = {
-      userId: user.id,
-      tenantId: user.tenantId,
-      role: user.role,
-      email: user.email,
-      name: user.name,
-    };
-    usuariosValidados.set(chave, validado);
-    return validado;
+    return conferirSessao(this.prisma, payload);
   }
+}
+
+/**
+ * O token ainda vale pra esta pessoa? A mesma regra pro HTTP (acima) e pro
+ * tempo real (ver RealtimeGateway): assinatura não basta — o acesso pode
+ * ter sido desligado, ou a senha redefinida, depois de o token sair.
+ */
+export async function conferirSessao(
+  prisma: PrismaService,
+  payload: JwtPayload,
+): Promise<RequestUser> {
+  // Com a hora de emissão na chave: depois de uma redefinição de senha,
+  // o token novo entra no cache e o antigo não pode pegar carona nele.
+  const chave = `${payload.sub}:${payload.tenantId}:${payload.iat ?? 0}`;
+  const lembrado = usuariosValidados.get(chave);
+  if (lembrado) return lembrado;
+
+  const user = await prisma.client.user.findUnique({
+    where: { id: payload.sub },
+  });
+
+  if (!user || user.status !== 'ACTIVE' || user.tenantId !== payload.tenantId) {
+    throw new UnauthorizedException('Sessão inválida.');
+  }
+
+  // Senha redefinida pelo e-mail derruba quem entrou antes dela.
+  if (
+    user.sessoesValidasDesde &&
+    (payload.iat ?? 0) * 1000 < user.sessoesValidasDesde.getTime()
+  ) {
+    throw new UnauthorizedException('Sessão encerrada. Entre de novo.');
+  }
+
+  const validado: RequestUser = {
+    userId: user.id,
+    tenantId: user.tenantId,
+    role: user.role,
+    email: user.email,
+    name: user.name,
+  };
+  usuariosValidados.set(chave, validado);
+  return validado;
 }

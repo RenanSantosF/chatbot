@@ -3,7 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import type { OnGatewayConnection } from '@nestjs/websockets';
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import type { JwtPayload } from '../auth/auth.types';
+import { conferirSessao } from '../auth/strategies/jwt.strategy';
 
 function tenantRoom(tenantId: string): string {
   return `tenant:${tenantId}`;
@@ -32,9 +34,12 @@ export class RealtimeGateway implements OnGatewayConnection {
   @WebSocketServer()
   private server!: Server;
 
-  constructor(private readonly jwt: JwtService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  handleConnection(client: Socket) {
+  async handleConnection(client: Socket) {
     const token = client.handshake.auth?.token as string | undefined;
 
     if (!token) {
@@ -44,6 +49,14 @@ export class RealtimeGateway implements OnGatewayConnection {
 
     try {
       const payload = this.jwt.verify<JwtPayload>(token);
+      /*
+       * Assinatura não basta: o token vale 7 dias, e nesse meio-tempo o
+       * acesso pode ter sido desligado ou a senha redefinida. Sem esta
+       * conferência, quem foi desativado continuava recebendo as mensagens
+       * das conversas ao vivo até o token vencer — o HTTP já barrava, o
+       * tempo real não.
+       */
+      await conferirSessao(this.prisma, payload);
       void client.join(tenantRoom(payload.tenantId));
       // A sala por pessoa é o que permite mandar um evento de UMA conversa
       // só pra quem pode vê-la (ver `emitToUsers`), sem depender de sala de
@@ -54,6 +67,15 @@ export class RealtimeGateway implements OnGatewayConnection {
       this.logger.warn('Conexão websocket rejeitada: token inválido.');
       client.disconnect(true);
     }
+  }
+
+  /**
+   * Desliga na hora as conexões abertas de uma pessoa — quem acabou de ser
+   * desativado, ou teve a senha redefinida. A conferência da conexão (acima)
+   * barra a próxima; esta derruba a que já estava aberta.
+   */
+  derrubarPessoa(userId: string) {
+    this.server?.in(userRoom(userId)).disconnectSockets(true);
   }
 
   /** Pra evento que não é de UMA conversa — ex: o estado da conexão do WhatsApp. */

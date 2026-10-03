@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EmailService } from '../../common/email/email.service';
 import { esquecerUsuario } from './strategies/jwt.strategy';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 /** Quanto tempo o link vale. Curto: ele entra na conta. */
 const VALIDADE_MS = 30 * 60 * 1000;
@@ -41,6 +42,7 @@ export class RedefinicaoDeSenhaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   private urlBase(): string {
@@ -166,6 +168,9 @@ export class RedefinicaoDeSenhaService {
       },
     });
     esquecerUsuario(pedido.userId);
+    // Quem estava com o painel aberto com a senha antiga sai do tempo real
+    // agora — o HTTP já recusa o token velho.
+    this.realtime.derrubarPessoa(pedido.userId);
     this.logger.log(`Senha redefinida pelo e-mail (usuário ${pedido.userId}).`);
   }
 

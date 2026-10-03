@@ -12,6 +12,7 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { CreateUserDto } from './dto/create-user.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type { UpdateUserDto } from './dto/update-user.dto';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const PASSWORD_SALT_ROUNDS = 12;
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
@@ -33,7 +34,10 @@ function generateTemporaryPassword(): string {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: TenantPrismaService) {}
+  constructor(
+    private readonly prisma: TenantPrismaService,
+    private readonly realtime: RealtimeGateway,
+  ) {}
 
   /**
    * Não recebe tenantId por parâmetro de propósito: TenantPrismaService já
@@ -137,11 +141,15 @@ export class UsersService {
       throw new ForbiddenException('O dono da empresa não pode ser alterado.');
     }
 
-    return this.prisma.db.user.update({
+    const atualizado = await this.prisma.db.user.update({
       where: { id },
       data: dto,
       select: teamSelect,
     });
+    // Desativado: a aba aberta dele para de receber as conversas ao vivo
+    // agora, e não quando o token vencer.
+    if (atualizado.status !== 'ACTIVE') this.realtime.derrubarPessoa(id);
+    return atualizado;
   }
 
   async getProfile(userId: string) {

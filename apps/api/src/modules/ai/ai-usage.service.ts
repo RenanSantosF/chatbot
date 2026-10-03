@@ -124,8 +124,22 @@ export class AiUsageService {
 
     if (!cicloVirou) return { conta, ciclo, dia };
 
-    const renovada = await this.prisma.db.billingAccount.update({
-      where: { id: conta.id },
+    /*
+     * A virada acontece UMA vez, mesmo com várias respostas chegando juntas.
+     *
+     * Duas respostas no primeiro minuto do ciclo liam "virou" ao mesmo
+     * tempo; a primeira zerava e contava a sua, e a segunda zerava DE NOVO
+     * — a resposta da primeira sumia da conta. Com a condição no UPDATE,
+     * só quem ainda vê o ciclo velho zera; o resto relê a linha nova.
+     */
+    await this.prisma.db.billingAccount.updateMany({
+      where: {
+        id: conta.id,
+        OR: [
+          { aiUsagePeriodStart: null },
+          { aiUsagePeriodStart: { lt: ciclo.inicio } },
+        ],
+      },
       data: {
         aiUsagePeriodStart: agora,
         aiRepliesUsed: 0,
@@ -140,6 +154,10 @@ export class AiUsageService {
         aiCorrecoesNoPeriodo: 0,
       },
     });
+    const renovada =
+      (await this.prisma.db.billingAccount.findFirst({
+        where: { id: conta.id },
+      })) ?? conta;
     return { conta: renovada, ciclo, dia };
   }
 

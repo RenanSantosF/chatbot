@@ -45,10 +45,16 @@ function montar(
     },
   };
   const email = { enviar: jest.fn().mockResolvedValue(true) };
+  const realtime = { derrubarPessoa: jest.fn() };
   return {
-    service: new RedefinicaoDeSenhaService(prisma as never, email as never),
+    service: new RedefinicaoDeSenhaService(
+      prisma as never,
+      email as never,
+      realtime as never,
+    ),
     prisma,
     email,
+    realtime,
   };
 }
 
@@ -155,6 +161,14 @@ describe('redefinir com o link', () => {
     );
     expect(data.sessoesValidasDesde).toBeInstanceOf(Date);
     expect(data.mustChangePassword).toBe(false);
+  });
+
+  it('quem estava com o painel aberto sai do tempo real', async () => {
+    const { service, realtime } = montar({ pedido: valido });
+
+    await service.redefinir('token-do-email-123', 'senha-nova-123');
+
+    expect(realtime.derrubarPessoa).toHaveBeenCalledWith('u1');
   });
 
   it('link expirado não serve', async () => {

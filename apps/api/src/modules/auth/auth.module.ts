@@ -8,10 +8,12 @@ import { AuthService } from './auth.service';
 import { RedefinicaoDeSenhaService } from './redefinicao-de-senha.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
     WhatsappModule,
+    RealtimeModule,
     BillingModule,
 
     PassportModule,

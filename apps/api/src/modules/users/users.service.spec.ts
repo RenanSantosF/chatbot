@@ -31,7 +31,10 @@ function servicoCom(usuario: Record<string, unknown> | null) {
                 id: args.where.id,
                 data: args.data as Record<string, unknown>,
               });
-              return { id: args.where.id };
+              return {
+                id: args.where.id,
+                status: (args.data as { status?: string }).status ?? 'ACTIVE',
+              };
             },
           ),
         create: jest.fn().mockResolvedValue({ id: 'novo' }),
@@ -40,7 +43,13 @@ function servicoCom(usuario: Record<string, unknown> | null) {
     },
   };
 
-  return { service: new UsersService(prisma as never), atualizados, prisma };
+  const realtime = { derrubarPessoa: jest.fn() };
+  return {
+    service: new UsersService(prisma as never, realtime as never),
+    atualizados,
+    prisma,
+    realtime,
+  };
 }
 
 describe('edição de um colega (tela de equipe)', () => {
@@ -82,6 +91,30 @@ describe('edição de um colega (tela de equipe)', () => {
       id: 'user-bruno',
       data: { role: 'ADMIN' },
     });
+  });
+
+  it('desativar derruba na hora a conexão ao vivo da pessoa', async () => {
+    // Sem isto a aba aberta do desativado continuava recebendo as
+    // conversas em tempo real até o token vencer (7 dias).
+    const { service, realtime } = servicoCom({
+      id: 'user-bruno',
+      role: 'AGENT',
+    });
+
+    await service.update('user-bruno', { status: 'DISABLED' }, 'user-dono');
+
+    expect(realtime.derrubarPessoa).toHaveBeenCalledWith('user-bruno');
+  });
+
+  it('trocar o papel não derruba ninguém', async () => {
+    const { service, realtime } = servicoCom({
+      id: 'user-bruno',
+      role: 'AGENT',
+    });
+
+    await service.update('user-bruno', { role: 'ADMIN' }, 'user-dono');
+
+    expect(realtime.derrubarPessoa).not.toHaveBeenCalled();
   });
 });
 

@@ -37,6 +37,14 @@ function montar(conta: Record<string, unknown> | null) {
     }),
   );
 
+  // A linha como está no banco: a virada do ciclo grava por `updateMany`
+  // e relê, então o dublê precisa lembrar do que foi gravado.
+  let atual: typeof criada | null = conta ? criada : null;
+  const updateMany = jest.fn((args: { data: Record<string, unknown> }) => {
+    atual = { ...(atual ?? criada), ...args.data };
+    return { count: 1 };
+  });
+
   const prisma = {
     tenantId: 'tenant-1',
     db: {
@@ -44,9 +52,13 @@ function montar(conta: Record<string, unknown> | null) {
         // `criada` (com os padrões) e não o `conta` cru: um teste que só
         // define os dois ou três campos que importa pra ele não deveria
         // precisar listar todos os outros só pra não virar `undefined`.
-        findFirst: jest.fn().mockResolvedValue(conta ? criada : null),
-        create: jest.fn().mockResolvedValue(criada),
+        findFirst: jest.fn(() => Promise.resolve(atual)),
+        create: jest.fn(() => {
+          atual = criada;
+          return Promise.resolve(criada);
+        }),
         update,
+        updateMany,
       },
       tenant: {
         findUnique: jest
@@ -58,6 +70,27 @@ function montar(conta: Record<string, unknown> | null) {
 
   return { service: new AiUsageService(prisma as never), prisma };
 }
+
+describe('a virada do ciclo', () => {
+  it('só zera quem ainda vê o ciclo velho (duas respostas juntas não zeram duas vezes)', async () => {
+    const { service, prisma } = montar({
+      aiRepliesUsed: 900,
+      aiUsagePeriodStart: new Date('2026-01-01T12:00:00Z'),
+    });
+
+    await service.limite();
+
+    const [[{ where }]] = prisma.db.billingAccount.updateMany.mock
+      .calls as unknown as [[{ where: Record<string, unknown> }]];
+    expect(where).toMatchObject({
+      id: 'billing-1',
+      OR: [
+        { aiUsagePeriodStart: null },
+        { aiUsagePeriodStart: { lt: expect.any(Date) as Date } },
+      ],
+    });
+  });
+});
 
 describe('AiUsageService.limite', () => {
   it('deixa responder enquanto não bateu no teto', async () => {
@@ -126,7 +159,7 @@ describe('AiUsageService.limite', () => {
       limite: 10,
       extras: 0,
     });
-    expect(prisma.db.billingAccount.update).toHaveBeenCalledWith(
+    expect(prisma.db.billingAccount.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           aiRepliesUsed: 0,
