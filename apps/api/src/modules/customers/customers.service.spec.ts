@@ -113,6 +113,20 @@ describe('contato vindo da agenda do celular', () => {
 
     expect(atualizados[0].data).toEqual({ name: 'Ana Souza' });
   });
+
+  it('agenda e histórico cadastrando o mesmo número juntos', async () => {
+    // Na primeira conexão os dois chegam ao mesmo tempo; quem perde a
+    // corrida usa o cadastro de quem ganhou em vez de derrubar o lote.
+    const { service, prisma } = servicoCom([]);
+    prisma.db.customer.create.mockRejectedValueOnce({ code: 'P2002' });
+    prisma.db.customer.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'c1', phone: '5527999998888' });
+
+    await expect(
+      service.upsertFromAddressBook({ phone: '5527999998888', name: 'Ana' }),
+    ).resolves.toMatchObject({ id: 'c1' });
+  });
 });
 
 describe('importação de planilha', () => {

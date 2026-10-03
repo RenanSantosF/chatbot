@@ -4291,13 +4291,26 @@ export class ConversationsService {
       name: entrada.customerName,
     });
 
+    // Na mesma fila das mensagens ao vivo deste cliente: tudo abaixo é ler,
+    // decidir e gravar — qual conversa, qual capa, o que entra no bloco
+    // guardado —, e dois lotes do mesmo cliente correndo juntos (ou um
+    // lote e uma mensagem nova) gravavam por cima um do outro.
+    return naVezDoCliente(`${this.prisma.tenantId}:${customer.id}`, () =>
+      this.importarHistoricoDoCliente(customer.id, entrada),
+    );
+  }
+
+  private async importarHistoricoDoCliente(
+    customerId: string,
+    entrada: { mensagens: MensagemDoHistorico[] },
+  ): Promise<{ importadas: number; conversationId: string | null }> {
     const maisRecente = entrada.mensagens.reduce(
       (maior, m) => (m.createdAt > maior ? m.createdAt : maior),
       entrada.mensagens[0].createdAt,
     );
 
     const conversation = await this.conversaDoHistorico(
-      customer.id,
+      customerId,
       maisRecente,
     );
 

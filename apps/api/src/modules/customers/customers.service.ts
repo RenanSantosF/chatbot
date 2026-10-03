@@ -245,13 +245,26 @@ export class CustomersService {
 
     if (!existing) {
       if (input.criarSeNovo === false) return null;
-      return this.prisma.db.customer.create({
-        data: {
-          tenantId: this.prisma.tenantId,
-          phone: input.phone,
-          name: nome || input.phone,
-        },
-      });
+      try {
+        return await this.prisma.db.customer.create({
+          data: {
+            tenantId: this.prisma.tenantId,
+            phone: input.phone,
+            name: nome || input.phone,
+          },
+        });
+      } catch (error) {
+        // A agenda, o histórico e a mensagem ao vivo chegam juntos na
+        // primeira conexão, e os três podem cadastrar o mesmo número no
+        // mesmo instante. Quem perde a corrida usa o cadastro de quem ganhou.
+        if (talvezDuplicidade(error)) {
+          const criadoPorOutro = await this.prisma.db.customer.findFirst({
+            where: { phone: input.phone },
+          });
+          if (criadoPorOutro) return criadoPorOutro;
+        }
+        throw error;
+      }
     }
 
     if (nome && (input.daAgenda || !temNomeDeVerdade(existing.name, existing.phone))) {
