@@ -204,6 +204,25 @@ describe('cliente chegando por mensagem', () => {
     ).resolves.toMatchObject({ id: 'c1' });
   });
 
+  it('a mesma corrida embrulhada pelo pooler do Supabase', async () => {
+    // Pela porta 6543 a duplicidade chega como "Transaction already
+    // closed" (P2028), e não como P2002.
+    const { service, prisma } = servicoCom([]);
+
+    prisma.db.customer.create.mockRejectedValueOnce(
+      Object.assign(new Error('Transaction already closed'), {
+        code: 'P2028',
+      }),
+    );
+    prisma.db.customer.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'c1', phone: '5527999998888' });
+
+    await expect(
+      service.findOrCreateByPhone({ phone: '5527999998888', name: 'Ana' }),
+    ).resolves.toMatchObject({ id: 'c1' });
+  });
+
   it('erro que não é corrida continua estourando', async () => {
     // Engolir qualquer falha aqui esconderia problema de banco atrás de um
     // "cliente não encontrado".

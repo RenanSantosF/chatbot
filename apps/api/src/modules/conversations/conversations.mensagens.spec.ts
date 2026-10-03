@@ -1105,6 +1105,72 @@ describe('cliente que escreve em rajada', () => {
   });
 });
 
+describe('cliente novo que manda duas mensagens no mesmo segundo', () => {
+  /**
+   * As duas entregas procuravam conversa aberta ao mesmo tempo, nenhuma
+   * achava, e cada uma criava a sua: o cliente aparecia duas vezes na
+   * fila e a IA respondia em dobro.
+   */
+  it('as duas entram na MESMA conversa', async () => {
+    const { service, prisma } = montar();
+    let criada: Record<string, unknown> | null = null;
+    const create = jest.fn().mockImplementation(async () => {
+      // Demora de propósito: é nessa janela que a outra entrega olhava.
+      await new Promise((pronto) => setTimeout(pronto, 20));
+      criada = {
+        id: `conversa-nova-${create.mock.calls.length}`,
+        channel: 'WHATSAPP',
+        status: 'OPEN',
+        aiMode: 'HUMAN_ACTIVE',
+        priority: 'NORMAL',
+        customer: { id: 'cliente-1', phone: '5527999998888', name: 'Ana' },
+      };
+      return criada;
+    });
+    const procurar =
+      prisma.db.conversation.findFirst.getMockImplementation() as (
+        args: unknown,
+      ) => unknown;
+    Object.assign(prisma.db.conversation, {
+      create,
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: { where?: { status?: unknown } }) =>
+          args?.where?.status ? criada : procurar(args),
+        ),
+    });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest
+          .fn()
+          .mockResolvedValue({ id: 'cliente-1', phone: '5527999998888' }),
+      },
+      aiEngine: { podeAtender: jest.fn().mockResolvedValue(false) },
+      reabrirParaAgrupamento: jest.fn().mockResolvedValue(null),
+      saudar: jest.fn().mockResolvedValue(false),
+    });
+
+    await Promise.all([
+      service.receiveInbound({
+        customerPhone: '5527999998888',
+        customerName: 'Ana',
+        content: 'oi',
+        channel: 'WHATSAPP',
+        externalId: 'wamid.A',
+      }),
+      service.receiveInbound({
+        customerPhone: '5527999998888',
+        customerName: 'Ana',
+        content: 'tudo bem?',
+        channel: 'WHATSAPP',
+        externalId: 'wamid.B',
+      }),
+    ]);
+
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('o que o painel recebe quando o envio falha', () => {
   /**
    * O relato: com o WhatsApp desconectado, o balão nascia com o tique de

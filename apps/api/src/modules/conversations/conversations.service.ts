@@ -34,6 +34,10 @@ import { TagsService } from '../tags/tags.service';
 import { converterParaOggOpus, jaEhOggOpus } from '../whatsapp/audio-container';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { CanalService } from '../whatsapp/canal/canal.service';
+import {
+  transacaoFechada,
+  violouUnicidade,
+} from '../../common/prisma/erros-do-banco';
 import { idDaMensagem } from '../whatsapp/canal/evolution/evolution-id';
 import { AVISO_DE_INDISPONIBILIDADE } from '../ai/ai-indisponivel';
 import {
@@ -212,6 +216,44 @@ const OPEN_STATUSES: ConversationStatus[] = [
 ];
 
 /**
+ * Entregas sendo processadas agora, por empresa + id da mensagem.
+ *
+ * O servidor de mensagens às vezes avisa a mesma mensagem duas vezes no
+ * mesmo instante. A conferência "já está gravada?" não pega esse caso — as
+ * duas passam por ela antes de qualquer uma gravar —, e a segunda morria na
+ * trava de duplicidade do banco. Em memória basta: a API roda numa réplica
+ * só (ver DEPLOY.md).
+ */
+const entregasEmAndamento = new Set<string>();
+
+/**
+ * Uma fila por cliente pra decidir em qual conversa a mensagem entra.
+ *
+ * O cliente que manda "oi" e "tudo bem?" no mesmo segundo gera duas
+ * entregas correndo juntas. As duas procuravam conversa aberta, as duas
+ * não achavam, e cada uma criava a sua: duas conversas do mesmo cliente
+ * na fila, e a IA respondendo em dobro. Só esse trecho fica em fila — a
+ * resposta da IA continua em paralelo, que é o que deixa uma entrega
+ * perceber que chegou outra depois dela (ver `chegouOutraDepois`).
+ *
+ * Em memória basta pelo mesmo motivo de `entregasEmAndamento`.
+ */
+const filaPorCliente = new Map<string, Promise<unknown>>();
+
+async function naVezDoCliente<T>(chave: string, fazer: () => Promise<T>) {
+  const anterior = filaPorCliente.get(chave) ?? Promise.resolve();
+  const minha = anterior.catch(() => undefined).then(fazer);
+  filaPorCliente.set(chave, minha);
+  try {
+    return await minha;
+  } finally {
+    // Só quem é o último da fila apaga a chave; senão o próximo perderia
+    // a vez de esperar.
+    if (filaPorCliente.get(chave) === minha) filaPorCliente.delete(chave);
+  }
+}
+
+/**
  * O banco recusou porque esta mensagem JÁ está gravada.
  *
  * `P2002` é a violação de índice único — aqui, sempre o de
@@ -223,42 +265,8 @@ const OPEN_STATUSES: ConversationStatus[] = [
  * a Evolution reenviar, e reenviar é como o problema começou. Quem chama
  * trata como o que é — a mesma entrega, de novo.
  */
-/**
- * O erro que o pooler do Supabase devolve no lugar do original.
- *
- * Pela porta 6543 (modo transação), quando a gravação falha dentro da
- * transação implícita do Prisma, o erro de verdade — quase sempre a
- * duplicidade de uma entrega repetida — chega embrulhado como "Transaction
- * already closed: A rollback cannot be executed…" (P2028). Sem reconhecê-lo,
- * a duplicidade inofensiva virava erro 500 no painel da plataforma.
- */
-function transacaoFechada(erro: unknown): boolean {
-  if (typeof erro !== 'object' || erro === null) return false;
-  const { code, message } = erro as { code?: unknown; message?: unknown };
-  return (
-    code === 'P2028' ||
-    (typeof message === 'string' &&
-      message.includes('Transaction already closed'))
-  );
-}
-
-/**
- * Entregas sendo processadas agora, por empresa + id da mensagem.
- *
- * O servidor de mensagens às vezes avisa a mesma mensagem duas vezes no
- * mesmo instante. A conferência "já está gravada?" não pega esse caso — as
- * duas passam por ela antes de qualquer uma gravar —, e a segunda morria na
- * trava de duplicidade do banco. Em memória basta: a API roda numa réplica
- * só (ver DEPLOY.md).
- */
-const entregasEmAndamento = new Set<string>();
-
 function entregaRepetida(erro: unknown): boolean {
-  return (
-    typeof erro === 'object' &&
-    erro !== null &&
-    (erro as { code?: unknown }).code === 'P2002'
-  );
+  return violouUnicidade(erro);
 }
 
 // Ordem de progressão do ciclo de entrega — usada só pra impedir que um
@@ -3693,60 +3701,68 @@ export class ConversationsService {
       grupo: input.grupo,
     });
 
-    let conversation = await this.prisma.db.conversation.findFirst({
-      where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
-      orderBy: { createdAt: 'desc' },
-    });
+    const { conversation: encontrada, conversaNova } = await naVezDoCliente(
+      `${this.prisma.tenantId}:${customer.id}`,
+      async () => {
+        let conversation = await this.prisma.db.conversation.findFirst({
+          where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
+          orderBy: { createdAt: 'desc' },
+        });
 
-    // Nada em aberto: ou o cliente volta pra conversa que já teve, ou começa
-    // uma nova. Quem decide é a configuração de agrupamento — ver
-    // reabrirParaAgrupamento.
-    if (!conversation) {
-      conversation = await this.reabrirParaAgrupamento(
-        customer.id,
-        input.grupo,
-        input.createdAt,
-      );
-    }
+        // Nada em aberto: ou o cliente volta pra conversa que já teve, ou
+        // começa uma nova. Quem decide é a configuração de agrupamento — ver
+        // reabrirParaAgrupamento.
+        if (!conversation) {
+          conversation = await this.reabrirParaAgrupamento(
+            customer.id,
+            input.grupo,
+            input.createdAt,
+          );
+        }
 
-    // Guardado ANTES de gravar a mensagem: é a única janela em que dá pra
-    // saber que esta conversa não existia. Depois disso ela tem histórico
-    // como qualquer outra.
-    let conversaNova = false;
-    if (!conversation) {
-      conversaNova = true;
-      /*
-       * A conversa nasce no modo que a empresa REALMENTE tem.
-       *
-       * O padrão do banco é AI_ACTIVE, e ele valia mesmo pra empresa que
-       * nunca configurou IA. O estrago era duplo e silencioso: a saudação
-       * automática nunca saía (ela só fala quando a IA não vai falar), e o
-       * caminho da IA rodava assim mesmo, batia em "sem credencial" e
-       * mandava ao cliente o aviso de indisponibilidade — "Só um instante,
-       * vou chamar alguém da equipe".
-       *
-       * Do lado de fora isso parecia uma primeira resposta automática
-       * funcionando com o interruptor desligado. Não era: era a IA
-       * fracassando com educação.
-       */
-      /*
-       * Em GRUPO a IA nunca assume, e isto não é configurável.
-       *
-       * Um robô respondendo cada mensagem de um grupo de quarenta pessoas
-       * é constrangedor pra empresa e é padrão de spam pro WhatsApp — o
-       * tipo de comportamento que bloqueia número. Grupo nasce humano e
-       * continua humano; quem quiser responder, responde.
-       */
-      const comIa = input.grupo ? false : await this.aiEngine.podeAtender();
-      conversation = await this.prisma.db.conversation.create({
-        data: {
-          tenantId: this.prisma.tenantId,
-          customerId: customer.id,
-          channel: input.channel ?? 'INTERNAL',
-          aiMode: comIa ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
-        },
-      });
-    }
+        // Guardado ANTES de gravar a mensagem: é a única janela em que dá pra
+        // saber que esta conversa não existia. Depois disso ela tem histórico
+        // como qualquer outra.
+        let conversaNova = false;
+        if (!conversation) {
+          conversaNova = true;
+          /*
+           * A conversa nasce no modo que a empresa REALMENTE tem.
+           *
+           * O padrão do banco é AI_ACTIVE, e ele valia mesmo pra empresa que
+           * nunca configurou IA. O estrago era duplo e silencioso: a saudação
+           * automática nunca saía (ela só fala quando a IA não vai falar), e o
+           * caminho da IA rodava assim mesmo, batia em "sem credencial" e
+           * mandava ao cliente o aviso de indisponibilidade — "Só um instante,
+           * vou chamar alguém da equipe".
+           *
+           * Do lado de fora isso parecia uma primeira resposta automática
+           * funcionando com o interruptor desligado. Não era: era a IA
+           * fracassando com educação.
+           */
+          /*
+           * Em GRUPO a IA nunca assume, e isto não é configurável.
+           *
+           * Um robô respondendo cada mensagem de um grupo de quarenta pessoas
+           * é constrangedor pra empresa e é padrão de spam pro WhatsApp — o
+           * tipo de comportamento que bloqueia número. Grupo nasce humano e
+           * continua humano; quem quiser responder, responde.
+           */
+          const comIa = input.grupo ? false : await this.aiEngine.podeAtender();
+          conversation = await this.prisma.db.conversation.create({
+            data: {
+              tenantId: this.prisma.tenantId,
+              customerId: customer.id,
+              channel: input.channel ?? 'INTERNAL',
+              aiMode: comIa ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
+            },
+          });
+        }
+
+        return { conversation, conversaNova };
+      },
+    );
+    let conversation = encontrada;
 
     // A citação chega como o wamid da mensagem original; traduzimos pro id
     // interno pra a tela conseguir montar a tarjinha sem consultar a Meta.

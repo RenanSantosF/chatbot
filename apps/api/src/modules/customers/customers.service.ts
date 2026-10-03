@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import type { ParsedContact } from './contact-import';
+import { talvezDuplicidade } from '../../common/prisma/erros-do-banco';
 
 interface FindOrCreateInput {
   phone: string;
@@ -48,7 +49,6 @@ interface ContatoDeAgenda {
   criarSeNovo?: boolean;
 }
 
-const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
 /**
  * Nomes que não nomeiam ninguém.
@@ -398,13 +398,11 @@ export class CustomersService {
         data: { tenantId: this.prisma.tenantId, phone, name, isGroup: Boolean(grupo) },
       });
     } catch (error) {
-      // Corrida entre duas mensagens quase simultâneas do mesmo número novo.
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        error.code === UNIQUE_CONSTRAINT_VIOLATION
-      ) {
+      // Corrida entre duas mensagens quase simultâneas do mesmo número novo
+      // — o cliente que manda "oi", "tudo bem?" e a pergunta em seguida.
+      // Pelo pooler do Supabase a duplicidade chega embrulhada (P2028), e
+      // sem reconhecê-la a segunda mensagem morria com erro 500.
+      if (talvezDuplicidade(error)) {
         const existingAfterRace = await this.prisma.db.customer.findFirst({ where: { phone } });
         if (existingAfterRace) {
           return existingAfterRace;
