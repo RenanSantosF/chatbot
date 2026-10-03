@@ -49,13 +49,11 @@ function montar(opcoes: {
                 ),
               },
         ),
-        findMany: jest
-          .fn()
-          .mockResolvedValue(
-            (opcoes.existentes ?? []).map((externo) => ({
-              externalId: externo,
-            })),
-          ),
+        findMany: jest.fn().mockResolvedValue(
+          (opcoes.existentes ?? []).map((externo) => ({
+            externalId: externo,
+          })),
+        ),
         createMany: jest.fn((args: { data: Record<string, unknown>[] }) => {
           criadas.push(...args.data);
           return { count: args.data.length };
