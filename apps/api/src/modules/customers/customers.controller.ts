@@ -52,7 +52,12 @@ export class CustomersController {
    * descobrir o problema semanas depois, quando a mensagem não chega.
    */
   @Post('import')
-  @UseInterceptors(FileInterceptor('file'))
+  // O teto vale já na leitura: sem ele o arquivo inteiro ia pra memória
+  // antes da conferência de tamanho — e um arquivo enorme derrubava a API
+  // (uma réplica só) pra todas as empresas.
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_IMPORT_BYTES } }),
+  )
   async import(@UploadedFile() file?: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Envie um arquivo CSV.');

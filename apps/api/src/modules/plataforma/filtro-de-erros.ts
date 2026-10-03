@@ -2,6 +2,7 @@ import {
   ArgumentsHost,
   Catch,
   HttpException,
+  HttpStatus,
   type HttpServer,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
@@ -44,6 +45,29 @@ export class FiltroDeErros extends BaseExceptionFilter {
       });
     }
 
-    super.catch(exception, host);
+    super.catch(emPortugues(exception, status), host);
   }
+}
+
+/**
+ * As duas recusas que o próprio Nest escreve, e escreve em inglês.
+ *
+ * O painel mostra a mensagem da API como veio: quem passava do limite de
+ * tentativas lia "ThrottlerException: Too Many Requests", e quem mandava
+ * um arquivo grande demais, "File too large".
+ */
+export function emPortugues(exception: unknown, status: number): unknown {
+  if (status === HttpStatus.TOO_MANY_REQUESTS) {
+    return new HttpException(
+      'Muitas tentativas seguidas. Espere um minuto e tente de novo.',
+      status,
+    );
+  }
+  if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+    return new HttpException(
+      'O arquivo passa do tamanho máximo permitido.',
+      status,
+    );
+  }
+  return exception;
 }
