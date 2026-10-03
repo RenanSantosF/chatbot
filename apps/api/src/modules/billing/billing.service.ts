@@ -19,6 +19,7 @@ import {
   type DecisaoDeAcesso,
   type MotivoDoAcesso,
 } from './acesso';
+import { talvezDuplicidade } from '../../common/prisma/erros-do-banco';
 
 /**
  * Se uma pessoa da empresa é dona da plataforma — um minuto de validade.
@@ -514,15 +515,46 @@ export class BillingService {
 
         if (sessao.mode === 'payment') {
           const quantidade = quantidadePaga(sessao.metadata);
-          const resultado = await this.global.client.billingAccount.updateMany({
+          const conta = await this.global.client.billingAccount.findUnique({
             where: { tenantId },
-            data: {
-              aiExtraMessagesThisPeriod: { increment: quantidade },
-            },
+            select: { id: true },
           });
-          if (resultado.count === 0) {
+          if (!conta) {
             this.logger.warn(
               `Pacote extra pago pro tenant ${tenantId}, sem BillingAccount correspondente.`,
+            );
+            return;
+          }
+
+          /*
+           * Uma vez por compra, mesmo com o Stripe reenviando o aviso.
+           *
+           * A marca da sessão e o crédito vão na mesma transação: ou os
+           * dois acontecem, ou nenhum. O reenvio esbarra na chave da
+           * sessão e não soma as mensagens de novo.
+           */
+          try {
+            await this.global.client.$transaction([
+              this.global.client.pacoteCreditado.create({
+                data: { sessaoId: sessao.id, tenantId, quantidade },
+              }),
+              this.global.client.billingAccount.update({
+                where: { tenantId },
+                data: {
+                  aiExtraMessagesThisPeriod: { increment: quantidade },
+                },
+              }),
+            ]);
+          } catch (erro) {
+            if (!talvezDuplicidade(erro)) throw erro;
+            const jaCreditado =
+              await this.global.client.pacoteCreditado.findUnique({
+                where: { sessaoId: sessao.id },
+                select: { sessaoId: true },
+              });
+            if (!jaCreditado) throw erro;
+            this.logger.log(
+              `Aviso repetido do pacote ${sessao.id} (tenant ${tenantId}) — já estava creditado.`,
             );
             return;
           }

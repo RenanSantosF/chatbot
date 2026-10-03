@@ -49,10 +49,16 @@ function montar(conta: Record<string, unknown> | null) {
       },
       billingAccount: {
         findFirst: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ id: 'billing-1' }),
         upsert: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      pacoteCreditado: {
+        create: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     },
   };
 
@@ -464,17 +470,72 @@ describe('BillingService.processarEvento', () => {
       type: 'checkout.session.completed',
       data: {
         object: {
+          id: 'cs_avulso',
           mode: 'payment',
           client_reference_id: 'tenant-1',
         },
       },
     } as never);
 
-    expect(global.client.billingAccount.updateMany).toHaveBeenCalledWith({
+    expect(global.client.billingAccount.update).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1' },
       data: { aiExtraMessagesThisPeriod: { increment: 1000 } },
     });
     expect(global.client.billingAccount.upsert).not.toHaveBeenCalled();
+  });
+
+  /**
+   * O Stripe reenvia o aviso quando não tem certeza de que ele chegou, e
+   * cada reenvio somava as mensagens de novo.
+   */
+  it('o aviso repetido do mesmo pagamento não credita duas vezes', async () => {
+    const { service, global } = montar(null);
+    global.client.pacoteCreditado.create.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+    global.client.pacoteCreditado.findUnique.mockResolvedValue({
+      sessaoId: 'cs_repetida',
+    });
+
+    await expect(
+      service.processarEvento({
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_repetida',
+            mode: 'payment',
+            client_reference_id: 'tenant-1',
+          },
+        },
+      } as never),
+    ).resolves.toBeUndefined();
+
+    // A transação inteira volta: a marca não grava e o crédito também não.
+    expect(global.client.$transaction).toHaveBeenCalledTimes(1);
+    expect(global.client.pacoteCreditado.findUnique).toHaveBeenCalledWith({
+      where: { sessaoId: 'cs_repetida' },
+      select: { sessaoId: true },
+    });
+  });
+
+  it('a compra fica marcada junto com o crédito', async () => {
+    const { service, global } = montar(null);
+
+    await service.processarEvento({
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_nova',
+          mode: 'payment',
+          client_reference_id: 'tenant-1',
+          metadata: { pacote: '10000' },
+        },
+      },
+    } as never);
+
+    expect(global.client.pacoteCreditado.create).toHaveBeenCalledWith({
+      data: { sessaoId: 'cs_nova', tenantId: 'tenant-1', quantidade: 10000 },
+    });
   });
 
   it('não estoura quando o evento chega pra um cliente sem BillingAccount', async () => {
@@ -668,7 +729,7 @@ describe('BillingService: pacotes de vários tamanhos', () => {
       },
     } as never);
 
-    expect(global.client.billingAccount.updateMany).toHaveBeenCalledWith({
+    expect(global.client.billingAccount.update).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1' },
       data: { aiExtraMessagesThisPeriod: { increment: 10000 } },
     });

@@ -102,6 +102,7 @@ model Tenant {
   auditLogs           AuditLog[]
   historicosGuardados HistoricoGuardado[]
   pushSubscriptions   PushSubscription[]
+  pacotesCreditados   PacoteCreditado[]
 
   @@map("tenants")
 }
@@ -1480,6 +1481,24 @@ model ErroDaPlataforma {
 
   @@index([ultimaVez])
   @@map("erros_da_plataforma")
+}
+
+/// Uma compra de pacote extra que já virou crédito.
+///
+/// O Stripe reenvia o aviso de pagamento sempre que não tem certeza de que
+/// ele chegou — resposta lenta, erro depois de creditar. Sem esta marca,
+/// cada reenvio somava as mensagens de novo. A chave é a sessão de
+/// pagamento do Stripe, que é única por compra.
+model PacoteCreditado {
+  sessaoId   String   @id
+  tenantId   String
+  quantidade Int
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("pacotes_creditados")
 }
 
 /// Um pedido de "esqueci minha senha".
