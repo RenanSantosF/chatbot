@@ -471,6 +471,7 @@ export class EvolutionWebhookController {
           metadata: traduzida.metadata as Prisma.InputJsonValue | undefined,
           externalId,
           ...citacao,
+          createdAt: horaDaMensagem(dados),
         });
         continue;
       }

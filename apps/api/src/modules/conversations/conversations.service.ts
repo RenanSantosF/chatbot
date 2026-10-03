@@ -4015,6 +4015,12 @@ export class ConversationsService {
     grupo = false,
     /** Quando o cliente ESCREVEU a mensagem que reabre (ver a nota abaixo). */
     escritaEm?: Date,
+    /**
+     * Quem reabriu. A empresa escrevendo pelo celular também reabre (ver
+     * `recordOutboundEcho`) — e aí a IA não reassume: uma pessoa está
+     * conversando.
+     */
+    quem: 'cliente' | 'empresa' = 'cliente',
   ) {
     const settings = await this.inboxSettings.get();
     if (!settings.groupByCustomer) return null;
@@ -4057,7 +4063,8 @@ export class ConversationsService {
      * comando na mensagem seguinte. É a mesma regra do nascimento da
      * conversa, que faltava aqui.
      */
-    const iaAssume = !grupo && (await this.aiEngine.podeAtender());
+    const iaAssume =
+      quem === 'cliente' && !grupo && (await this.aiEngine.podeAtender());
 
     /*
      * E a rodada nova também não nasce com dono.
@@ -4112,9 +4119,12 @@ export class ConversationsService {
         senderType: 'SYSTEM',
         // Dizer que voltou pra fila é o que responde, pra quem atendeu a
         // rodada anterior, por que a conversa saiu da mesa dele.
-        content: anterior.assignedUserId
-          ? 'O cliente voltou a escrever. O atendimento foi reaberto e devolvido à fila.'
-          : 'O cliente voltou a escrever e o atendimento foi reaberto.',
+        content:
+          quem === 'empresa'
+            ? 'A empresa escreveu pelo celular e o atendimento foi reaberto.'
+            : anterior.assignedUserId
+              ? 'O cliente voltou a escrever. O atendimento foi reaberto e devolvido à fila.'
+              : 'O cliente voltou a escrever e o atendimento foi reaberto.',
         messageType: 'TEXT',
         /*
          * A nota vem ANTES da mensagem que reabriu — no histórico e no
@@ -4721,24 +4731,10 @@ export class ConversationsService {
     /** Resposta citando outra, feita no celular — ver receiveInbound. */
     replyToExternalId?: string | string[];
     citacao?: CitacaoCopiada;
+    /** Quando foi escrita no celular. */
+    createdAt?: Date;
   }) {
-    // Só entra se já existir uma conversa aberta: a empresa responder pelo
-    // celular pressupõe que o cliente escreveu antes. Criar conversa a partir
-    // de um eco encheria o painel de conversas sem pergunta nenhuma.
-    const customer = await this.prisma.db.customer.findFirst({
-      where: { phone: input.customerPhone },
-      select: { id: true },
-    });
-    if (!customer) return null;
-
-    const conversation = await this.prisma.db.conversation.findFirst({
-      where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!conversation) return null;
-
-    // Idempotência: a Meta reenvia webhook quando não recebe 2xx a tempo, e
-    // sem isto a mesma mensagem apareceria duas vezes na conversa.
+    // Idempotência primeiro: a entrega repetida não pode reabrir nada.
     if (input.externalId) {
       const jaTemos = await this.prisma.db.message.findFirst({
         where: { externalId: input.externalId },
@@ -4746,6 +4742,61 @@ export class ConversationsService {
       });
       if (jaTemos) return null;
     }
+
+    /*
+     * A mensagem do celular entra SEMPRE, com ou sem conversa aberta.
+     *
+     * Antes ela só entrava se houvesse uma aberta — e era descartada em
+     * silêncio quando o atendimento já tinha sido encerrado (pelo botão ou
+     * pelo encerramento automático). Quem escrevia pelo celular depois
+     * disso via, no painel, só as respostas do cliente: as próprias
+     * mensagens tinham sumido, e nenhuma sincronização as trazia de volta,
+     * porque nunca chegaram a ser gravadas.
+     *
+     * Sem conversa aberta, a empresa está puxando assunto: a última
+     * conversa do cliente reabre (pela mesma regra de agrupamento de
+     * quando o cliente volta) ou nasce uma nova, já com gente no comando —
+     * quem escreveu foi uma pessoa, e a IA não deve responder por cima.
+     */
+    const ehGrupoDoWhatsapp = input.customerPhone.includes('@');
+    const customer = ehGrupoDoWhatsapp
+      ? await this.prisma.db.customer.findFirst({
+          where: { phone: input.customerPhone },
+          select: { id: true, isGroup: true },
+        })
+      : // Sem nome: o do evento é o da própria empresa (quem escreveu foi
+        // ela). O telefone serve de rótulo até o cliente aparecer.
+        await this.customers.findOrCreateByPhone({
+          phone: input.customerPhone,
+          name: input.customerPhone,
+        });
+    // Grupo que o painel ainda não conhece: só a empresa falando nele não
+    // é motivo pra criá-lo.
+    if (!customer) return null;
+    const grupo = Boolean(customer.isGroup);
+
+    const conversation = await naVezDoCliente(
+      `${this.prisma.tenantId}:${customer.id}`,
+      async () =>
+        (await this.prisma.db.conversation.findFirst({
+          where: { customerId: customer.id, status: { in: OPEN_STATUSES } },
+          orderBy: { createdAt: 'desc' },
+        })) ??
+        (await this.reabrirParaAgrupamento(
+          customer.id,
+          grupo,
+          input.createdAt,
+          'empresa',
+        )) ??
+        (await this.prisma.db.conversation.create({
+          data: {
+            tenantId: this.prisma.tenantId,
+            customerId: customer.id,
+            channel: 'WHATSAPP',
+            aiMode: 'HUMAN_ACTIVE',
+          },
+        })),
+    );
 
     // Sem isto, responder citando pelo celular chegava no painel como uma
     // mensagem solta — a citação era descartada aqui.
@@ -4765,6 +4816,7 @@ export class ConversationsService {
         externalId: input.externalId,
         replyToId: replyTo?.id,
         status: 'SENT',
+        createdAt: input.createdAt,
         // Quem entregou foi o WhatsApp do celular. Reenviar daqui faria o
         // cliente receber a mesma resposta duas vezes.
         jaEntregue: true,

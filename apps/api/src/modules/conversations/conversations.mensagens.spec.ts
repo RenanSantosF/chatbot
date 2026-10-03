@@ -188,6 +188,27 @@ function montar(estado: Estado = {}) {
 }
 
 describe('eco do celular (coexistência)', () => {
+  /** O `montar` de sempre, com o cadastro do cliente e a reabertura. */
+  function montarEco(estado: Parameters<typeof montar>[0] = {}) {
+    const montado = montar(estado);
+    const reabrir = jest.fn().mockResolvedValue(null);
+    const criarConversa = jest.fn().mockResolvedValue({
+      id: 'conversa-nova',
+      channel: 'WHATSAPP',
+      aiMode: 'HUMAN_ACTIVE',
+    });
+    Object.assign(montado.prisma.db.conversation, { create: criarConversa });
+    Object.assign(montado.service as unknown as Record<string, unknown>, {
+      customers: {
+        findOrCreateByPhone: jest
+          .fn()
+          .mockResolvedValue({ id: 'cliente-1', isGroup: false }),
+      },
+      reabrirParaAgrupamento: reabrir,
+    });
+    return { ...montado, reabrir, criarConversa };
+  }
+
   /**
    * O caso: o mesmo número está no aplicativo WhatsApp Business e na Cloud
    * API. O que a empresa digita no celular volta pra cá pelo webhook como
@@ -200,7 +221,7 @@ describe('eco do celular (coexistência)', () => {
    * novo, sem fim.
    */
   it('não reenvia pro cliente o que já saiu pelo celular', async () => {
-    const { service, whatsapp } = montar();
+    const { service, whatsapp } = montarEco();
 
     await service.recordOutboundEcho({
       customerPhone: '5527999998888',
@@ -212,7 +233,7 @@ describe('eco do celular (coexistência)', () => {
   });
 
   it('preserva o externalId do eco, que é o que segura a idempotência', async () => {
-    const { service, criadas, prisma } = montar();
+    const { service, criadas, prisma } = montarEco();
 
     await service.recordOutboundEcho({
       customerPhone: '5527999998888',
@@ -229,7 +250,7 @@ describe('eco do celular (coexistência)', () => {
   it('grava como já enviada, não como pendente', async () => {
     // Quem entregou foi o WhatsApp do celular; não há entrega nossa a
     // confirmar, então o balão não pode ficar com o relógio de "enviando".
-    const { service, criadas } = montar();
+    const { service, criadas } = montarEco();
 
     await service.recordOutboundEcho({
       customerPhone: '5527999998888',
@@ -240,7 +261,7 @@ describe('eco do celular (coexistência)', () => {
   });
 
   it('resposta citando uma mensagem que não está no painel guarda o resumo dela', async () => {
-    const { service, criadas } = montar();
+    const { service, criadas } = montarEco();
 
     await service.recordOutboundEcho({
       customerPhone: '5527999998888',
@@ -259,7 +280,7 @@ describe('eco do celular (coexistência)', () => {
   });
 
   it('ignora o eco repetido que a Meta reenvia', async () => {
-    const { service, criadas } = montar({
+    const { service, criadas } = montarEco({
       mensagemJaGravada: { id: 'msg-antiga' },
     });
 
@@ -273,21 +294,74 @@ describe('eco do celular (coexistência)', () => {
     expect(criadas).toHaveLength(0);
   });
 
-  it('não inventa conversa a partir de um eco', async () => {
-    // Responder pelo celular pressupõe que o cliente escreveu antes. Criar
-    // conversa a partir de eco encheria o painel de conversas sem pergunta.
-    const { service } = montar({ conversaAberta: null });
+  /**
+   * O relato: a conversa foi encerrada automaticamente, a empresa escreveu
+   * pelo celular depois disso, e o painel nunca mostrou essas mensagens —
+   * só as respostas do cliente que vieram em seguida.
+   */
+  it('com o atendimento encerrado, reabre a conversa e grava a mensagem', async () => {
+    const { service, reabrir, criadas } = montarEco({ conversaAberta: null });
+    reabrir.mockResolvedValue({
+      id: 'conversa-1',
+      channel: 'WHATSAPP',
+      aiMode: 'AI_ACTIVE',
+    });
+    const escritaEm = new Date('2026-10-03T21:26:00Z');
+
+    await service.recordOutboundEcho({
+      customerPhone: '5527999998888',
+      content: 'Você tá precisando do que?',
+      createdAt: escritaEm,
+    });
+
+    expect(reabrir).toHaveBeenCalledWith(
+      'cliente-1',
+      false,
+      escritaEm,
+      'empresa',
+    );
+    expect(criadas).toContainEqual(
+      expect.objectContaining({
+        content: 'Você tá precisando do que?',
+        senderType: 'AGENT',
+      }),
+    );
+  });
+
+  it('cliente sem conversa nenhuma: nasce uma, com gente no comando', async () => {
+    const { service, criarConversa, criadas } = montarEco({
+      conversaAberta: null,
+    });
+
+    await service.recordOutboundEcho({
+      customerPhone: '5527999998888',
+      content: 'Olá, aqui é da loja!',
+    });
+
+    expect(criarConversa).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        customerId: 'cliente-1',
+        aiMode: 'HUMAN_ACTIVE',
+      }) as object,
+    });
+    expect(criadas).toHaveLength(1);
+  });
+
+  it('grupo que o painel não conhece não é criado só porque a empresa falou nele', async () => {
+    const { service, prisma, criadas } = montarEco({ conversaAberta: null });
+    prisma.db.customer.findFirst.mockResolvedValue(null);
 
     await expect(
       service.recordOutboundEcho({
-        customerPhone: '5527999998888',
-        content: 'Bom dia',
+        customerPhone: '120363000000000000@g.us',
+        content: 'Bom dia, pessoal',
       }),
     ).resolves.toBeNull();
+    expect(criadas).toHaveLength(0);
   });
 
   it('desliga a IA: uma pessoa acabou de responder', async () => {
-    const { service, atualizacoes } = montar({
+    const { service, atualizacoes } = montarEco({
       conversaAberta: { id: 'conversa-1', aiMode: 'AI_ACTIVE' },
     });
 
