@@ -811,9 +811,11 @@ export interface EstadoDaConexao {
 
 export function estado(
   credenciais: Credenciais,
+  tempoLimiteMs?: number,
 ): Promise<RespostaDaEvolution<EstadoDaConexao>> {
   return chamar(credenciais, `/instance/connectionState/${credenciais.instance}`, {
     method: 'GET',
+    tempoLimiteMs,
   });
 }
 

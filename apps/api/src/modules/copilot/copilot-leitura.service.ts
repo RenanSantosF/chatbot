@@ -19,8 +19,21 @@ export interface Leitor {
   role: UserRole;
 }
 
-export type Periodo = 'hoje' | 'ontem' | '7dias' | '30dias' | 'mes';
-export const PERIODOS: Periodo[] = ['hoje', 'ontem', '7dias', '30dias', 'mes'];
+export type Periodo =
+  | 'hoje'
+  | 'ontem'
+  | '7dias'
+  | 'semanaPassada'
+  | '30dias'
+  | 'mes';
+export const PERIODOS: Periodo[] = [
+  'hoje',
+  'ontem',
+  '7dias',
+  'semanaPassada',
+  '30dias',
+  'mes',
+];
 
 const ABERTAS: ConversationStatus[] = [
   'OPEN',
@@ -92,6 +105,21 @@ export function intervaloDoPeriodo(
         ate: agora,
         rotulo: 'últimos 7 dias (com hoje)',
       };
+    case 'semanaPassada': {
+      // De segunda a domingo, a semana fechada antes desta. Domingo conta
+      // como fim de semana, não começo: no domingo, "semana passada" ainda
+      // é a que terminou no domingo anterior.
+      const diasDesdeSegunda = (partes(fuso, agora).semana + 6) % 7;
+      const estaSegunda = meiaNoite(
+        fuso,
+        new Date(hoje.getTime() - diasDesdeSegunda * DIA + DIA / 2),
+      );
+      return {
+        de: meiaNoite(fuso, new Date(estaSegunda.getTime() - 7 * DIA + DIA / 2)),
+        ate: new Date(estaSegunda.getTime() - 1),
+        rotulo: 'semana passada (segunda a domingo)',
+      };
+    }
     case '30dias':
       return {
         de: meiaNoite(fuso, new Date(hoje.getTime() - 29 * DIA + DIA / 2)),

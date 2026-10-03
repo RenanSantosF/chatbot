@@ -48,6 +48,10 @@ self.addEventListener("push", (evento) => {
   const titulo = aviso.titulo || "Nova mensagem";
   const corpo = aviso.corpo || "";
   const conversationId = aviso.conversationId || "";
+  // Avisos que não são de conversa (o WhatsApp que caiu) trazem o próprio
+  // endereço e a própria tag.
+  const url = aviso.url || "";
+  const tag = aviso.tag || conversationId || "inteliwa";
 
   evento.waitUntil(
     (async () => {
@@ -78,9 +82,9 @@ self.addEventListener("push", (evento) => {
          * WhatsApp, não a exceção — empilharia cinco avisos iguais na tela
          * de bloqueio. Com a tag, o quinto substitui o quarto.
          */
-        tag: conversationId || "inteliwa",
-        renotify: Boolean(conversationId),
-        data: { conversationId },
+        tag,
+        renotify: Boolean(conversationId || aviso.tag),
+        data: { conversationId, url },
       });
     })(),
   );
@@ -97,9 +101,12 @@ self.addEventListener("notificationclick", (evento) => {
   evento.notification.close();
 
   const conversationId = evento.notification.data?.conversationId;
-  const destino = conversationId
-    ? `/dashboard/inbox?c=${conversationId}`
-    : "/dashboard/inbox";
+  const url = evento.notification.data?.url;
+  const destino = url
+    ? url
+    : conversationId
+      ? `/dashboard/inbox?c=${conversationId}`
+      : "/dashboard/inbox";
 
   evento.waitUntil(
     (async () => {

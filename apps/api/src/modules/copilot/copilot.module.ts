@@ -9,6 +9,7 @@ import { TagsModule } from '../tags/tags.module';
 import { CopilotController } from './copilot.controller';
 import { CopilotLeituraService } from './copilot-leitura.service';
 import { CopilotService } from './copilot.service';
+import { RelatorioSemanalService } from './relatorio-semanal.service';
 
 @Module({
   imports: [
@@ -23,6 +24,6 @@ import { CopilotService } from './copilot.service';
     TagsModule,
   ],
   controllers: [CopilotController],
-  providers: [CopilotService, CopilotLeituraService],
+  providers: [CopilotService, CopilotLeituraService, RelatorioSemanalService],
 })
 export class CopilotModule {}

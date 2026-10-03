@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CustomersModule } from '../customers/customers.module';
+import { ArquivoDeMidiasService } from './arquivo-de-midias.service';
 import { CanalService } from './canal/canal.service';
 import { EvolutionCanal } from './canal/evolution/evolution.canal';
 import { EvolutionController } from './canal/evolution/evolution.controller';
@@ -35,6 +36,7 @@ import { WhatsappSettingsService } from './whatsapp-settings.service';
     EvolutionCanal,
     EvolutionService,
     FotoDePerfilService,
+    ArquivoDeMidiasService,
   ],
   // O `WhatsappSenderService` continua exportado porque a mídia ainda passa
   // por ele. Quem só manda texto, reação ou modelo deve pedir o

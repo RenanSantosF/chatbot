@@ -42,6 +42,7 @@ export class AccountService {
       select: {
         name: true,
         createdAt: true,
+        relatorioSemanal: true,
         _count: {
           select: {
             conversations: true,
@@ -73,6 +74,7 @@ export class AccountService {
       assinaturaAtiva: Boolean(billing?.stripeSubscriptionId),
       plano: billing?.planLabel ?? 'Grátis',
       criadaEm: tenant.createdAt,
+      relatorioSemanal: tenant.relatorioSemanal,
       armazenamento: billing
         ? {
             usadoBytes: Number(billing.usedBytes),
@@ -80,6 +82,16 @@ export class AccountService {
           }
         : null,
     };
+  }
+
+  /** Liga ou desliga o resumo da semana por e-mail (ver RelatorioSemanalService). */
+  async preferencias(dto: { relatorioSemanal: boolean }) {
+    const tenant = await this.global.client.tenant.update({
+      where: { id: this.prisma.tenantId },
+      data: { relatorioSemanal: dto.relatorioSemanal },
+      select: { relatorioSemanal: true },
+    });
+    return { relatorioSemanal: tenant.relatorioSemanal };
   }
 
   async excluir(userId: string, dto: ExcluirContaDto) {

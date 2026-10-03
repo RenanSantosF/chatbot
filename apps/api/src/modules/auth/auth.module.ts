@@ -6,7 +6,6 @@ import { TenantsModule } from '../tenants/tenants.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RedefinicaoDeSenhaService } from './redefinicao-de-senha.service';
-import { EmailService } from '../../common/email/email.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
@@ -30,7 +29,6 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
     AuthService,
     JwtStrategy,
     RedefinicaoDeSenhaService,
-    EmailService,
   ],
 })
 export class AuthModule {}

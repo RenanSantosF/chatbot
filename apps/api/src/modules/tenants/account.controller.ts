@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Patch,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
 import { Roles } from '../../common/auth/roles.decorator';
@@ -6,6 +15,7 @@ import { RolesGuard } from '../../common/auth/roles.guard';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { AccountService } from './account.service';
 import { ExcluirContaDto } from './dto/excluir-conta.dto';
+import { PreferenciasDaContaDto } from './dto/preferencias-da-conta.dto';
 
 /**
  * A conta da empresa — e o botão de apagá-la.
@@ -23,6 +33,11 @@ export class AccountController {
   @Get()
   resumo() {
     return this.account.resumo();
+  }
+
+  @Patch('preferencias')
+  preferencias(@Body() dto: PreferenciasDaContaDto) {
+    return this.account.preferencias(dto);
   }
 
   @Delete()

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { SubscriptionCard } from "@/components/settings/subscription-card";
 import { apiFetch } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-error";
@@ -33,6 +34,8 @@ interface ResumoDaConta {
   plano: string;
   criadaEm?: string;
   armazenamento?: { usadoBytes: number; cotaBytes: number } | null;
+  /** O resumo da semana por e-mail, toda segunda. */
+  relatorioSemanal?: boolean;
 }
 
 interface UsoDaIa {
@@ -127,6 +130,20 @@ export default function AccountPage() {
     Boolean(resumo) &&
     nomeDigitado.trim().toLocaleLowerCase("pt-BR") ===
       resumo!.nome.trim().toLocaleLowerCase("pt-BR");
+
+  async function trocarRelatorioSemanal(ligado: boolean) {
+    // Otimista: a chave muda na hora e volta se o servidor recusar.
+    setResumo((atual) => (atual ? { ...atual, relatorioSemanal: ligado } : atual));
+    try {
+      await apiFetch("/account/preferencias", {
+        method: "PATCH",
+        body: JSON.stringify({ relatorioSemanal: ligado }),
+      });
+    } catch {
+      setResumo((atual) => (atual ? { ...atual, relatorioSemanal: !ligado } : atual));
+      toast.error("Não deu pra salvar. Tente de novo.");
+    }
+  }
 
   async function apagar() {
     setApagando(true);
@@ -256,6 +273,28 @@ export default function AccountPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium">E-mails para você</h3>
+        <label className="flex items-start justify-between gap-4 rounded-lg border px-3 py-3">
+          <span className="flex flex-col gap-0.5">
+            <span className="text-sm">Resumo da semana</span>
+            <span className="text-xs text-muted-foreground">
+              Toda segunda de manhã: quantos clientes escreveram, quanto a IA resolveu sozinha e o que ela não
+              soube responder.
+            </span>
+          </span>
+          <Switch
+            checked={resumo.relatorioSemanal ?? true}
+            onCheckedChange={trocarRelatorioSemanal}
+            aria-label="Receber o resumo da semana por e-mail"
+          />
+        </label>
+        <p className="text-xs text-muted-foreground">
+          O aviso de WhatsApp desconectado chega sempre, por e-mail e no celular: sem ele, a IA para de
+          responder sem ninguém saber.
+        </p>
       </section>
 
       <section className="flex flex-col gap-1">

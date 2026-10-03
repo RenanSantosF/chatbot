@@ -75,7 +75,7 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `PLANO_PRECO_MENSAL` | opcional — o preço do plano em reais, usado só pra estimar a receita mensal (MRR) no painel da plataforma. Padrão `167` |
    | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
    | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT` | **obrigatórias pra guardar fotos, áudios e documentos.** Sem elas NADA é guardado: todo anexo é buscado no WhatsApp na hora, e o WhatsApp apaga o arquivo depois de um tempo — a foto vira "indisponível". Ver seção 9 abaixo |
-   | `RESEND_API_KEY` | **obrigatória pra "Esqueci minha senha"** — a chave (`re_...`) do Resend. Sem ela o e-mail de recuperação não sai e quem esquecer a senha fica sem acesso — ver seção 7 abaixo |
+   | `RESEND_API_KEY` | **obrigatória pra "Esqueci minha senha"**, pro aviso de WhatsApp desconectado e pro resumo da semana — a chave (`re_...`) do Resend. Sem ela nenhum desses e-mails sai — ver seção 7 abaixo |
    | `EMAIL_FROM` | o remetente dos e-mails, com o domínio verificado no Resend — ex.: `Inteliwa <nao-responda@inteliwa.com.br>` |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
    | `VAPID_SUBJECT` | um e-mail seu. **O `mailto:` na frente faz parte do valor** (`mailto:voce@seudominio.com`) — a norma pede uma URL, não um e-mail solto. Se você esquecer, o sistema completa sozinho e registra no log |
@@ -539,9 +539,15 @@ pra isso funcionar, é automático a partir dos mesmos três eventos do passo
 
 ---
 
-## 7. E-mail (Resend) — "Esqueci minha senha"
+## 7. E-mail (Resend)
 
-O sistema manda um e-mail só, por enquanto: o link de redefinição de senha. Sem ele, quem esquece a senha — inclusive o dono da empresa — fica trancado pra fora.
+O sistema manda três tipos de e-mail, todos pelo Resend:
+
+- **"Esqueci minha senha"** — o link de redefinição. Sem ele, quem esquece a senha (inclusive o dono da empresa) fica trancado pra fora.
+- **WhatsApp desconectado** — ao dono, quando a sessão da empresa fica caída por mais de 5 minutos (uma vez por queda). Se o que caiu foi o **servidor da Evolution inteiro**, o aviso vai pra você, nos e-mails de `PLATFORM_ADMIN_EMAILS`. O aviso também chega no celular de dono e admins que ativaram as notificações (precisa das chaves `VAPID_*`).
+- **Resumo da semana** — toda segunda a partir das 8h (no fuso da empresa), ao dono: clientes atendidos, quanto a IA resolveu sozinha e o que ela não soube. Semana sem nenhum cliente não gera e-mail. O dono desliga em Configurações › Conta.
+
+Sem `RESEND_API_KEY` nada disso sai — e o resumo da semana espera: quando a chave entrar, o da semana corrente ainda é enviado.
 
 1. Crie a conta em [resend.com](https://resend.com) (grátis até 3.000 e-mails por mês).
 2. **Domains → Add Domain**: o seu domínio (ex.: `inteliwa.com.br`). O Resend mostra 3 registros DNS (SPF, DKIM e MX/Return-Path) — cadastre no painel do seu domínio (Registro.br, Cloudflare...) e espere ficar **Verified**. Sem domínio verificado, o Resend só entrega pro e-mail da sua própria conta.

@@ -35,6 +35,11 @@ model Tenant {
   slug                String        @unique
   logo                String?
   timezone            String        @default("America/Sao_Paulo")
+  /// O resumo da semana por e-mail ao dono, toda segunda de manhã.
+  relatorioSemanal    Boolean       @default(true)
+  /// Quando o último saiu — um por semana, mesmo com o processo
+  /// reiniciando no meio da manhã de segunda.
+  relatorioSemanalEm  DateTime?
   language            String        @default("pt-BR")
   status              TenantStatus  @default(TRIAL)
   /// O que a empresa contou sobre si na primeira entrada.
@@ -372,6 +377,12 @@ model EvolutionSettings {
   lastSeenAt     DateTime?
   /// O motivo da última queda, pra tela dizer o que aconteceu.
   lastError      String?
+  /// Desde quando a sessão está caída, aos olhos do vigia (ver
+  /// VigiaDoWhatsappService). Nulo com a sessão de pé.
+  quedaDesde     DateTime?
+  /// Quando o dono foi avisado DESTA queda — uma vez por queda, e não a
+  /// cada passada do vigia.
+  quedaAvisadaEm DateTime?
 
   /// Em que pé está a importação das conversas que já estavam no aparelho.
   historicoEstado      EvolutionHistorico @default(NUNCA)

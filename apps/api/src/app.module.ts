@@ -35,6 +35,8 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { WhatsappWebhookModule } from './modules/whatsapp/whatsapp-webhook.module';
 
 import { StorageModule } from './modules/storage/storage.module';
+import { EmailModule } from './common/email/email.module';
+import { AvisosModule } from './modules/avisos/avisos.module';
 
 @Module({
   imports: [
@@ -56,6 +58,7 @@ import { StorageModule } from './modules/storage/storage.module';
       { name: 'longo', ttl: seconds(60), limit: 300 },
     ]),
     StorageModule,
+    EmailModule,
     CryptoModule,
     PrismaModule,
     PlataformaModule,
@@ -68,6 +71,7 @@ import { StorageModule } from './modules/storage/storage.module';
     CollectionModule,
     InboxSettingsModule,
     CopilotModule,
+    AvisosModule,
     PushModule,
     RetentionModule,
     RealtimeModule,

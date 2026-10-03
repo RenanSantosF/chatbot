@@ -137,16 +137,42 @@ export class PushService {
   ): Promise<void> {
     if (!this.ligado || destinatarios.length === 0) return;
 
+    await this.enviar(
+      tenantId,
+      destinatarios,
+      JSON.stringify({
+        titulo: aviso.titulo,
+        corpo: aviso.corpo,
+        conversationId: aviso.conversationId,
+      }),
+    );
+  }
+
+  /**
+   * Aviso que não é de conversa — o WhatsApp que caiu, por exemplo.
+   *
+   * Leva o endereço a abrir no clique e uma `tag` própria: o aviso repetido
+   * do mesmo assunto substitui o anterior na tela de bloqueio em vez de
+   * empilhar.
+   */
+  async avisarPessoas(
+    tenantId: string,
+    aviso: { titulo: string; corpo: string; url: string; tag: string },
+    destinatarios: string[],
+  ): Promise<void> {
+    if (!this.ligado || destinatarios.length === 0) return;
+    await this.enviar(tenantId, destinatarios, JSON.stringify(aviso));
+  }
+
+  private async enviar(
+    tenantId: string,
+    destinatarios: string[],
+    carga: string,
+  ): Promise<void> {
     const inscricoes = await this.prisma.client.pushSubscription.findMany({
       where: { tenantId, userId: { in: destinatarios } },
     });
     if (inscricoes.length === 0) return;
-
-    const carga = JSON.stringify({
-      titulo: aviso.titulo,
-      corpo: aviso.corpo,
-      conversationId: aviso.conversationId,
-    });
 
     await Promise.all(
       inscricoes.map(async (inscricao) => {

@@ -268,7 +268,7 @@ export class CopilotService {
     {
       name: 'buscarConversas',
       description:
-        'Procura conversas. Use para "quem ficou sem resposta hoje", "conversas do João", "o que está com a IA agora", "conversas do setor Financeiro". Filtros opcionais: cliente (nome ou telefone), situacao (esperando_resposta = o cliente escreveu e a equipe ainda não respondeu; sem_responsavel; com_a_ia; abertas; encerradas), periodo (última mensagem em: hoje, ontem, 7dias, 30dias, mes) e setor. Devolve cliente, situação, responsável, há quanto tempo espera e a última mensagem.',
+        'Procura conversas. Use para "quem ficou sem resposta hoje", "conversas do João", "o que está com a IA agora", "conversas do setor Financeiro". Filtros opcionais: cliente (nome ou telefone), situacao (esperando_resposta = o cliente escreveu e a equipe ainda não respondeu; sem_responsavel; com_a_ia; abertas; encerradas), periodo (última mensagem em: hoje, ontem, 7dias, semanaPassada, 30dias, mes) e setor. Devolve cliente, situação, responsável, há quanto tempo espera e a última mensagem.',
       parametersSchema: {
         type: 'object',
         properties: {
@@ -305,7 +305,7 @@ export class CopilotService {
     {
       name: 'perguntasQueAIaNaoSoube',
       description:
-        'Lista as conversas que a IA passou pra equipe por não saber ou não poder responder, com a pergunta do cliente, o motivo e a resposta que a equipe deu depois. Use para "o que a IA não soube essa semana", e para sugerir o que ensinar a ela. periodo: hoje, ontem, 7dias (padrão), 30dias, mes.',
+        'Lista as conversas que a IA passou pra equipe por não saber ou não poder responder, com a pergunta do cliente, o motivo e a resposta que a equipe deu depois. Use para "o que a IA não soube essa semana", e para sugerir o que ensinar a ela. periodo: hoje, ontem, 7dias (padrão), semanaPassada (segunda a domingo), 30dias, mes.',
       parametersSchema: {
         type: 'object',
         properties: { periodo: { type: 'string', enum: PERIODOS } },
@@ -314,7 +314,7 @@ export class CopilotService {
     {
       name: 'relatorio',
       description:
-        'Números do atendimento num período: clientes que escreveram, quanto a IA atendeu sozinha, quantas passou pra equipe e por quê, tempo médio de resposta (IA e equipe), ranking por atendente, horários de pico e dia mais movimentado. Use para "como foi a semana", "quem atendeu mais", "qual o horário de pico". periodo: hoje, ontem, 7dias (padrão), 30dias, mes.',
+        'Números do atendimento num período: clientes que escreveram, quanto a IA atendeu sozinha, quantas passou pra equipe e por quê, tempo médio de resposta (IA e equipe), ranking por atendente, horários de pico e dia mais movimentado. Use para "como foi a semana", "quem atendeu mais", "qual o horário de pico". periodo: hoje, ontem, 7dias (padrão), semanaPassada (segunda a domingo), 30dias, mes.',
       parametersSchema: {
         type: 'object',
         properties: { periodo: { type: 'string', enum: PERIODOS } },
