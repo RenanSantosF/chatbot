@@ -2,7 +2,6 @@ import {
   ArgumentsHost,
   Catch,
   HttpException,
-  HttpStatus,
   type HttpServer,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
@@ -57,13 +56,13 @@ export class FiltroDeErros extends BaseExceptionFilter {
  * um arquivo grande demais, "File too large".
  */
 export function emPortugues(exception: unknown, status: number): unknown {
-  if (status === HttpStatus.TOO_MANY_REQUESTS) {
+  if (status === 429) {
     return new HttpException(
       'Muitas tentativas seguidas. Espere um minuto e tente de novo.',
       status,
     );
   }
-  if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+  if (status === 413) {
     return new HttpException(
       'O arquivo passa do tamanho máximo permitido.',
       status,
