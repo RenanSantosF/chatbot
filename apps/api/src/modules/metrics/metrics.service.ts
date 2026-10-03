@@ -4,6 +4,8 @@ import type {
   MessageSenderType,
 } from '../../../generated/prisma/client';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { meiaNoite, partes } from '../../common/utils/fuso';
+import { fusoValido } from '../inbox-settings/horario-comercial';
 
 export interface MetricsRange {
   from: Date;
@@ -11,14 +13,85 @@ export interface MetricsRange {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_WINDOW_DAYS = 30;
+const MAX_WINDOW_DAYS = 365;
 
-function dayKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
+/** O dia (aaaa-mm-dd) em que `date` cai no relógio da empresa. */
+function dayKey(date: Date, fuso: string): string {
+  const { ano, mes, dia } = partes(fuso, date);
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+/**
+ * A meia-noite, no fuso da empresa, do dia escrito em `valor`.
+ *
+ * A tela manda o dia do calendário ("2026-10-03"), e `new Date` leria isso
+ * como meia-noite UTC — 21h do dia anterior em São Paulo. Ancorar ao
+ * meio-dia UTC cai no mesmo dia em qualquer fuso habitado.
+ */
+function inicioDoDia(
+  valor: string | undefined,
+  fuso: string,
+  padrao: Date,
+): Date {
+  const dia = valor && /^(\d{4})-(\d{2})-(\d{2})/.exec(valor);
+  if (dia) {
+    const [, ano, mes, d] = dia.map(Number);
+    return meiaNoite(fuso, new Date(Date.UTC(ano, mes - 1, d, 12)));
+  }
+  const data = valor ? new Date(valor) : padrao;
+  return meiaNoite(fuso, Number.isNaN(data.getTime()) ? padrao : data);
 }
 
 @Injectable()
 export class MetricsService {
   constructor(private readonly prisma: TenantPrismaService) {}
+
+  /**
+   * O período pedido, com as bordas no relógio da EMPRESA.
+   *
+   * Era o relógio do servidor (UTC): "hoje" ia das 21h de ontem às 21h de
+   * hoje pra quem está em São Paulo, e o movimento da noite aparecia no
+   * dia seguinte. Qualquer coisa inválida ou ausente cai no padrão dos
+   * últimos 30 dias em vez de dar erro — é uma tela de leitura.
+   */
+  async periodo(
+    de?: string,
+    ate?: string,
+  ): Promise<MetricsRange & { fuso: string }> {
+    const tenant = await this.prisma.db.tenant.findUnique({
+      where: { id: this.prisma.tenantId },
+      select: { timezone: true },
+    });
+    const fuso = fusoValido(tenant?.timezone ?? 'America/Sao_Paulo');
+
+    const agora = new Date();
+    const inicio = inicioDoDia(
+      de,
+      fuso,
+      new Date(agora.getTime() - (DEFAULT_WINDOW_DAYS - 1) * DAY_MS),
+    );
+    const ultimoDia = inicioDoDia(ate, fuso, agora);
+    const [primeiro, ultimo] =
+      inicio <= ultimoDia ? [inicio, ultimoDia] : [ultimoDia, inicio];
+    // O último dia inteiro: até o instante antes da meia-noite seguinte.
+    // Somar 36h e voltar pra meia-noite atravessa horário de verão sem
+    // errar de dia.
+    const fim = new Date(
+      meiaNoite(
+        fuso,
+        new Date(ultimo.getTime() + 36 * 60 * 60 * 1000),
+      ).getTime() - 1,
+    );
+
+    // Teto de janela: evita alguém pedir 10 anos e derrubar a query.
+    const from =
+      fim.getTime() - primeiro.getTime() > MAX_WINDOW_DAYS * DAY_MS
+        ? new Date(fim.getTime() - MAX_WINDOW_DAYS * DAY_MS)
+        : primeiro;
+
+    return { from, to: fim, fuso };
+  }
 
   /**
    * Tudo que a Visão geral mostra, num request só e sempre recortado pelo
@@ -27,7 +100,7 @@ export class MetricsService {
    * tempo de resposta — que precisa parear cada mensagem de cliente com a
    * resposta seguinte — fica legível em vez de virar SQL de janela.
    */
-  async overview(range: MetricsRange) {
+  async overview(range: MetricsRange, fuso = 'UTC') {
     const [conversations, messages] = await Promise.all([
       this.prisma.db.conversation.findMany({
         where: { createdAt: { gte: range.from, lte: range.to } },
@@ -52,7 +125,7 @@ export class MetricsService {
     return {
       range: { from: range.from.toISOString(), to: range.to.toISOString() },
       totals: this.buildTotals(conversations, messages),
-      byDay: this.buildByDay(range, conversations, messages),
+      byDay: this.buildByDay(range, conversations, messages, fuso),
       byStatus: this.buildByStatus(conversations),
       responseTime: this.buildResponseTime(messages),
     };
@@ -82,6 +155,7 @@ export class MetricsService {
     range: MetricsRange,
     conversations: { createdAt: Date }[],
     messages: { createdAt: Date }[],
+    fuso: string,
   ) {
     const days = new Map<
       string,
@@ -91,28 +165,28 @@ export class MetricsService {
     // Semeia todos os dias do período, inclusive os vazios — sem isso o
     // gráfico "pula" os dias sem movimento e distorce a leitura da linha.
     //
-    // A contagem começa na MEIA-NOITE UTC do primeiro dia, não no instante
-    // exato de `from`. Somar 24h a partir de um horário quebrado fazia o
-    // laço parar antes do último dia sempre que o fim do período caía mais
-    // cedo no relógio que o começo: o dia existia, tinha movimento, e
-    // sumia do gráfico — as mensagens dele caíam num balde inexistente e
-    // eram descartadas em silêncio.
-    const primeiroDia = Date.UTC(
-      range.from.getUTCFullYear(),
-      range.from.getUTCMonth(),
-      range.from.getUTCDate(),
-    );
-    for (let t = primeiroDia; t <= range.to.getTime(); t += DAY_MS) {
-      const key = dayKey(new Date(t));
+    // A contagem anda de meio-dia em meio-dia, no fuso da empresa, e para
+    // pelo NOME do dia, não pelo instante. Somar 24h a partir de um horário
+    // quebrado e comparar com o fim fazia o laço parar antes do último dia
+    // sempre que o fim caía mais cedo no relógio que o começo: o dia
+    // existia, tinha movimento, e sumia do gráfico. O meio-dia também não
+    // troca de dia com horário de verão.
+    const ultimoDia = dayKey(range.to, fuso);
+    for (
+      let t = meiaNoite(fuso, range.from).getTime() + DAY_MS / 2;
+      dayKey(new Date(t), fuso) <= ultimoDia;
+      t += DAY_MS
+    ) {
+      const key = dayKey(new Date(t), fuso);
       days.set(key, { day: key, conversations: 0, messages: 0 });
     }
 
     for (const conversation of conversations) {
-      const bucket = days.get(dayKey(conversation.createdAt));
+      const bucket = days.get(dayKey(conversation.createdAt, fuso));
       if (bucket) bucket.conversations += 1;
     }
     for (const message of messages) {
-      const bucket = days.get(dayKey(message.createdAt));
+      const bucket = days.get(dayKey(message.createdAt, fuso));
       if (bucket) bucket.messages += 1;
     }
 

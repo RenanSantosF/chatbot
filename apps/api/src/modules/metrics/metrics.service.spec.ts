@@ -18,6 +18,11 @@ function servicoCom(dados: {
         findMany: jest.fn().mockResolvedValue(dados.conversas ?? []),
       },
       message: { findMany: jest.fn().mockResolvedValue(dados.mensagens ?? []) },
+      tenant: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ timezone: 'America/Sao_Paulo' }),
+      },
     },
   };
 
@@ -101,6 +106,46 @@ describe('linha do tempo por dia', () => {
       { day: '2026-08-02', conversations: 2, messages: 0 },
       { day: '2026-08-03', conversations: 0, messages: 1 },
     ]);
+  });
+});
+
+describe('o dia no relógio da empresa', () => {
+  it('a mensagem das 22h de São Paulo conta no mesmo dia, não no seguinte', async () => {
+    // 22h em São Paulo já é 01h do dia seguinte em UTC.
+    const service = servicoCom({
+      mensagens: [
+        {
+          conversationId: 'c1',
+          senderType: 'CUSTOMER',
+          createdAt: em('2026-08-03T01:00:00Z'),
+        },
+      ],
+    });
+
+    const periodo = await service.periodo('2026-08-01', '2026-08-02');
+    const { byDay } = await service.overview(periodo, periodo.fuso);
+
+    expect(byDay).toEqual([
+      { day: '2026-08-01', conversations: 0, messages: 0 },
+      { day: '2026-08-02', conversations: 0, messages: 1 },
+    ]);
+  });
+
+  it('o período vai da meia-noite à meia-noite de São Paulo', async () => {
+    const service = servicoCom({});
+
+    const { from, to } = await service.periodo('2026-08-01', '2026-08-02');
+
+    expect(from.toISOString()).toBe('2026-08-01T03:00:00.000Z');
+    expect(to.toISOString()).toBe('2026-08-03T02:59:59.999Z');
+  });
+
+  it('data torta cai no padrão em vez de quebrar a tela', async () => {
+    const service = servicoCom({});
+
+    const { from, to } = await service.periodo('ontem', 'xyz');
+
+    expect(to.getTime()).toBeGreaterThan(from.getTime());
   });
 });
 
