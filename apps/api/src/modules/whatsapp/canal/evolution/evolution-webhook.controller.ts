@@ -27,6 +27,7 @@ import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { EvolutionCanal } from './evolution.canal';
 import { EvolutionService } from './evolution.service';
 import { WhatsappMediaService } from '../../whatsapp-media.service';
+import { mensagemGuardada } from './mensagem-guardada';
 import { empacotarId, identidadeDoDestino, telefoneDoJid } from './evolution-id';
 import {
   chaveDoEvento,
@@ -649,47 +650,14 @@ export class EvolutionWebhookController {
       { nome?: string; mensagens: MensagemImportada[] }
     >();
 
-    for (const mensagem of lote) {
-      const chave = chaveDoEvento(mensagem);
-      if (!chave) continue;
+    for (const dados of lote) {
+      const guardada = mensagemGuardada(dados);
+      if (!guardada) continue;
 
-      const telefone = telefoneDoJid(chave.remoteJid);
-      // Grupo, transmissão e status ficam de fora, como no caminho ao
-      // vivo: nenhum deles é atendimento individual.
-      if (!telefone) continue;
-
-      const traduzida = traduzirMensagem(mensagem);
-      if (!traduzida) continue;
-
-      /*
-       * Sem hora, a mensagem não entra.
-       *
-       * No caminho ao vivo, hora ausente cai pra "agora" e não faz mal —
-       * a mensagem chegou agora mesmo. Aqui faria: uma conversa de três
-       * meses atrás entraria carimbada de hoje, subiria pro topo do Inbox
-       * e apareceria como atendimento novo. Perder uma linha sem data é
-       * mais barato que embaralhar a linha do tempo inteira.
-       */
-      const createdAt = horaDaMensagem(mensagem);
-      if (!createdAt) continue;
-
-      const externalId = empacotarId(chave);
-      const metadata = traduzida.metadata
-        ? {
-            ...traduzida.metadata,
-            // O anexo antigo NÃO é arquivado aqui: seriam milhares de
-            // downloads numa importação, e o WhatsApp já não devolve o
-            // binário de mensagem velha na maior parte das vezes. O
-            // handle fica gravado e a busca acontece sob demanda, se
-            // alguém abrir aquele balão.
-            evolutionPendente: undefined,
-            ...(traduzida.metadata.evolutionPendente
-              ? { mediaId: externalId }
-              : {}),
-          }
-        : undefined;
-
-      const registro = porContato.get(telefone) ?? { nome: undefined, mensagens: [] };
+      const registro = porContato.get(guardada.telefone) ?? {
+        nome: undefined,
+        mensagens: [],
+      };
       /*
        * O nome sai só das mensagens do CLIENTE.
        *
@@ -700,18 +668,9 @@ export class EvolutionWebhookController {
        * conversa que a empresa começou, a primeira mensagem do lote é
        * dela.
        */
-      if (!chave.fromMe && !registro.nome && mensagem.pushName) {
-        registro.nome = mensagem.pushName;
-      }
-      registro.mensagens.push({
-        daEmpresa: Boolean(chave.fromMe),
-        content: traduzida.content,
-        messageType: traduzida.messageType,
-        metadata: metadata as Prisma.InputJsonValue | undefined,
-        externalId,
-        createdAt,
-      });
-      porContato.set(telefone, registro);
+      if (!registro.nome && guardada.nome) registro.nome = guardada.nome;
+      registro.mensagens.push(guardada.mensagem);
+      porContato.set(guardada.telefone, registro);
     }
 
     let importadas = 0;

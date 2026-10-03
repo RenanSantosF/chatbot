@@ -528,6 +528,19 @@ export class ConversationsController {
     });
   }
 
+  /**
+   * Traz do WhatsApp o que faltar nesta conversa (ver
+   * `recuperarDoWhatsapp`). O painel chama ao abrir a conversa.
+   */
+  @Post(':id/recuperar')
+  @HttpCode(HttpStatus.OK)
+  recuperar(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.conversationsService.recuperarDoWhatsapp(id, {
+      userId: user.userId,
+      role: user.role,
+    });
+  }
+
   @Post(':id/reopen')
   @RequiresPermission('conversations.resolve')
   async reopen(@Param('id') id: string, @CurrentUser() user: RequestUser) {

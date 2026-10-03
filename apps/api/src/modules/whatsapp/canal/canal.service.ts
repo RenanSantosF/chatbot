@@ -158,6 +158,15 @@ export class CanalService {
   }
 
   /**
+   * As últimas mensagens que o servidor guardou desta conversa — o que
+   * permite recuperar o que nunca chegou ao painel. Só a Evolution guarda;
+   * pelo mesmo motivo de `numeroExiste`, fica fora do contrato.
+   */
+  mensagensGuardadas(para: string, limite: number) {
+    return this.evolution.mensagensGuardadas(para, limite);
+  }
+
+  /**
    * O motivo da última falha, vindo de quem tentou entregar.
    *
    * Cada implementação guarda o seu; aqui só devolvemos o de quem foi

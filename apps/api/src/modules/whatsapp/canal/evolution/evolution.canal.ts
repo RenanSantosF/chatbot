@@ -10,6 +10,7 @@ import type {
   ModeloAprovado,
 } from '../canal.interface';
 import * as evolution from './evolution.client';
+import type { DadosDaMensagem } from './evolution-mensagem';
 import type { Citada } from './evolution.client';
 import {
   desempacotarId,
@@ -125,6 +126,33 @@ export class EvolutionCanal implements CanalDeMensagem {
     // respondem formatos diferentes, e assumir `false` num formato que não
     // reconhecemos bloquearia envio pra cliente de verdade.
     return typeof conferido?.exists === 'boolean' ? conferido.exists : null;
+  }
+
+  /**
+   * As últimas mensagens guardadas no servidor pra esta conversa.
+   *
+   * `null` é "não deu pra perguntar" (sessão caída, servidor fora) — quem
+   * chama segue sem recuperar nada, como antes.
+   */
+  async mensagensGuardadas(
+    para: string,
+    limite: number,
+  ): Promise<DadosDaMensagem[] | null> {
+    const credenciais = await this.credenciais();
+    if (!credenciais) return null;
+
+    const resposta = await evolution.buscarMensagens(
+      credenciais,
+      jidDoTelefone(para),
+      limite,
+    );
+    if (!resposta.ok) {
+      this.logger.warn(
+        `Não deu pra buscar as mensagens guardadas de ${this.destino(para)}: ${resposta.erro ?? 'sem motivo'}.`,
+      );
+      return null;
+    }
+    return (resposta.dados ?? []) as DadosDaMensagem[];
   }
 
   /**

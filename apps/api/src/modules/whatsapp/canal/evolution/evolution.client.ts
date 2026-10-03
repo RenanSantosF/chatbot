@@ -731,6 +731,54 @@ export function buscarContatos(
   });
 }
 
+/**
+ * As últimas mensagens de uma conversa, do jeito que a Evolution guardou.
+ *
+ * Ela grava cada mensagem nova (DATABASE_SAVE_DATA_NEW_MESSAGE, ver o
+ * DEPLOY.md), inclusive as que nunca chegaram ao painel — uma entrega de
+ * webhook perdida, um servidor nosso fora do ar. É daqui que a conversa
+ * recupera o que faltou.
+ *
+ * O formato da resposta mudou entre versões: a 2.x devolve
+ * `{ messages: { records } }`, versões antigas devolviam a lista direto.
+ */
+export async function buscarMensagens(
+  credenciais: Credenciais,
+  remoteJid: string,
+  limite: number,
+): Promise<RespostaDaEvolution<Record<string, unknown>[]>> {
+  const resposta = await chamar<unknown>(
+    credenciais,
+    `/chat/findMessages/${credenciais.instance}`,
+    {
+      method: 'POST',
+      body: { where: { key: { remoteJid } }, page: 1, offset: limite },
+      tempoLimiteMs: 15_000,
+    },
+  );
+  if (!resposta.ok) return { ...resposta, dados: undefined };
+
+  const corpo = resposta.dados as
+    | { messages?: { records?: unknown } | unknown[] }
+    | unknown[]
+    | undefined;
+  const lista = Array.isArray(corpo)
+    ? corpo
+    : Array.isArray(corpo?.messages)
+      ? corpo.messages
+      : Array.isArray(corpo?.messages?.records)
+        ? corpo.messages.records
+        : [];
+  return {
+    ok: true,
+    status: resposta.status,
+    dados: (lista as unknown[]).filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === 'object' && item !== null,
+    ),
+  };
+}
+
 export interface ContatoGuardado {
   id?: string;
   remoteJid?: string;

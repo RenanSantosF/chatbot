@@ -39,6 +39,7 @@ import {
   violouUnicidade,
 } from '../../common/prisma/erros-do-banco';
 import { idDaMensagem } from '../whatsapp/canal/evolution/evolution-id';
+import { mensagemGuardada } from '../whatsapp/canal/evolution/mensagem-guardada';
 import { AVISO_DE_INDISPONIBILIDADE } from '../ai/ai-indisponivel';
 import {
   abrirHistoricoGuardado,
@@ -225,6 +226,12 @@ const OPEN_STATUSES: ConversationStatus[] = [
  * só (ver DEPLOY.md).
  */
 const entregasEmAndamento = new Set<string>();
+
+/** Quantas mensagens recentes conferir com o servidor ao abrir a conversa. */
+const MENSAGENS_A_CONFERIR = 60;
+/** Uma conferência por conversa por minuto — abrir e fechar não repete. */
+const INTERVALO_DA_RECUPERACAO_MS = 60_000;
+const recuperacoesRecentes = new Map<string, number>();
 
 /**
  * Uma fila por cliente pra decidir em qual conversa a mensagem entra.
@@ -1279,6 +1286,132 @@ export class ConversationsService {
    * cada rolagem que chega no fim, e o caso comum é o contador já estar
    * zerado.
    */
+  /**
+   * Traz do servidor do WhatsApp o que falta nesta conversa.
+   *
+   * O painel só sabe do que chegou pelo webhook. Uma entrega perdida — o
+   * servidor nosso reiniciando, uma regra que descartava a mensagem —
+   * sumia pra sempre: nenhuma "sincronização" a trazia de volta, porque
+   * sincronizar só relia o nosso próprio banco. A Evolution guarda cada
+   * mensagem, e é dela que vem o que faltou.
+   *
+   * Só PREENCHE BURACOS: entra o que é mais novo que a mensagem mais
+   * antiga já no painel (o passado distante continua no celular, como na
+   * importação) e não existe aqui ainda. Não mexe em status, não chama a
+   * IA nem conta como não lida: é passado, recuperado.
+   *
+   * Chamado ao abrir a conversa, no máximo uma vez por minuto por conversa.
+   */
+  async recuperarDoWhatsapp(
+    id: string,
+    viewer?: ConversationViewer,
+  ): Promise<{ recuperadas: number }> {
+    const conversa = await this.requireConversation(id, viewer);
+    if (conversa.channel !== 'WHATSAPP' || conversa.customer.isGroup) {
+      return { recuperadas: 0 };
+    }
+
+    const chave = `${this.prisma.tenantId}:${id}`;
+    const agora = Date.now();
+    for (const [outra, quando] of recuperacoesRecentes) {
+      if (agora - quando > INTERVALO_DA_RECUPERACAO_MS) {
+        recuperacoesRecentes.delete(outra);
+      }
+    }
+    if (recuperacoesRecentes.has(chave)) return { recuperadas: 0 };
+    recuperacoesRecentes.set(chave, agora);
+
+    const guardadas = await this.whatsapp.mensagensGuardadas(
+      conversa.customer.phone,
+      MENSAGENS_A_CONFERIR,
+    );
+    if (!guardadas?.length) return { recuperadas: 0 };
+
+    const maisAntiga = await this.prisma.db.message.findFirst({
+      where: { conversationId: id },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    });
+    if (!maisAntiga) return { recuperadas: 0 };
+
+    const candidatas = guardadas
+      .map((dados) => mensagemGuardada(dados))
+      .filter(
+        (m): m is NonNullable<typeof m> =>
+          m !== null &&
+          m.telefone === conversa.customer.phone &&
+          m.mensagem.createdAt >= maisAntiga.createdAt,
+      )
+      .map((m) => m.mensagem);
+    if (candidatas.length === 0) return { recuperadas: 0 };
+
+    /*
+     * "Já temos" é conferido pelo id da MENSAGEM, além do id externo
+     * inteiro: a parte da conversa no id externo muda de forma conforme o
+     * evento (sufixo de aparelho, `@lid`), e só a comparação exata deixaria
+     * passar como "nova" uma mensagem que já está aqui.
+     */
+    const ids = candidatas
+      .map((m) => (m.externalId ? idDaMensagem(m.externalId) : null))
+      .filter((m): m is string => Boolean(m));
+    const existentes = await this.prisma.db.message.findMany({
+      where: {
+        OR: [
+          {
+            externalId: {
+              in: candidatas
+                .map((m) => m.externalId)
+                .filter((e): e is string => Boolean(e)),
+            },
+          },
+          ...ids.map((idDaMsg) => ({
+            externalId: { endsWith: `|${idDaMsg}` },
+          })),
+        ],
+      },
+      select: { externalId: true },
+    });
+    const jaTemos = new Set(
+      existentes
+        .map((m) => (m.externalId ? idDaMensagem(m.externalId) : null))
+        .filter(Boolean),
+    );
+    const faltando = candidatas.filter(
+      (m) => m.externalId && !jaTemos.has(idDaMensagem(m.externalId)),
+    );
+    if (faltando.length === 0) return { recuperadas: 0 };
+
+    const { count } = await this.prisma.db.message.createMany({
+      skipDuplicates: true,
+      data: faltando.map((m) =>
+        linhaDoHistorico(this.prisma.tenantId, id, m),
+      ),
+    });
+    if (count === 0) return { recuperadas: 0 };
+
+    const maisNova = faltando.reduce(
+      (maior, m) => (m.createdAt > maior ? m.createdAt : maior),
+      faltando[0].createdAt,
+    );
+    if (!conversa.lastMessageAt || maisNova > conversa.lastMessageAt) {
+      const atualizada = await this.prisma.db.conversation.update({
+        where: { id },
+        data: { lastMessageAt: maisNova },
+        include: conversationInclude,
+      });
+      await this.emitirParaConversa(
+        atualizada,
+        'conversation.updated',
+        toSummary(atualizada),
+      );
+    }
+
+    this.logger.log(
+      `Conversa ${id}: ${count} mensagem(ns) recuperada(s) do WhatsApp.`,
+    );
+    return { recuperadas: count };
+  }
+
   async marcarComoLida(id: string, viewer?: ConversationViewer) {
     const recorte = await this.recorteDeVisibilidade(viewer);
     const conversation = await this.prisma.db.conversation.findFirst({

@@ -779,6 +779,35 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
   }, [selectedId, loadDetail, chaveDaSessao, detalheGuardado]);
 
   /*
+   * Recuperar do WhatsApp o que faltou.
+   *
+   * O painel só conhece o que chegou pelo tempo real; uma mensagem que
+   * se perdeu no caminho (escrita pelo celular, servidor reiniciando) não
+   * voltava nunca — "sincronizar" só relia o nosso banco. Ao abrir a
+   * conversa, a API confere com o servidor do WhatsApp e grava o que
+   * faltar; só então a conversa é relida. O servidor limita a uma
+   * conferência por minuto por conversa.
+   */
+  const recuperar = useCallback(
+    (id: string) => {
+      apiFetch<{ recuperadas: number }>(`/conversations/${id}/recuperar`, {
+        method: "POST",
+      })
+        .then(({ recuperadas }) => {
+          if (recuperadas === 0) return;
+          if (selectedIdRef.current === id) void loadDetail(id);
+          else conversationCache.esquecer(chaveDaSessao, id);
+        })
+        .catch(() => {});
+    },
+    [loadDetail, chaveDaSessao],
+  );
+
+  useEffect(() => {
+    if (selectedId) recuperar(selectedId);
+  }, [selectedId, recuperar]);
+
+  /*
    * Pré-carregamento: trazer a conversa ANTES do clique.
    *
    * É o que tira o "carregando" entre um chat e outro. A memória de
@@ -1050,6 +1079,9 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       ]).catch(() => {});
       sincronizar(trabalho);
       loadCounts();
+      // A queda pode ter engolido mensagens que nem pelo nosso banco
+      // passaram: a conversa aberta confere com o WhatsApp também.
+      if (selectedIdRef.current) recuperar(selectedIdRef.current);
     };
 
     /**
@@ -1378,6 +1410,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     aquecer,
     preCarregar,
     abrirConversa,
+    recuperar,
   ]);
 
   /** Mesma classificação que o servidor faz, só que antes da viagem. */
