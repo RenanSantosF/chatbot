@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { MessagesSquare, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { apiFetchServer } from "@/lib/api-server";
-import type { MeResponse } from "@/lib/types";
+import { sessaoNaPaginaPublica } from "@/lib/api-server";
 import { Marca } from "@/components/marca";
 import { SITE_NAME } from "@/lib/site";
 
@@ -46,7 +45,7 @@ const PONTOS = [
 ];
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
-  const session = await apiFetchServer<MeResponse>("/auth/me");
+  const session = await sessaoNaPaginaPublica();
   if (session) {
     redirect("/dashboard");
   }

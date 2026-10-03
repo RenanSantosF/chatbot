@@ -6,6 +6,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { Public } from '../../common/auth/public.decorator';
 import { BillingService } from './billing.service';
@@ -23,6 +24,10 @@ import { BillingService } from './billing.service';
  * evento com 401 antes mesmo de a assinatura HMAC ser conferida.
  */
 @Public()
+// Fora do limite de requisições: chega sem login e cairia no mesmo balde
+// de IP de quem tenta entrar no painel. Um 429 aqui é pagamento que não
+// libera a conta até o Stripe tentar de novo.
+@SkipThrottle()
 @Controller('webhooks/stripe')
 export class BillingWebhookController {
   constructor(private readonly billing: BillingService) {}

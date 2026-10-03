@@ -17,9 +17,8 @@ import { Marca } from "@/components/marca";
 import { redirect } from "next/navigation";
 import { ConversaDemo } from "@/components/publico/conversa-demo";
 import { RastreioDaLanding } from "@/components/plataforma/rastreio-da-landing";
-import { apiFetchServer } from "@/lib/api-server";
+import { sessaoNaPaginaPublica } from "@/lib/api-server";
 import { EMPRESA, SITE_DESCRIPTION, SITE_NAME, absoluto } from "@/lib/site";
-import type { MeResponse } from "@/lib/types";
 
 /*
  * A landing diz pouco, e diz de longe.
@@ -196,7 +195,7 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const session = await apiFetchServer<MeResponse>("/auth/me");
+  const session = await sessaoNaPaginaPublica();
   if (session) {
     redirect("/dashboard");
   }

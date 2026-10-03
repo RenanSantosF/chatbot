@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { ApiError, parseErrorMessage } from "./api-error";
+import type { MeResponse } from "./types";
 
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:3001";
 
@@ -28,4 +29,26 @@ export async function apiFetchServer<T>(path: string): Promise<T | null> {
   }
 
   return res.json() as Promise<T>;
+}
+
+/**
+ * A sessão de quem abriu uma página PÚBLICA, se houver — só pra mandar
+ * quem já entrou direto pro painel.
+ *
+ * Sem o cookie de sessão nem pergunta: quase todo visitante da landing
+ * não tem conta, e cada visita custava uma chamada à API. No dia do
+ * lançamento (ou com um robô de busca passando) essas chamadas batiam no
+ * limite de requisições, e a resposta 429 virava erro 500 na landing.
+ *
+ * Pelo mesmo motivo, falhar ao perguntar é "sem sessão": a página pública
+ * aparece, e quem tinha sessão entra pelo login como sempre.
+ */
+export async function sessaoNaPaginaPublica(): Promise<MeResponse | null> {
+  const cookieStore = await cookies();
+  if (!cookieStore.has("access_token")) return null;
+  try {
+    return await apiFetchServer<MeResponse>("/auth/me");
+  } catch {
+    return null;
+  }
 }

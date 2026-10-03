@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
+import { ThrottlerModule, seconds } from '@nestjs/throttler';
+import { LimitePorUsuarioGuard } from './common/auth/limite-por-usuario.guard';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/auth/permissions.guard';
 import { RolesGuard } from './common/auth/roles.guard';
@@ -86,7 +87,7 @@ import { StorageModule } from './modules/storage/storage.module';
   providers: [
     // Antes de tudo: barrar excesso não deve custar consulta ao banco nem
     // verificação de token.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: LimitePorUsuarioGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

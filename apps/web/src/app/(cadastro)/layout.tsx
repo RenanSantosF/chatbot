@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { apiFetchServer } from "@/lib/api-server";
-import type { MeResponse } from "@/lib/types";
+import { sessaoNaPaginaPublica } from "@/lib/api-server";
 
 export const metadata: Metadata = {
   title: "Criar conta",
@@ -18,7 +17,7 @@ export const metadata: Metadata = {
  * atendimento no lugar daquela coluna (ver AssistenteDeCadastro).
  */
 export default async function CadastroLayout({ children }: { children: React.ReactNode }) {
-  const session = await apiFetchServer<MeResponse>("/auth/me");
+  const session = await sessaoNaPaginaPublica();
   if (session) {
     redirect("/dashboard");
   }
