@@ -1073,6 +1073,33 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       }
     };
 
+    /**
+     * O sistema encerrou conversas paradas (encerramento automático). A
+     * rotina roda sem ninguém logado, então manda só os ids: a lista, os
+     * contadores e a conversa aberta são buscados de novo pelo mesmo
+     * caminho dos lotes do histórico.
+     */
+    const onConversasEncerradas = (evento: { conversationIds?: string[] }) => {
+      const ids = new Set(evento.conversationIds ?? []);
+      if (ids.size === 0) return;
+      for (const id of ids) {
+        conversationCache.esquecer(chaveDaSessao, id);
+        idsAfetadosRef.current.add(id);
+      }
+      // Já sai da aba em que não cabe mais: a reconciliação só acrescenta
+      // e atualiza o que vem do servidor, não tira o que ficou pra trás.
+      setConversations((prev) =>
+        prev
+          .map((item) =>
+            ids.has(item.id)
+              ? { ...item, status: "RESOLVED" as const, waitingSince: null }
+              : item,
+          )
+          .filter((item) => pertenceAoFiltro(item, filtersRef.current, user.id)),
+      );
+      agrupadorDeHistorico.forcar();
+    };
+
     const onConversationUpdated = (updated: ConversationUpdate) => {
       // O evento chega pra QUALQUER conversa que esta pessoa pode ver —
       // não só pra quem bate com o filtro aberto agora (ver
@@ -1318,6 +1345,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     socket.on("message.created", onMessageCreated);
     socket.on("message.updated", onMessageUpdated);
     socket.on("conversation.deleted", onConversationDeleted);
+    socket.on("conversations.encerradas", onConversasEncerradas);
     socket.on("message.status", onMessageStatus);
     socket.on("message.transcrita", onMessageTranscrita);
 
@@ -1330,6 +1358,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
       socket.off("message.created", onMessageCreated);
       socket.off("message.updated", onMessageUpdated);
       socket.off("conversation.deleted", onConversationDeleted);
+      socket.off("conversations.encerradas", onConversasEncerradas);
       socket.off("message.status", onMessageStatus);
       socket.off("message.transcrita", onMessageTranscrita);
     };

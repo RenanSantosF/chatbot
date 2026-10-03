@@ -1,5 +1,5 @@
 import { AutoCloseService } from './auto-close.service';
-import * as metaTexto from '../whatsapp/meta-texto';
+import * as evolution from '../whatsapp/canal/evolution/evolution.client';
 
 /**
  * O encerramento automático, que agora fala com o cliente.
@@ -13,9 +13,8 @@ import * as metaTexto from '../whatsapp/meta-texto';
  * 2. Ligar o recurso não pode disparar mensagem pra centenas de pessoas de
  *    uma vez. Era esse o medo que mantinha o serviço calado.
  *
- * A janela de 24h resolve as duas: fora dela a Meta recusa texto livre de
- * qualquer forma, então o acervo antigo é encerrado em silêncio e só quem
- * parou há 20-24 horas recebe a despedida.
+ * O limite de 24h resolve as duas: o acervo antigo é encerrado em silêncio
+ * e só quem parou há pouco recebe a despedida.
  */
 const AGORA = new Date('2026-08-14T12:00:00Z');
 
@@ -35,9 +34,12 @@ function servicoCom(
     autoCloseNotify: boolean;
     autoCloseMessage: string;
     semWhatsapp: boolean;
+    sessaoCaida: boolean;
+    clienteVoltou: string[];
   }> = {},
 ) {
   const encerradas: string[] = [];
+  const realtime = { emitToTenant: jest.fn() };
   const mensagens: Record<string, unknown>[] = [];
 
   const client = {
@@ -63,9 +65,12 @@ function servicoCom(
       ),
       updateMany: jest
         .fn()
-        .mockImplementation((args: { where: { id: { in: string[] } } }) => {
-          encerradas.push(...args.where.id.in);
-          return { count: args.where.id.in.length };
+        .mockImplementation((args: { where: { id: string } }) => {
+          if (config.clienteVoltou?.includes(args.where.id)) {
+            return { count: 0 };
+          }
+          encerradas.push(args.where.id);
+          return { count: 1 };
         }),
     },
     message: {
@@ -77,23 +82,27 @@ function servicoCom(
           return args.data;
         }),
     },
-    whatsAppSettings: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(
-          config.semWhatsapp
-            ? null
-            : { phoneNumberId: '123', accessTokenEncrypted: 'cifrado' },
-        ),
+    evolutionSettings: {
+      findFirst: jest.fn().mockResolvedValue(
+        config.semWhatsapp
+          ? null
+          : {
+              baseUrl: 'https://evo.teste',
+              apiKeyEncrypted: 'cifrado',
+              instance: 'inst',
+              estado: config.sessaoCaida ? 'DESCONECTADO' : 'CONECTADO',
+            },
+      ),
     },
   };
 
   const service = new AutoCloseService(
     { client } as never,
     { decrypt: jest.fn().mockReturnValue('token') } as never,
+    realtime as never,
   );
 
-  return { service, encerradas, mensagens, client };
+  return { service, encerradas, mensagens, client, realtime };
 }
 
 describe('encerramento por inatividade', () => {
@@ -101,9 +110,10 @@ describe('encerramento por inatividade', () => {
 
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(AGORA);
-    postar = jest
-      .spyOn(metaTexto, 'postarTexto')
-      .mockResolvedValue({ wamid: 'wamid-1' });
+    postar = jest.spyOn(evolution, 'enviarTexto').mockResolvedValue({
+      ok: true,
+      dados: { key: { remoteJid: '5511999990000@s.whatsapp.net', id: 'ID1' } },
+    });
   });
 
   afterEach(() => {
@@ -119,6 +129,20 @@ describe('encerramento por inatividade', () => {
     await service.varrer();
 
     expect(encerradas).toEqual(['c1']);
+  });
+
+  it('o painel fica sabendo na hora, sem recarregar a página', async () => {
+    const { service, realtime } = servicoCom([
+      { id: 'c1', lastMessageAt: horasAtras(21) },
+    ]);
+
+    await service.varrer();
+
+    expect(realtime.emitToTenant).toHaveBeenCalledWith(
+      'tenant-teste',
+      'conversations.encerradas',
+      { conversationIds: ['c1'] },
+    );
   });
 
   it('grupo fica de fora — não é atendimento pra encerrar', async () => {
@@ -167,14 +191,64 @@ describe('encerramento por inatividade', () => {
     expect(mensagens[0]).toMatchObject({
       senderType: 'AGENT',
       status: 'SENT',
-      externalId: 'wamid-1',
+      externalId: expect.stringContaining('ID1') as string,
     });
+  });
+
+  /**
+   * O aviso saía pelo caminho oficial da Meta, que nenhuma empresa usa: a
+   * função voltava em silêncio e a despedida nunca chegava a ninguém.
+   */
+  it('o aviso sai pela Evolution, com o número só em dígitos', async () => {
+    const { service } = servicoCom([
+      { id: 'c1', lastMessageAt: horasAtras(3), phone: '+55 (11) 99999-0000' },
+    ]);
+
+    await service.varrer();
+
+    expect(postar).toHaveBeenCalledWith(
+      { baseUrl: 'https://evo.teste', apiKey: 'token', instance: 'inst' },
+      {
+        numero: '5511999990000',
+        texto: 'Vamos encerrar por aqui. Volte sempre!',
+      },
+    );
+  });
+
+  it('com a sessão caída, encerra sem tentar avisar', async () => {
+    const { service, encerradas } = servicoCom(
+      [{ id: 'c1', lastMessageAt: horasAtras(21) }],
+      { sessaoCaida: true },
+    );
+
+    await service.varrer();
+
+    expect(encerradas).toEqual(['c1']);
+    expect(postar).not.toHaveBeenCalled();
+  });
+
+  it('cliente que respondeu durante a varredura não é encerrado nem avisado', async () => {
+    const { service, encerradas, client } = servicoCom(
+      [
+        { id: 'voltou', lastMessageAt: horasAtras(21) },
+        { id: 'sumiu', lastMessageAt: horasAtras(21) },
+      ],
+      { clienteVoltou: ['voltou'] },
+    );
+
+    await service.varrer();
+
+    expect(encerradas).toEqual(['sumiu']);
+    expect(postar).toHaveBeenCalledTimes(1);
+    const [[{ data }]] = client.message.createMany.mock.calls as [
+      [{ data: { conversationId: string }[] }],
+    ];
+    expect(data.map((nota) => nota.conversationId)).toEqual(['sumiu']);
   });
 
   it('conversa fora da janela é encerrada EM SILÊNCIO', async () => {
     // É a trava contra o disparo em massa: na primeira varredura depois de
-    // ligar o recurso, o acervo antigo inteiro cai aqui. Também é o que a
-    // Meta faria de qualquer jeito — fora da janela ela recusa texto livre.
+    // ligar o recurso, o acervo antigo inteiro cai aqui.
     const { service, encerradas } = servicoCom([
       { id: 'antiga', lastMessageAt: horasAtras(72) },
     ]);
@@ -232,12 +306,12 @@ describe('encerramento por inatividade', () => {
     expect(postar).not.toHaveBeenCalled();
   });
 
-  it('uma recusa da Meta não derruba as outras', async () => {
-    // Número inválido derruba uma conversa; token expirado derrubaria
+  it('uma recusa não derruba as outras', async () => {
+    // Número inválido derruba uma conversa; sessão caída derrubaria
     // todas. Parar na primeira falha misturaria os dois casos.
     postar
-      .mockResolvedValueOnce({ wamid: null, erro: '400: número inválido' })
-      .mockResolvedValueOnce({ wamid: 'wamid-2' });
+      .mockResolvedValueOnce({ ok: false, erro: 'número inválido' })
+      .mockResolvedValueOnce({ ok: true, dados: { key: { id: 'ID2' } } });
 
     const { service, mensagens } = servicoCom([
       { id: 'c1', lastMessageAt: horasAtras(21) },

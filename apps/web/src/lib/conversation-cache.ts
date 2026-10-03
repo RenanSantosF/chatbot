@@ -198,6 +198,16 @@ export const conversationCache = {
     };
   },
 
+  /**
+   * Mudou do lado de lá sem passar pelo tempo real (o encerramento
+   * automático): a próxima abertura busca do servidor em vez de mostrar
+   * o status velho.
+   */
+  esquecer(chaveDaSessao: string, id: string) {
+    garantirSessao(chaveDaSessao);
+    cache.delete(id);
+  },
+
   clear() {
     cache.clear();
     sessaoAtual = null;

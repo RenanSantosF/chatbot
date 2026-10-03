@@ -1,16 +1,27 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { postarTexto } from '../whatsapp/meta-texto';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import * as evolution from '../whatsapp/canal/evolution/evolution.client';
+import { empacotarId } from '../whatsapp/canal/evolution/evolution-id';
 
 /** De hora em hora. A precisão do recurso é em horas; varrer mais que isso é gasto à toa. */
 const INTERVALO_MS = 60 * 60 * 1000;
 
 /**
- * A janela de atendimento do WhatsApp.
+ * Até quando a despedida ainda faz sentido.
  *
- * Depois dela a Meta recusa texto livre: só passa modelo aprovado, que é
- * cobrado por mensagem. É o número que define o recurso inteiro.
+ * Nasceu como a janela de atendimento da Meta (fora dela, só modelo
+ * aprovado e pago). Na Evolution essa regra não existe, mas o limite
+ * continua valendo pelo outro motivo que ele sempre teve: é ele que impede
+ * a primeira varredura de mandar "vamos encerrar por aqui" pro acervo
+ * inteiro de uma vez — e rajada pra muita gente é exatamente o padrão que
+ * faz o WhatsApp bloquear um número conectado por QR code.
  */
 const JANELA_HORAS = 24;
 
@@ -35,8 +46,8 @@ const JANELA_HORAS = 24;
  * aviso quem está DENTRO das 24h. Isso tem uma consequência boa e uma
  * necessária.
  *
- * - Necessária: fora da janela a Meta recusaria o texto livre de qualquer
- *   forma, e insistir seria pagar por uma despedida.
+ * - Necessária: mandar a despedida pra quem sumiu há dias é rajada sem
+ *   contexto, e é o tipo de envio que põe o número em risco de bloqueio.
  * - Boa: na primeira varredura depois de ligar o recurso, o acervo antigo
  *   inteiro é encerrado EM SILÊNCIO. Só as conversas paradas há 20-24h
  *   recebem a mensagem, que são poucas por definição. O disparo em massa
@@ -50,6 +61,7 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   onModuleInit() {
@@ -119,33 +131,64 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
       });
       if (paradas.length === 0) continue;
 
-      const ids = paradas.map((c) => c.id);
-
-      await this.prisma.client.conversation.updateMany({
-        where: { id: { in: ids }, tenantId: config.tenantId },
-        // O relógio de espera para junto: conversa encerrada não aguarda
-        // resposta, e deixá-lo ligado a mantinha no contador de "esperando"
-        // e no topo da fila. Mesmo motivo do `resolve` manual.
-        data: { status: 'RESOLVED', waitingSince: null },
-      });
+      /*
+       * Uma por uma, repetindo a condição no UPDATE.
+       *
+       * Entre a busca e o encerramento o cliente pode ter respondido — a
+       * varredura passa por todas as empresas, e isso leva tempo. Um
+       * `updateMany` só pelos ids encerrava a conversa que acabou de voltar
+       * a pedir atendimento, e ela sumia da fila no exato momento em que
+       * alguém precisava olhar pra ela.
+       */
+      const encerradas: typeof paradas = [];
+      for (const conversa of paradas) {
+        const { count } = await this.prisma.client.conversation.updateMany({
+          where: {
+            id: conversa.id,
+            tenantId: config.tenantId,
+            status: 'WAITING_CUSTOMER',
+            waitingSince: null,
+          },
+          // O relógio de espera para junto: conversa encerrada não aguarda
+          // resposta, e deixá-lo ligado a mantinha no contador de
+          // "esperando" e no topo da fila. Mesmo motivo do `resolve` manual.
+          data: { status: 'RESOLVED', waitingSince: null },
+        });
+        if (count > 0) encerradas.push(conversa);
+      }
+      if (encerradas.length === 0) continue;
 
       // Nota na conversa: quem abrir depois precisa saber que foi o sistema
       // que encerrou, e por quê — senão parece que um colega fechou sem
       // resolver.
       await this.prisma.client.message.createMany({
-        data: ids.map((conversationId) => ({
+        data: encerradas.map((conversa) => ({
           tenantId: config.tenantId,
-          conversationId,
+          conversationId: conversa.id,
           senderType: 'SYSTEM' as const,
           messageType: 'TEXT' as const,
-          content: `Encerrado automaticamente após ${config.autoCloseHours}h sem movimento.`,
+          content: `Encerrado automaticamente após ${config.autoCloseHours}h sem resposta do cliente.`,
         })),
       });
 
-      const avisadas = await this.avisar(config, paradas, fimDaJanela);
+      const avisadas = await this.avisar(config, encerradas, fimDaJanela);
+
+      /*
+       * O painel precisa saber.
+       *
+       * Sem isto a conversa encerrada continuava aberta na tela de quem
+       * atende até recarregar a página — na aba "Aguardando cliente", com
+       * o status velho no cabeçalho. Vai pra empresa inteira, só com os
+       * ids: quem não enxerga a conversa recarrega a própria lista e não
+       * vê nada a mais; o recorte de visibilidade continua sendo o da
+       * listagem.
+       */
+      this.realtime.emitToTenant(config.tenantId, 'conversations.encerradas', {
+        conversationIds: encerradas.map((conversa) => conversa.id),
+      });
 
       this.logger.log(
-        `Tenant ${config.tenantId}: ${ids.length} conversa(s) encerradas por inatividade` +
+        `Tenant ${config.tenantId}: ${encerradas.length} conversa(s) encerradas por inatividade` +
           (avisadas > 0 ? `, ${avisadas} com aviso ao cliente.` : '.'),
       );
     }
@@ -181,28 +224,47 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
     );
     if (dentroDaJanela.length === 0) return 0;
 
-    const whatsapp = await this.prisma.client.whatsAppSettings.findFirst({
+    /*
+     * Pela Evolution, que é por onde todas as empresas falam.
+     *
+     * Este aviso saía pelo caminho oficial da Meta, que nenhuma empresa
+     * usa: sem configuração dele a função voltava em silêncio, e a
+     * despedida nunca chegou a ninguém. As credenciais são lidas aqui, e
+     * não pelo EvolutionCanal, porque esta rotina roda sem requisição —
+     * não existe tenant "atual" pro canal resolver.
+     */
+    const conexao = await this.prisma.client.evolutionSettings.findFirst({
       where: { tenantId: config.tenantId },
+      select: {
+        baseUrl: true,
+        apiKeyEncrypted: true,
+        instance: true,
+        estado: true,
+      },
     });
-    if (!whatsapp) return 0;
+    // Sessão caída: encerra do mesmo jeito, só não tem como avisar.
+    if (!conexao || conexao.estado !== 'CONECTADO') return 0;
 
-    const accessToken = this.encryption.decrypt(whatsapp.accessTokenEncrypted);
+    const credenciais: evolution.Credenciais = {
+      baseUrl: conexao.baseUrl,
+      apiKey: this.encryption.decrypt(conexao.apiKeyEncrypted),
+      instance: conexao.instance,
+    };
     let enviadas = 0;
 
     for (const conversa of dentroDaJanela) {
-      const { wamid, erro } = await postarTexto({
-        phoneNumberId: whatsapp.phoneNumberId,
-        accessToken,
-        to: conversa.customer.phone,
-        body: texto,
+      const resposta = await evolution.enviarTexto(credenciais, {
+        numero: conversa.customer.phone.replace(/\D/g, ''),
+        texto,
       });
+      const chave = resposta.dados?.key;
 
-      if (erro) {
-        // Uma recusa não pode parar as outras: token expirado derruba
+      if (!resposta.ok) {
+        // Uma recusa não pode parar as outras: sessão caída derruba
         // todas, mas número inválido derruba só aquela — e distinguir os
         // dois casos aqui custaria mais do que tentar.
         this.logger.warn(
-          `Aviso de encerramento não entregue na conversa ${conversa.id}: ${erro}`,
+          `Aviso de encerramento não entregue na conversa ${conversa.id}: ${resposta.erro}`,
         );
         continue;
       }
@@ -218,7 +280,15 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
           messageType: 'TEXT',
           content: texto,
           status: 'SENT',
-          externalId: wamid,
+          // Com a chave, o tique de entregue/lido chega neste balão.
+          externalId:
+            chave?.id && chave.remoteJid
+              ? empacotarId({
+                  remoteJid: chave.remoteJid,
+                  fromMe: chave.fromMe ?? true,
+                  id: chave.id,
+                })
+              : null,
         },
       });
       enviadas += 1;
