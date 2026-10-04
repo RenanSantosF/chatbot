@@ -230,8 +230,81 @@ describe('tradução da mensagem', () => {
   it('devolve nulo pro que não sabe traduzir', () => {
     // Melhor não gravar nada que gravar um balão vazio: o atendente veria
     // uma mensagem em branco e não teria como saber que chegou algo.
-    expect(traduzirMensagem({ message: { pollCreationMessage: {} } })).toBeNull();
+    expect(traduzirMensagem({ message: { protocolMessage: {} } })).toBeNull();
     expect(traduzirMensagem({ message: null })).toBeNull();
+  });
+
+  /*
+   * Os que eram descartados em silêncio e deixavam buraco na conversa.
+   */
+  it('documento com legenda, que vem dentro de um embrulho', () => {
+    expect(
+      traduzirMensagem({
+        message: {
+          documentWithCaptionMessage: {
+            message: {
+              documentMessage: {
+                caption: 'Segue o comprovante',
+                fileName: 'pix.pdf',
+                mimetype: 'application/pdf',
+              },
+            },
+          },
+        },
+      }),
+    ).toMatchObject({ content: 'Segue o comprovante', messageType: 'DOCUMENT' });
+  });
+
+  it('vídeo redondo vira vídeo', () => {
+    expect(
+      traduzirMensagem({
+        message: { ptvMessage: { mimetype: 'video/mp4' } },
+      }),
+    ).toMatchObject({ messageType: 'VIDEO' });
+  });
+
+  it('enquete vira um rótulo com a pergunta e as opções', () => {
+    expect(
+      traduzirMensagem({
+        message: {
+          pollCreationMessageV3: {
+            name: 'Melhor horário?',
+            options: [{ optionName: 'Manhã' }, { optionName: 'Tarde' }],
+          },
+        },
+      }),
+    ).toMatchObject({
+      content: 'Enquete: Melhor horário? (Manhã / Tarde)',
+      messageType: 'OTHER',
+    });
+  });
+
+  it('vários contatos de uma vez', () => {
+    expect(
+      traduzirMensagem({
+        message: { contactsArrayMessage: { contacts: [{}, {}, {}] } },
+      }),
+    ).toMatchObject({ content: '3 contatos compartilhados' });
+  });
+
+  it('resposta a botão mostra o que o cliente escolheu', () => {
+    expect(
+      traduzirMensagem({
+        message: {
+          buttonsResponseMessage: { selectedDisplayText: 'Quero orçamento' },
+        },
+      }),
+    ).toMatchObject({ content: 'Quero orçamento' });
+  });
+
+  it('localização em tempo real', () => {
+    expect(
+      traduzirMensagem({
+        message: {
+          liveLocationMessage: { degreesLatitude: -20.3, degreesLongitude: -40.3 },
+        },
+      }),
+    ).toMatchObject({ messageType: 'LOCATION' });
   });
 });
 

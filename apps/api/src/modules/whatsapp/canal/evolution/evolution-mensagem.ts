@@ -136,6 +136,9 @@ const MIDIAS: Record<string, MessageType> = {
   audioMessage: 'AUDIO',
   documentMessage: 'DOCUMENT',
   stickerMessage: 'IMAGE',
+  // O "vídeo redondo" (vídeo-recado gravado na hora). É vídeo comum por
+  // dentro, e era descartado por ter outro nome.
+  ptvMessage: 'VIDEO',
 };
 
 interface ConteudoDeMidia {
@@ -161,8 +164,20 @@ interface ContextoDaCitacao {
  * ninguém reproduz.
  */
 function conteudo(message: Record<string, unknown>): Record<string, unknown> {
-  const efemera = message.ephemeralMessage as { message?: Record<string, unknown> } | undefined;
-  if (efemera?.message) return conteudo(efemera.message);
+  /*
+   * Os embrulhos que só carregam outra mensagem dentro.
+   *
+   * O documento enviado COM LEGENDA pelo celular chega dentro de
+   * `documentWithCaptionMessage` — e sem abrir esse embrulho ele era
+   * descartado em silêncio: o cliente mandava o comprovante com "segue o
+   * pagamento" e o painel não mostrava nada.
+   */
+  for (const embrulho of ['ephemeralMessage', 'documentWithCaptionMessage']) {
+    const dentro = message[embrulho] as
+      | { message?: Record<string, unknown> }
+      | undefined;
+    if (dentro?.message) return conteudo(dentro.message);
+  }
 
   return message;
 }
@@ -313,6 +328,71 @@ function resumoDaCitada(
   };
 }
 
+/**
+ * O que não tem balão próprio no painel, mas não pode virar buraco.
+ *
+ * Antes todos estes eram descartados — o atendente via a resposta do
+ * cliente a uma enquete ou a um convite sem nunca ter visto a pergunta. Um
+ * rótulo dizendo o que chegou é melhor que nada: quem atende sabe que
+ * precisa olhar no celular.
+ */
+function rotuloDeOutroTipo(message: Record<string, unknown>): string | null {
+  const texto = (valor: unknown) =>
+    typeof valor === 'string' && valor.trim() ? valor.trim() : null;
+
+  const contatos = message.contactsArrayMessage as
+    | { displayName?: string; contacts?: unknown[] }
+    | undefined;
+  if (contatos) {
+    const quantos = Array.isArray(contatos.contacts)
+      ? contatos.contacts.length
+      : 0;
+    return quantos > 1
+      ? `${quantos} contatos compartilhados`
+      : `Contato compartilhado${texto(contatos.displayName) ? `: ${contatos.displayName}` : ''}`;
+  }
+
+  const enquete = (message.pollCreationMessage ??
+    message.pollCreationMessageV2 ??
+    message.pollCreationMessageV3) as
+    | { name?: string; options?: { optionName?: string }[] }
+    | undefined;
+  if (enquete) {
+    const opcoes = (enquete.options ?? [])
+      .map((o) => texto(o?.optionName))
+      .filter(Boolean)
+      .join(' / ');
+    return `Enquete: ${texto(enquete.name) ?? 'sem título'}${opcoes ? ` (${opcoes})` : ''}`;
+  }
+
+  const botao = message.buttonsResponseMessage as
+    | { selectedDisplayText?: string }
+    | undefined;
+  const lista = message.listResponseMessage as
+    | { title?: string; singleSelectReply?: { selectedRowId?: string } }
+    | undefined;
+  const modelo = message.templateButtonReplyMessage as
+    | { selectedDisplayText?: string }
+    | undefined;
+  const escolha =
+    texto(botao?.selectedDisplayText) ??
+    texto(lista?.title) ??
+    texto(modelo?.selectedDisplayText);
+  if (escolha) return escolha;
+
+  const convite = message.groupInviteMessage as
+    | { groupName?: string }
+    | undefined;
+  if (convite) {
+    return `Convite para o grupo${texto(convite.groupName) ? ` "${convite.groupName}"` : ''}`;
+  }
+
+  const evento = message.eventMessage as { name?: string } | undefined;
+  if (evento) return `Evento: ${texto(evento.name) ?? 'sem título'}`;
+
+  return null;
+}
+
 function traduzirConteudo(dados: DadosDaMensagem): MensagemTraduzida | null {
   const bruto = dados.message;
   if (!bruto) return null;
@@ -362,6 +442,32 @@ function traduzirConteudo(dados: DadosDaMensagem): MensagemTraduzida | null {
         name: localizacao.name,
         address: localizacao.address,
       },
+    };
+  }
+
+  const aoVivo = message.liveLocationMessage as
+    | { degreesLatitude?: number; degreesLongitude?: number; caption?: string }
+    | undefined;
+  if (aoVivo) {
+    return {
+      content: aoVivo.caption
+        ? `Localização em tempo real: ${aoVivo.caption}`
+        : 'Localização em tempo real',
+      messageType: 'LOCATION',
+      metadata: {
+        latitude: aoVivo.degreesLatitude,
+        longitude: aoVivo.degreesLongitude,
+        aoVivo: true,
+      },
+    };
+  }
+
+  const outra = rotuloDeOutroTipo(message);
+  if (outra) {
+    return {
+      content: outra,
+      messageType: 'OTHER',
+      citando: citadoNaRaiz,
     };
   }
 
