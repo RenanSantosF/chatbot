@@ -1598,7 +1598,11 @@ export class ConversationsService {
       where: { id: conversationId },
       select: { channel: true, customer: { select: { isGroup: true } } },
     });
-    if (!conversa || conversa.channel !== 'WHATSAPP' || conversa.customer.isGroup) {
+    if (
+      !conversa ||
+      conversa.channel !== 'WHATSAPP' ||
+      conversa.customer.isGroup
+    ) {
       return;
     }
 
@@ -1641,7 +1645,9 @@ export class ConversationsService {
       where: {
         customerId,
         status: { in: ['RESOLVED', 'CLOSED'] },
-        avaliacaoPedidaEm: { gt: new Date(Date.now() - JANELA_DA_AVALIACAO_MS) },
+        avaliacaoPedidaEm: {
+          gt: new Date(Date.now() - JANELA_DA_AVALIACAO_MS),
+        },
       },
       orderBy: { avaliacaoPedidaEm: 'desc' },
       select: { id: true, assignedUserId: true },
