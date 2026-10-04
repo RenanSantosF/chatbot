@@ -790,11 +790,13 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
    */
   const recuperar = useCallback(
     (id: string) => {
-      apiFetch<{ recuperadas: number }>(`/conversations/${id}/recuperar`, {
-        method: "POST",
-      })
-        .then(({ recuperadas }) => {
-          if (recuperadas === 0) return;
+      apiFetch<{ recuperadas: number; atualizadas?: number }>(
+        `/conversations/${id}/recuperar`,
+        { method: "POST" },
+      )
+        .then(({ recuperadas, atualizadas = 0 }) => {
+          // Mensagem nova OU tique corrigido: nos dois casos a tela relê.
+          if (recuperadas + atualizadas === 0) return;
           if (selectedIdRef.current === id) void loadDetail(id);
           else conversationCache.esquecer(chaveDaSessao, id);
         })

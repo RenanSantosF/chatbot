@@ -1305,10 +1305,10 @@ export class ConversationsService {
   async recuperarDoWhatsapp(
     id: string,
     viewer?: ConversationViewer,
-  ): Promise<{ recuperadas: number }> {
+  ): Promise<{ recuperadas: number; atualizadas: number }> {
     const conversa = await this.requireConversation(id, viewer);
     if (conversa.channel !== 'WHATSAPP' || conversa.customer.isGroup) {
-      return { recuperadas: 0 };
+      return { recuperadas: 0, atualizadas: 0 };
     }
 
     const chave = `${this.prisma.tenantId}:${id}`;
@@ -1318,32 +1318,34 @@ export class ConversationsService {
         recuperacoesRecentes.delete(outra);
       }
     }
-    if (recuperacoesRecentes.has(chave)) return { recuperadas: 0 };
+    if (recuperacoesRecentes.has(chave)) {
+      return { recuperadas: 0, atualizadas: 0 };
+    }
     recuperacoesRecentes.set(chave, agora);
 
     const guardadas = await this.whatsapp.mensagensGuardadas(
       conversa.customer.phone,
       MENSAGENS_A_CONFERIR,
     );
-    if (!guardadas?.length) return { recuperadas: 0 };
+    if (!guardadas?.length) return { recuperadas: 0, atualizadas: 0 };
 
     const maisAntiga = await this.prisma.db.message.findFirst({
       where: { conversationId: id },
       orderBy: { createdAt: 'asc' },
       select: { createdAt: true },
     });
-    if (!maisAntiga) return { recuperadas: 0 };
+    if (!maisAntiga) return { recuperadas: 0, atualizadas: 0 };
 
     const candidatas = guardadas
       .map((dados) => mensagemGuardada(dados))
       .filter(
         (m): m is NonNullable<typeof m> =>
           m !== null &&
+          Boolean(m.mensagem.externalId) &&
           m.telefone === conversa.customer.phone &&
           m.mensagem.createdAt >= maisAntiga.createdAt,
-      )
-      .map((m) => m.mensagem);
-    if (candidatas.length === 0) return { recuperadas: 0 };
+      );
+    if (candidatas.length === 0) return { recuperadas: 0, atualizadas: 0 };
 
     /*
      * "Já temos" é conferido pelo id da MENSAGEM, além do id externo
@@ -1351,47 +1353,73 @@ export class ConversationsService {
      * evento (sufixo de aparelho, `@lid`), e só a comparação exata deixaria
      * passar como "nova" uma mensagem que já está aqui.
      */
-    const ids = candidatas
-      .map((m) => (m.externalId ? idDaMensagem(m.externalId) : null))
-      .filter((m): m is string => Boolean(m));
+    const idDe = (m: (typeof candidatas)[number]) =>
+      idDaMensagem(m.mensagem.externalId!);
     const existentes = await this.prisma.db.message.findMany({
       where: {
         OR: [
           {
             externalId: {
-              in: candidatas
-                .map((m) => m.externalId)
-                .filter((e): e is string => Boolean(e)),
+              in: candidatas.map((m) => m.mensagem.externalId!),
             },
           },
-          ...ids.map((idDaMsg) => ({
-            externalId: { endsWith: `|${idDaMsg}` },
-          })),
+          ...candidatas
+            .map(idDe)
+            .filter((idDaMsg): idDaMsg is string => Boolean(idDaMsg))
+            .map((idDaMsg) => ({ externalId: { endsWith: `|${idDaMsg}` } })),
         ],
       },
-      select: { externalId: true },
+      select: { id: true, externalId: true, status: true, senderType: true },
     });
-    const jaTemos = new Set(
-      existentes
-        .map((m) => (m.externalId ? idDaMensagem(m.externalId) : null))
-        .filter(Boolean),
+    const porId = new Map(
+      existentes.map((m) => [
+        m.externalId ? idDaMensagem(m.externalId) : null,
+        m,
+      ]),
     );
-    const faltando = candidatas.filter(
-      (m) => m.externalId && !jaTemos.has(idDaMensagem(m.externalId)),
-    );
-    if (faltando.length === 0) return { recuperadas: 0 };
+
+    /*
+     * O tique das que JÁ estavam aqui, também.
+     *
+     * Os avisos de entregue/lida de uma mensagem que ainda não existia no
+     * painel chegaram e não acharam onde se aplicar — ela ficava com um
+     * tique só pra sempre. O servidor guarda até onde ela chegou.
+     */
+    let atualizadas = 0;
+    for (const m of candidatas) {
+      const existente = porId.get(idDe(m));
+      if (
+        !existente ||
+        !m.status ||
+        existente.senderType === 'CUSTOMER' ||
+        STATUS_RANK[m.status] <= STATUS_RANK[existente.status]
+      ) {
+        continue;
+      }
+      await this.prisma.db.message.update({
+        where: { id: existente.id },
+        data: { status: m.status },
+      });
+      atualizadas += 1;
+    }
+
+    const faltando = candidatas.filter((m) => !porId.has(idDe(m)));
+    if (faltando.length === 0) return { recuperadas: 0, atualizadas };
 
     const { count } = await this.prisma.db.message.createMany({
       skipDuplicates: true,
-      data: faltando.map((m) =>
-        linhaDoHistorico(this.prisma.tenantId, id, m),
-      ),
+      data: faltando.map((m) => ({
+        ...linhaDoHistorico(this.prisma.tenantId, id, m.mensagem),
+        // A da empresa entra com o tique de verdade (entregue, lida).
+        ...(m.mensagem.daEmpresa && m.status ? { status: m.status } : {}),
+      })),
     });
-    if (count === 0) return { recuperadas: 0 };
+    if (count === 0) return { recuperadas: 0, atualizadas };
 
     const maisNova = faltando.reduce(
-      (maior, m) => (m.createdAt > maior ? m.createdAt : maior),
-      faltando[0].createdAt,
+      (maior, m) =>
+        m.mensagem.createdAt > maior ? m.mensagem.createdAt : maior,
+      faltando[0].mensagem.createdAt,
     );
     if (!conversa.lastMessageAt || maisNova > conversa.lastMessageAt) {
       const atualizada = await this.prisma.db.conversation.update({
@@ -1409,7 +1437,7 @@ export class ConversationsService {
     this.logger.log(
       `Conversa ${id}: ${count} mensagem(ns) recuperada(s) do WhatsApp.`,
     );
-    return { recuperadas: count };
+    return { recuperadas: count, atualizadas };
   }
 
   async marcarComoLida(id: string, viewer?: ConversationViewer) {

@@ -32,6 +32,7 @@ function montar(opcoes: {
     customer: { phone: TELEFONE, isGroup: false },
   };
   const criadas: Record<string, unknown>[] = [];
+  const atualizadas: { where: { id: string }; data: unknown }[] = [];
   const prisma = {
     tenantId: 'tenant-1',
     db: {
@@ -50,10 +51,17 @@ function montar(opcoes: {
               },
         ),
         findMany: jest.fn().mockResolvedValue(
-          (opcoes.existentes ?? []).map((externo) => ({
+          (opcoes.existentes ?? []).map((externo, i) => ({
+            id: `existente-${i}`,
             externalId: externo,
+            status: 'SENT',
+            senderType: externo.includes('|1|') ? 'AGENT' : 'CUSTOMER',
           })),
         ),
+        update: jest.fn((args: { where: { id: string }; data: unknown }) => {
+          atualizadas.push(args);
+          return args;
+        }),
         createMany: jest.fn((args: { data: Record<string, unknown>[] }) => {
           criadas.push(...args.data);
           return { count: args.data.length };
@@ -84,7 +92,7 @@ function montar(opcoes: {
     recorteDeVisibilidade: jest.fn().mockResolvedValue({}),
     emitirParaConversa: jest.fn(),
   });
-  return { service, criadas, whatsapp, id };
+  return { service, criadas, atualizadas, whatsapp, id };
 }
 
 describe('recuperar do WhatsApp o que faltou', () => {
@@ -151,6 +159,45 @@ describe('recuperar do WhatsApp o que faltou', () => {
     });
   });
 
+  /**
+   * O relato: recuperada, a mensagem aparecia com um tique só, mesmo já
+   * lida — os avisos de leitura chegaram antes de ela existir no painel.
+   */
+  it('a recuperada entra com o tique de verdade (lida)', async () => {
+    const { service, criadas, id } = montar({
+      guardadas: [
+        {
+          ...guardada('L1', true, 'Ignora kkk', '2026-10-03T21:26:00Z'),
+          MessageUpdate: [{ status: 'DELIVERY_ACK' }, { status: 'READ' }],
+        },
+      ],
+    });
+
+    await service.recuperarDoWhatsapp(id);
+
+    expect(criadas[0]).toMatchObject({ status: 'READ' });
+  });
+
+  it('a que já estava aqui com o tique atrasado é corrigida', async () => {
+    const { service, atualizadas, id } = montar({
+      guardadas: [
+        {
+          ...guardada('L2', true, 'Ignora kkk', '2026-10-03T21:26:00Z'),
+          MessageUpdate: [{ status: 'READ' }],
+        },
+      ],
+      existentes: [`${JID}|1|L2`],
+    });
+
+    const resultado = await service.recuperarDoWhatsapp(id);
+
+    expect(resultado).toEqual({ recuperadas: 0, atualizadas: 1 });
+    expect(atualizadas[0]).toEqual({
+      where: { id: 'existente-0' },
+      data: { status: 'READ' },
+    });
+  });
+
   it('reconhece o que já está aqui pelo id da mensagem, mesmo com outra grafia', async () => {
     const { service, criadas, id } = montar({
       guardadas: [guardada('A', true, 'Oi', '2026-10-03T21:26:00Z')],
@@ -187,6 +234,7 @@ describe('recuperar do WhatsApp o que faltou', () => {
 
     await expect(service.recuperarDoWhatsapp(id)).resolves.toEqual({
       recuperadas: 0,
+      atualizadas: 0,
     });
   });
 });
