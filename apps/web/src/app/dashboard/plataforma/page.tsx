@@ -16,6 +16,9 @@ import {
   UserMinus,
   UserPlus,
   Users,
+  Wifi,
+  WifiOff,
+  History,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -128,6 +131,7 @@ const ABAS = [
   { chave: "funil", rotulo: "Funil" },
   { chave: "origem", rotulo: "Origem" },
   { chave: "contas", rotulo: "Contas" },
+  { chave: "conexoes", rotulo: "Conexões" },
   { chave: "erros", rotulo: "Erros" },
 ] as const;
 type Aba = (typeof ABAS)[number]["chave"];
@@ -266,6 +270,7 @@ export default function PlataformaPage() {
       {aba === "funil" ? <Funil relatorio={relatorio} /> : null}
       {aba === "origem" ? <Origem relatorio={relatorio} /> : null}
       {aba === "contas" ? <Contas /> : null}
+      {aba === "conexoes" ? <Conexoes /> : null}
       {aba === "erros" ? <Erros /> : null}
     </div>
   );
@@ -811,6 +816,175 @@ function Contas() {
 }
 
 /** O que está quebrando — agrupado, com a contagem e a pilha. */
+interface SaudeDasConexoes {
+  resumo: {
+    conectadas: number;
+    caidas: number;
+    aguardandoQr: number;
+    desconectadas: number;
+    nuncaConectaram: number;
+    quedasNaSemana: number;
+    recuperadasNaSemana: number;
+  };
+  porDia: { dia: string; quedas: number; recuperadas: number }[];
+  empresas: {
+    tenantId: string;
+    nome: string;
+    situacao: "conectada" | "caida" | "aguardando_qr" | "desconectada" | "nunca_conectou";
+    caidaDesde: string | null;
+    motivo: string | null;
+    ultimaMensagemRecebida: string | null;
+    recebidasNaSemana: number;
+    quedasNaSemana: number;
+    recuperadasNaSemana: number;
+  }[];
+}
+
+const SITUACAO_DA_CONEXAO: Record<
+  SaudeDasConexoes["empresas"][number]["situacao"],
+  { rotulo: string; classe: string }
+> = {
+  conectada: { rotulo: "Conectada", classe: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
+  caida: { rotulo: "Caída", classe: "bg-destructive/15 text-destructive" },
+  aguardando_qr: { rotulo: "Lendo QR code", classe: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+  desconectada: { rotulo: "Desconectada", classe: "bg-muted text-muted-foreground" },
+  nunca_conectou: { rotulo: "Nunca conectou", classe: "bg-muted text-muted-foreground" },
+};
+
+function haQuanto(iso: string | null): string {
+  if (!iso) return "—";
+  const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutos < 60) return `há ${Math.max(1, minutos)} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 48) return `há ${horas} h`;
+  return `há ${Math.round(horas / 24)} dias`;
+}
+
+/**
+ * A saúde do WhatsApp de cada empresa: quem caiu e desde quando, quem
+ * parou de receber mensagem (a sessão "conectada" que não entrega nada é
+ * o defeito mais silencioso) e quanto precisou ser recuperado.
+ */
+function Conexoes() {
+  const [dados, setDados] = useState<SaudeDasConexoes | null>(null);
+  // A hora do retrato: o "silenciosa" é medido a partir dela, não do render.
+  const [retratoEm, setRetratoEm] = useState(0);
+
+  useEffect(() => {
+    let cancelado = false;
+    const buscar = () =>
+      apiFetch<SaudeDasConexoes>("/plataforma/conexoes")
+        .then((r) => {
+          if (cancelado) return;
+          setDados(r);
+          setRetratoEm(Date.now());
+        })
+        .catch(() => toast.error("Não deu pra carregar as conexões."));
+    void buscar();
+    // Um retrato que envelhece rápido: refaz a cada minuto com a aba aberta.
+    const timer = setInterval(() => void buscar(), 60_000);
+    return () => {
+      cancelado = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  if (!dados) return <Skeleton className="h-64 w-full" />;
+  const { resumo } = dados;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile
+          label="Conectadas"
+          value={String(resumo.conectadas)}
+          hint={`${resumo.aguardandoQr} lendo QR · ${resumo.nuncaConectaram} nunca conectaram`}
+          icon={Wifi}
+        />
+        <StatTile
+          label="Caídas agora"
+          value={String(resumo.caidas)}
+          hint={`${resumo.desconectadas} desconectadas pelo botão`}
+          icon={WifiOff}
+        />
+        <StatTile
+          label="Quedas na semana"
+          value={String(resumo.quedasNaSemana)}
+          hint="avisadas ao dono (mais de 5 min)"
+          icon={AlertTriangle}
+        />
+        <StatTile
+          label="Mensagens recuperadas"
+          value={String(resumo.recuperadasNaSemana)}
+          hint="na semana, trazidas do servidor ao abrir a conversa"
+          icon={History}
+        />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Empresas</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {dados.empresas.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma empresa com WhatsApp ainda.</p>
+          ) : (
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">Empresa</th>
+                  <th className="py-2 pr-3 font-medium">Situação</th>
+                  <th className="py-2 pr-3 font-medium">Última recebida</th>
+                  <th className="py-2 pr-3 text-right font-medium">Recebidas (7d)</th>
+                  <th className="py-2 pr-3 text-right font-medium">Quedas (7d)</th>
+                  <th className="py-2 text-right font-medium">Recuperadas (7d)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {dados.empresas.map((e) => {
+                  const situacao = SITUACAO_DA_CONEXAO[e.situacao];
+                  // Conectada e sem nada recebido em 2 dias merece um olhar:
+                  // pode ser só movimento fraco, ou a sessão que não entrega.
+                  const silenciosa =
+                    e.situacao === "conectada" &&
+                    (!e.ultimaMensagemRecebida ||
+                      retratoEm - new Date(e.ultimaMensagemRecebida).getTime() > 48 * 3600_000);
+                  return (
+                    <tr key={e.tenantId} className="align-top">
+                      <td className="py-2 pr-3">
+                        <span className="font-medium">{e.nome}</span>
+                        {e.motivo ? (
+                          <span className="block text-xs text-muted-foreground">{e.motivo}</span>
+                        ) : null}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", situacao.classe)}>
+                          {situacao.rotulo}
+                        </span>
+                        {e.situacao === "caida" && e.caidaDesde ? (
+                          <span className="block pt-1 text-xs text-muted-foreground">
+                            {haQuanto(e.caidaDesde)}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className={cn("py-2 pr-3", silenciosa && "text-amber-700 dark:text-amber-400")}>
+                        {haQuanto(e.ultimaMensagemRecebida)}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{e.recebidasNaSemana}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{e.quedasNaSemana}</td>
+                      <td className="py-2 text-right tabular-nums">{e.recuperadasNaSemana}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function Erros() {
   const [todos, setTodos] = useState(false);
   const [erros, setErros] = useState<Erro[] | null>(null);

@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { EncryptionService } from '../../common/crypto/encryption.service';
 import { EmailService } from '../../common/email/email.service';
@@ -12,6 +13,7 @@ import {
 } from '../../common/email/modelo-de-email';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { emailsDaPlataforma } from '../plataforma/plataforma.guard';
+import { RegistroDeEventos } from '../plataforma/registro-de-eventos.service';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import * as evolution from '../whatsapp/canal/evolution/evolution.client';
@@ -83,6 +85,7 @@ export class VigiaDoWhatsappService implements OnModuleInit, OnModuleDestroy {
     private readonly email: EmailService,
     private readonly push: PushService,
     private readonly realtime: RealtimeGateway,
+    @Optional() private readonly eventos?: RegistroDeEventos,
   ) {}
 
   onModuleInit() {
@@ -199,6 +202,18 @@ export class VigiaDoWhatsappService implements OnModuleInit, OnModuleDestroy {
           where: { id: sessao.id },
           data: { quedaDesde: null, quedaAvisadaEm: null },
         });
+        // Só conta como volta a queda que chegou a ser avisada: piscada de
+        // segundos não é incidente.
+        if (sessao.quedaAvisadaEm && sessao.quedaDesde) {
+          await this.eventos?.registrar('whatsapp_voltou', {
+            tenantId: sessao.tenantId,
+            dados: {
+              minutosFora: Math.round(
+                (agora.getTime() - sessao.quedaDesde.getTime()) / 60_000,
+              ),
+            },
+          });
+        }
       }
       return;
     }
@@ -222,6 +237,10 @@ export class VigiaDoWhatsappService implements OnModuleInit, OnModuleDestroy {
     });
     if (count === 0) return;
 
+    await this.eventos?.registrar('whatsapp_caiu', {
+      tenantId: sessao.tenantId,
+      dados: { motivo: sessao.lastError },
+    });
     await this.avisarEmpresa(sessao);
   }
 

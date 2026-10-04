@@ -24,7 +24,11 @@ export type TipoDeEvento =
   | 'pacote_pago'
   | 'liberacao_manual'
   | 'liberacao_revogada'
-  | 'conta_apagada';
+  | 'conta_apagada'
+  // Saúde das conexões (ver a aba Conexões do painel da plataforma).
+  | 'whatsapp_caiu'
+  | 'whatsapp_voltou'
+  | 'mensagens_recuperadas';
 
 /** Os que o navegador pode mandar sem estar logado. */
 export const EVENTOS_DO_NAVEGADOR: TipoDeEvento[] = [

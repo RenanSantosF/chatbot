@@ -110,6 +110,13 @@ export class PlataformaController {
 
   @UseGuards(PlataformaGuard)
   @BillingExempt()
+  @Get('conexoes')
+  conexoes() {
+    return this.plataforma.conexoes();
+  }
+
+  @UseGuards(PlataformaGuard)
+  @BillingExempt()
   @Get('erros')
   listarErros(@Query('todos') todos?: string) {
     return this.plataforma.erros(todos === '1');

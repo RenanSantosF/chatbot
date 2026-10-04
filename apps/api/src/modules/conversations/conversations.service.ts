@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Optional,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -49,6 +50,7 @@ import {
   type MensagemDoHistorico,
 } from './historico-guardado';
 import { mediaIdDe } from './media-id';
+import { RegistroDeEventos } from '../plataforma/registro-de-eventos.service';
 
 /**
  * Quem está pedindo — o suficiente pra saber o que essa pessoa pode ver.
@@ -569,6 +571,7 @@ export class ConversationsService {
     private readonly transcricao: TranscricaoService,
     private readonly audit: AuditService,
     private readonly push: PushService,
+    @Optional() private readonly eventos?: RegistroDeEventos,
   ) {}
 
   /**
@@ -1524,6 +1527,10 @@ export class ConversationsService {
     this.logger.log(
       `Conversa ${id}: ${count} mensagem(ns) recuperada(s) do WhatsApp.`,
     );
+    await this.eventos?.registrar('mensagens_recuperadas', {
+      tenantId: this.prisma.tenantId,
+      dados: { quantidade: count, conversationId: id },
+    });
     return { recuperadas: count, atualizadas };
   }
 

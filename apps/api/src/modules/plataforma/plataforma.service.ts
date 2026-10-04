@@ -544,6 +544,149 @@ export class PlataformaService {
     });
   }
 
+  /**
+   * A saúde das conexões de WhatsApp de todas as empresas.
+   *
+   * Pra a plataforma perceber um problema antes de o cliente reclamar:
+   * quem está caído e desde quando, quem não recebe mensagem há dias
+   * (sessão "conectada" que não entrega nada é o defeito mais silencioso),
+   * quantas quedas e quantas mensagens precisaram ser recuperadas.
+   */
+  async conexoes() {
+    const agora = Date.now();
+    const seteDias = new Date(agora - 7 * 24 * 60 * 60 * 1000);
+
+    const [sessoes, ultimasRecebidas, eventos] = await Promise.all([
+      this.db.evolutionSettings.findMany({
+        select: {
+          tenantId: true,
+          estado: true,
+          lastSeenAt: true,
+          lastError: true,
+          quedaDesde: true,
+          quedaAvisadaEm: true,
+          tenant: { select: { name: true, status: true } },
+        },
+      }),
+      this.db.message.groupBy({
+        by: ['tenantId'],
+        where: { senderType: 'CUSTOMER', createdAt: { gte: seteDias } },
+        _max: { createdAt: true },
+        _count: { _all: true },
+      }),
+      this.db.eventoDaPlataforma.findMany({
+        where: {
+          tipo: {
+            in: ['whatsapp_caiu', 'whatsapp_voltou', 'mensagens_recuperadas'],
+          },
+          createdAt: { gte: seteDias },
+        },
+        select: { tipo: true, tenantId: true, dados: true, createdAt: true },
+      }),
+    ]);
+
+    const recebidas = new Map(
+      ultimasRecebidas.map((r) => [
+        r.tenantId,
+        { ultima: r._max.createdAt, total: r._count._all },
+      ]),
+    );
+    const quedasPorEmpresa = new Map<string, number>();
+    const recuperadasPorEmpresa = new Map<string, number>();
+    const porDia = new Map<
+      string,
+      { dia: string; quedas: number; recuperadas: number }
+    >();
+    for (let i = 6; i >= 0; i -= 1) {
+      const d = new Date(agora - i * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      porDia.set(d, { dia: d, quedas: 0, recuperadas: 0 });
+    }
+    for (const e of eventos) {
+      const dia = porDia.get(e.createdAt.toISOString().slice(0, 10));
+      const quantidade =
+        e.tipo === 'mensagens_recuperadas'
+          ? Number((e.dados as { quantidade?: number } | null)?.quantidade ?? 0)
+          : 0;
+      if (e.tipo === 'whatsapp_caiu') {
+        if (dia) dia.quedas += 1;
+        if (e.tenantId) {
+          quedasPorEmpresa.set(
+            e.tenantId,
+            (quedasPorEmpresa.get(e.tenantId) ?? 0) + 1,
+          );
+        }
+      } else if (e.tipo === 'mensagens_recuperadas') {
+        if (dia) dia.recuperadas += quantidade;
+        if (e.tenantId) {
+          recuperadasPorEmpresa.set(
+            e.tenantId,
+            (recuperadasPorEmpresa.get(e.tenantId) ?? 0) + quantidade,
+          );
+        }
+      }
+    }
+
+    const empresas = sessoes
+      .filter((s) => s.tenant.status !== 'SUSPENDED')
+      .map((s) => {
+        const caida =
+          (s.estado === 'DESCONECTADO' && Boolean(s.lastError)) ||
+          Boolean(s.quedaDesde);
+        const situacao = !s.lastSeenAt
+          ? ('nunca_conectou' as const)
+          : caida
+            ? ('caida' as const)
+            : s.estado === 'CONECTADO'
+              ? ('conectada' as const)
+              : s.estado === 'AGUARDANDO_QRCODE'
+                ? ('aguardando_qr' as const)
+                : ('desconectada' as const);
+        const r = recebidas.get(s.tenantId);
+        return {
+          tenantId: s.tenantId,
+          nome: s.tenant.name,
+          situacao,
+          caidaDesde: s.quedaDesde,
+          motivo: caida ? s.lastError : null,
+          ultimaMensagemRecebida: r?.ultima ?? null,
+          recebidasNaSemana: r?.total ?? 0,
+          quedasNaSemana: quedasPorEmpresa.get(s.tenantId) ?? 0,
+          recuperadasNaSemana: recuperadasPorEmpresa.get(s.tenantId) ?? 0,
+        };
+      })
+      // O que pede atenção primeiro: caídas, depois as mais instáveis.
+      .sort((a, b) => {
+        const peso = (x: (typeof empresas)[number]) =>
+          x.situacao === 'caida' ? 0 : x.situacao === 'conectada' ? 2 : 1;
+        return (
+          peso(a) - peso(b) ||
+          b.quedasNaSemana - a.quedasNaSemana ||
+          a.nome.localeCompare(b.nome)
+        );
+      });
+
+    const contar = (situacao: string) =>
+      empresas.filter((e) => e.situacao === situacao).length;
+    return {
+      resumo: {
+        conectadas: contar('conectada'),
+        caidas: contar('caida'),
+        aguardandoQr: contar('aguardando_qr'),
+        desconectadas: contar('desconectada'),
+        nuncaConectaram: contar('nunca_conectou'),
+        quedasNaSemana: [...porDia.values()].reduce((t, d) => t + d.quedas, 0),
+        recuperadasNaSemana: [...porDia.values()].reduce(
+          (t, d) => t + d.recuperadas,
+          0,
+        ),
+      },
+      porDia: [...porDia.values()],
+      empresas,
+    };
+  }
+
   async erros(todos = false) {
     return this.db.erroDaPlataforma.findMany({
       where: todos ? undefined : { resolvido: false },
