@@ -1537,3 +1537,19 @@ model RedefinicaoDeSenha {
   @@index([userId, createdAt])
   @@map("redefinicoes_de_senha")
 }
+
+/// A prévia de um link (título, descrição, imagem), como a página a
+/// descreve nas tags Open Graph. Não é de empresa nenhuma: é o que o site
+/// público diz de si, e o mesmo link mandado por duas empresas é buscado
+/// uma vez só. A ausência também fica guardada (`titulo` nulo), pra um site
+/// que não responde não ser perguntado a cada abertura de conversa.
+model PreviaDeLink {
+  url       String   @id
+  titulo    String?
+  descricao String?
+  imagem    String?
+  site      String?
+  buscadaEm DateTime @default(now())
+
+  @@map("previas_de_link")
+}

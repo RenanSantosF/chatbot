@@ -13,6 +13,8 @@ import { memo, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { resumoDaMensagem } from "@/lib/mensagem";
 import { MessageAttachment } from "./message-attachment";
+import { CartaoDeLink, TextoComLinks } from "./previa-de-link";
+import { primeiroLink } from "@/lib/links";
 import type { ConversationMessage, MessageStatus } from "@/lib/types";
 
 function timeLabel(iso: string) {
@@ -210,28 +212,6 @@ function BotaoDeReagir({
 }
 
 /**
- * Pinta os trechos que casam com a busca. Divide pelo termo em vez de usar
- * innerHTML: o conteúdo vem do cliente e não pode virar marcação.
- */
-function Highlighted({ text, term }: { text: string; term: string }) {
-  if (!term) return <>{text}</>;
-  const parts = text.split(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"));
-  return (
-    <>
-      {parts.map((part, index) =>
-        part.toLowerCase() === term.toLowerCase() ? (
-          <mark key={index} className="rounded-xs bg-amber-300/70 text-inherit dark:bg-amber-400/40">
-            {part}
-          </mark>
-        ) : (
-          <span key={index}>{part}</span>
-        ),
-      )}
-    </>
-  );
-}
-
-/**
  * O espaço que a hora ocupa no fim da última linha do texto.
  *
  * É o truque do WhatsApp: a hora não ganha uma linha só pra ela. Um
@@ -372,6 +352,11 @@ export const MessageBubble = memo(function MessageBubble({
    *   - numa linha própria no resto (áudio, documento, figurinha).
    */
   const horaNoTexto = (temTexto || Boolean(unica)) && !figurinha;
+  // O cartão do link só em texto puro: legenda de foto já tem a foto.
+  const linkDaPrevia =
+    temTexto && message.messageType === "TEXT" && !message.deletedAt
+      ? primeiroLink(message.content)
+      : null;
   // Só na foto: no vídeo o canto de baixo é da barra de controles.
   const horaSobreAFoto = foto && !temTexto && message.messageType === "IMAGE";
   const reactions = Object.entries(message.reactions ?? {}).filter(
@@ -598,9 +583,10 @@ export const MessageBubble = memo(function MessageBubble({
           as coordenadas. Antes vinham os dois — o cartão e, embaixo,
           "Localização: -20.3620781, -40.4308282" — e o balão ficava com
           cara de log em vez de mensagem. */}
+      {linkDaPrevia ? <CartaoDeLink url={linkDaPrevia} fromCustomer={fromCustomer} /> : null}
       {temTexto ? (
         <span className={cn("whitespace-pre-wrap break-words", recuo, foto && "pt-0.5 pb-1")}>
-          <Highlighted text={message.content} term={highlight} />
+          <TextoComLinks texto={message.content} termo={highlight} />
           {horaNoTexto ? (
             <span
               aria-hidden

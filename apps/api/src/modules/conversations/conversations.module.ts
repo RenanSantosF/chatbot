@@ -9,6 +9,8 @@ import { TagsModule } from '../tags/tags.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
+import { PreviaDeLinkController } from './previa-de-link.controller';
+import { PreviaDeLinkService } from './previa-de-link.service';
 
 @Module({
   imports: [
@@ -23,8 +25,8 @@ import { ConversationsService } from './conversations.service';
     CollectionModule,
     TagsModule,
   ],
-  controllers: [ConversationsController],
-  providers: [ConversationsService],
+  controllers: [PreviaDeLinkController, ConversationsController],
+  providers: [ConversationsService, PreviaDeLinkService],
   exports: [ConversationsService],
 })
 export class ConversationsModule {}
