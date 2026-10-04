@@ -137,14 +137,17 @@ export class EvolutionCanal implements CanalDeMensagem {
   async mensagensGuardadas(
     para: string,
     limite: number,
+    lid?: string | null,
   ): Promise<DadosDaMensagem[] | null> {
     const credenciais = await this.credenciais();
     if (!credenciais) return null;
 
+    const jid = jidDoTelefone(para);
     const resposta = await evolution.buscarMensagens(
       credenciais,
-      jidDoTelefone(para),
+      jid,
       limite,
+      lid,
     );
     if (!resposta.ok) {
       this.logger.warn(
@@ -152,7 +155,15 @@ export class EvolutionCanal implements CanalDeMensagem {
       );
       return null;
     }
-    return (resposta.dados ?? []) as DadosDaMensagem[];
+    const lista = (resposta.dados ?? []) as DadosDaMensagem[];
+    // Guardada só com o @lid: o telefone conhecido vai no lugar dele, pra
+    // quem lê não descartar a mensagem como "sem dono".
+    for (const dados of lista) {
+      if (lid && dados.key?.remoteJid === lid && !dados.key.remoteJidAlt) {
+        dados.key.remoteJidAlt = jid;
+      }
+    }
+    return lista;
   }
 
   /**

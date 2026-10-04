@@ -1326,6 +1326,7 @@ export class ConversationsService {
     const guardadas = await this.whatsapp.mensagensGuardadas(
       conversa.customer.phone,
       MENSAGENS_A_CONFERIR,
+      conversa.customer.whatsappLid,
     );
     if (!guardadas?.length) return { recuperadas: 0, atualizadas: 0 };
 

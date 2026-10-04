@@ -28,7 +28,13 @@ import { EvolutionCanal } from './evolution.canal';
 import { EvolutionService } from './evolution.service';
 import { WhatsappMediaService } from '../../whatsapp-media.service';
 import { mensagemGuardada } from './mensagem-guardada';
-import { empacotarId, identidadeDoDestino, telefoneDoJid } from './evolution-id';
+import {
+  ehGrupo,
+  empacotarId,
+  identidadeDoDestino,
+  jidDoTelefone,
+  telefoneDoJid,
+} from './evolution-id';
 import {
   chaveDoEvento,
   comoLista,
@@ -61,6 +67,9 @@ const FOTO_VALIDA_MS = 24 * 60 * 60 * 1000;
 // Sem limite de requisições, mesma razão do webhook da Meta: mensagem
 // chega em rajada, e barrar aqui derrubaria o recebimento pra defender de
 // um ataque que o segredo já barra.
+/** Relações @lid → telefone já gravadas neste processo (ver `resolverLid`). */
+const lidsAprendidos = new Set<string>();
+
 @SkipThrottle()
 @Controller('webhooks/evolution')
 export class EvolutionWebhookController {
@@ -369,11 +378,56 @@ export class EvolutionWebhookController {
     return timingSafeEqual(esperado, recebido) ? config : null;
   }
 
+  /**
+   * O `@lid` aprendido e usado.
+   *
+   * O WhatsApp passou a endereçar parte das conversas por um código opaco
+   * (`...@lid`) em vez do telefone. Quando o evento traz os dois — o
+   * código e o telefone em `remoteJidAlt` —, a relação é guardada no
+   * cliente. Quando vem SÓ o código (acontece, sobretudo no que a empresa
+   * escreve pelo celular), é essa relação que diz de quem é a mensagem;
+   * antes ela não tinha dono e era descartada em silêncio.
+   */
+  private async resolverLid(tenantId: string, dados: DadosDaMensagem) {
+    const bruto = dados.key?.remoteJid;
+    if (!dados.key || !bruto?.endsWith('@lid')) return;
+
+    const alternativo = dados.key.remoteJidAlt;
+    const telefone = alternativo ? telefoneDoJid(alternativo) : null;
+    if (telefone) {
+      const aprendido = `${tenantId}:${bruto}:${telefone}`;
+      if (lidsAprendidos.has(aprendido)) return;
+      await this.prisma.client.customer
+        .updateMany({
+          where: {
+            tenantId,
+            phone: telefone,
+            OR: [{ whatsappLid: null }, { whatsappLid: { not: bruto } }],
+          },
+          data: { whatsappLid: bruto },
+        })
+        .catch(() => undefined);
+      // Só em memória pra não gravar a mesma coisa a cada mensagem; o
+      // conjunto é pequeno (um por cliente que usa @lid) e some no reinício.
+      lidsAprendidos.add(aprendido);
+      return;
+    }
+
+    const conhecido = await this.prisma.client.customer.findFirst({
+      where: { tenantId, whatsappLid: bruto },
+      select: { phone: true },
+    });
+    if (conhecido && !ehGrupo(conhecido.phone)) {
+      dados.key.remoteJidAlt = jidDoTelefone(conhecido.phone);
+    }
+  }
+
   private async mensagens(
     body: EventoDaEvolution,
     config: { tenantId: string; id: string },
   ) {
     for (const dados of comoLista(body.data)) {
+      await this.resolverLid(config.tenantId, dados);
       const chave = chaveDoEvento(dados);
       if (!chave) continue;
 

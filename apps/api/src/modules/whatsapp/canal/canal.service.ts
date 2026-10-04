@@ -162,8 +162,8 @@ export class CanalService {
    * permite recuperar o que nunca chegou ao painel. Só a Evolution guarda;
    * pelo mesmo motivo de `numeroExiste`, fica fora do contrato.
    */
-  mensagensGuardadas(para: string, limite: number) {
-    return this.evolution.mensagensGuardadas(para, limite);
+  mensagensGuardadas(para: string, limite: number, lid?: string | null) {
+    return this.evolution.mensagensGuardadas(para, limite, lid);
   }
 
   /**

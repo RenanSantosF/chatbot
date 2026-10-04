@@ -746,6 +746,8 @@ export async function buscarMensagens(
   credenciais: Credenciais,
   remoteJid: string,
   limite: number,
+  /** O `@lid` do contato, quando conhecido: guardadas só com ele também. */
+  lid?: string | null,
 ): Promise<RespostaDaEvolution<Record<string, unknown>[]>> {
   const resposta = await chamar<unknown>(
     credenciais,
@@ -762,7 +764,7 @@ export async function buscarMensagens(
        * A busca dela junta os dois com OU (ver `fetchMessages` na 2.3.x).
        */
       body: {
-        where: { key: { remoteJid, remoteJidAlt: remoteJid } },
+        where: { key: { remoteJid: lid ?? remoteJid, remoteJidAlt: remoteJid } },
         page: 1,
         offset: limite,
       },

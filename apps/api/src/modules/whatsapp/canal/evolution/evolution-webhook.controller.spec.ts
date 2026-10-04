@@ -41,6 +41,7 @@ function montar() {
       customer: {
         findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       evolutionSettings: {
         findFirst: jest.fn().mockResolvedValue(config),
@@ -94,6 +95,67 @@ function mensagem(extra: Record<string, unknown> = {}) {
     },
   };
 }
+
+describe('mensagem que chega só com o código @lid', () => {
+  it('aprende o código quando ele vem junto do telefone', async () => {
+    const { controller, prisma, req } = montar();
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        key: {
+          remoteJid: '111222333@lid',
+          remoteJidAlt: '5511999999999@s.whatsapp.net',
+          fromMe: false,
+          id: 'LID-A',
+        },
+      }),
+    );
+
+    expect(prisma.client.customer.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: 'tenant-1',
+          phone: '5511999999999',
+        }) as object,
+        data: { whatsappLid: '111222333@lid' },
+      }),
+    );
+  });
+
+  /**
+   * Sem o telefone ao lado, a mensagem não tinha dono e era descartada em
+   * silêncio — o caso mais comum é o que a empresa escreve pelo celular.
+   */
+  it('vindo SÓ o código, usa o cliente que já foi visto com ele', async () => {
+    const { controller, prisma, conversations, req } = montar();
+    prisma.client.customer.findFirst.mockImplementation(
+      (args: { where: { whatsappLid?: string } }) =>
+        Promise.resolve(
+          args.where.whatsappLid === '444555666@lid'
+            ? { phone: '5511999999999' }
+            : null,
+        ),
+    );
+
+    await controller.receber(
+      SEGREDO,
+      req,
+      mensagem({
+        key: { remoteJid: '444555666@lid', fromMe: true, id: 'LID-B' },
+        message: { conversation: 'Pode falar' },
+      }),
+    );
+
+    expect(conversations.recordOutboundEcho).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerPhone: '5511999999999',
+        content: 'Pode falar',
+      }),
+    );
+  });
+});
 
 describe('porta de entrada', () => {
   it('recusa segredo em formato inválido sem nem consultar o banco', async () => {

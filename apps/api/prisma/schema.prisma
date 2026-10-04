@@ -494,6 +494,12 @@ model Customer {
   /// o "sem foto", quem esconde a foto seria perguntado a cada mensagem.
   avatarVerificadoEm DateTime?
 
+  /// O identificador opaco (`...@lid`) que o WhatsApp usa no lugar do
+  /// telefone em parte das conversas. Aprendido quando um evento traz os
+  /// dois juntos, e usado quando vem SÓ ele — sem isto, a mensagem não
+  /// tinha a quem pertencer e era descartada.
+  whatsappLid String?
+
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   notes         CustomerNote[]
@@ -503,6 +509,7 @@ model Customer {
   // cliente de várias empresas diferentes na plataforma.
   @@unique([tenantId, phone])
   @@index([tenantId])
+  @@index([tenantId, whatsappLid])
   @@map("customers")
 }
 

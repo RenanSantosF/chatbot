@@ -57,6 +57,24 @@ describe('buscar mensagens guardadas', () => {
     });
   });
 
+  it('com o @lid conhecido, procura por ele e pelo telefone', async () => {
+    await buscarMensagens(
+      credenciais,
+      '5527996255918@s.whatsapp.net',
+      60,
+      '196158919729321@lid',
+    );
+
+    expect(pedido?.corpo).toMatchObject({
+      where: {
+        key: {
+          remoteJid: '196158919729321@lid',
+          remoteJidAlt: '5527996255918@s.whatsapp.net',
+        },
+      },
+    });
+  });
+
   it('lê a lista de dentro de messages.records', async () => {
     const resposta = await buscarMensagens(
       credenciais,
