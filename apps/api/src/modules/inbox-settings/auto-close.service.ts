@@ -225,6 +225,34 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
     if (dentroDaJanela.length === 0) return 0;
 
     /*
+     * Só se despede quem ATENDEU pelo Inteliwa.
+     *
+     * O número costuma ser também o do celular do dono, e nem toda conversa
+     * é atendimento: a que foi conduzida inteira pelo celular — um contato
+     * pessoal, um fornecedor — recebia "vamos encerrar por aqui" duas
+     * horas depois da última mensagem, de uma empresa com quem a pessoa
+     * nem sabia estar falando. Conta como atendimento a conversa em que a
+     * IA respondeu ou alguém respondeu PELO PAINEL (essas levam o autor;
+     * as do celular, não) dentro da janela. As outras encerram em silêncio
+     * — só no painel.
+     */
+    const atendidas = await this.prisma.client.message.groupBy({
+      by: ['conversationId'],
+      where: {
+        tenantId: config.tenantId,
+        conversationId: { in: dentroDaJanela.map((c) => c.id) },
+        createdAt: { gt: fimDaJanela },
+        OR: [
+          { senderType: 'AI' },
+          { senderType: 'AGENT', senderId: { not: null } },
+        ],
+      },
+    });
+    const peloInteliwa = new Set(atendidas.map((a) => a.conversationId));
+    const aAvisar = dentroDaJanela.filter((c) => peloInteliwa.has(c.id));
+    if (aAvisar.length === 0) return 0;
+
+    /*
      * Pela Evolution, que é por onde todas as empresas falam.
      *
      * Este aviso saía pelo caminho oficial da Meta, que nenhuma empresa
@@ -252,7 +280,7 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
     };
     let enviadas = 0;
 
-    for (const conversa of dentroDaJanela) {
+    for (const conversa of aAvisar) {
       const resposta = await evolution.enviarTexto(credenciais, {
         numero: conversa.customer.phone.replace(/\D/g, ''),
         texto,

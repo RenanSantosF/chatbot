@@ -228,7 +228,13 @@ export default function InboxSettingsPage() {
                   onSave={(valor) => patch({ autoCloseHours: valor })}
                 />
                 <label className="flex items-center justify-between gap-4">
-                  <span className="text-sm">Avisar o cliente ao encerrar</span>
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-sm">Avisar o cliente ao encerrar</span>
+                    <span className="text-xs text-muted-foreground">
+                      Só em conversas atendidas pela IA ou pelo painel. As que você conduziu só pelo celular
+                      encerram sem mensagem.
+                    </span>
+                  </span>
                   <Switch
                     checked={settings.autoCloseNotify}
                     onCheckedChange={(checked) => patch({ autoCloseNotify: checked })}

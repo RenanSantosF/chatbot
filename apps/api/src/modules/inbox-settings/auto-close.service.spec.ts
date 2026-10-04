@@ -36,6 +36,7 @@ function servicoCom(
     semWhatsapp: boolean;
     sessaoCaida: boolean;
     clienteVoltou: string[];
+    soPeloCelular: string[];
   }> = {},
 ) {
   const encerradas: string[] = [];
@@ -74,6 +75,15 @@ function servicoCom(
         }),
     },
     message: {
+      // Por padrão toda conversa foi atendida pelo Inteliwa (IA ou painel);
+      // `soPeloCelular` lista as que foram conduzidas só pelo celular.
+      groupBy: jest
+        .fn()
+        .mockResolvedValue(
+          conversas
+            .filter((c) => !config.soPeloCelular?.includes(c.id))
+            .map((c) => ({ conversationId: c.id })),
+        ),
       createMany: jest.fn().mockResolvedValue({ count: conversas.length }),
       create: jest
         .fn()
@@ -244,6 +254,25 @@ describe('encerramento por inatividade', () => {
       [{ data: { conversationId: string }[] }],
     ];
     expect(data.map((nota) => nota.conversationId)).toEqual(['sumiu']);
+  });
+
+  /**
+   * O relato: um contato pessoal, com quem o dono conversou só pelo
+   * celular, recebeu "vamos encerrar por aqui" de uma empresa.
+   */
+  it('conversa conduzida só pelo celular encerra sem despedida', async () => {
+    const { service, encerradas } = servicoCom(
+      [
+        { id: 'pessoal', lastMessageAt: horasAtras(3) },
+        { id: 'atendida', lastMessageAt: horasAtras(3) },
+      ],
+      { soPeloCelular: ['pessoal'] },
+    );
+
+    await service.varrer();
+
+    expect(encerradas).toEqual(['pessoal', 'atendida']);
+    expect(postar).toHaveBeenCalledTimes(1);
   });
 
   it('conversa fora da janela é encerrada EM SILÊNCIO', async () => {
