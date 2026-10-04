@@ -8,7 +8,7 @@ import { SquarePen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StartConversationDialog } from "@/components/customers/start-conversation-dialog";
 import { ChatPanel } from "@/components/inbox/chat-panel";
-import { ConversationList } from "@/components/inbox/conversation-list";
+import { ConversationList, type MensagemAchada } from "@/components/inbox/conversation-list";
 import { CustomerPanel } from "@/components/inbox/customer-panel";
 import {
   ABAS,
@@ -713,6 +713,56 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
     // `inicial` é a página que veio do servidor: não muda depois da
     // montagem, e só é lida na primeira passada (ver acima).
   }, [filters, filtersReady, loadConversations, loadCounts, chaveDaSessao, inicial]);
+
+  /*
+   * A busca também olha o TEXTO das mensagens (a da lista só olha nome e
+   * telefone). Os achados ficam guardados com o termo que os trouxe, e só
+   * aparecem enquanto o termo for o mesmo — trocar a busca não mostra,
+   * por um instante, o resultado da anterior.
+   */
+  const [achadas, setAchadas] = useState<{ termo: string; itens: MensagemAchada[] }>({
+    termo: "",
+    itens: [],
+  });
+  const termoDaBusca = filters.search.trim();
+  useEffect(() => {
+    if (termoDaBusca.length < 3) return;
+    let vivo = true;
+    const timer = setTimeout(() => {
+      apiFetch<{ itens: MensagemAchada[] }>(
+        `/conversations/busca-mensagens?q=${encodeURIComponent(termoDaBusca)}`,
+      )
+        .then(({ itens }) => {
+          if (vivo) setAchadas({ termo: termoDaBusca, itens });
+        })
+        .catch(() => {});
+    }, 300);
+    return () => {
+      vivo = false;
+      clearTimeout(timer);
+    };
+  }, [termoDaBusca]);
+  const mensagensAchadas =
+    termoDaBusca.length >= 3 && achadas.termo === termoDaBusca ? achadas.itens : [];
+
+  const [alvoDaBusca, setAlvoDaBusca] = useState<{
+    conversationId: string;
+    messageId: string;
+    termo: string;
+    vez: number;
+  } | null>(null);
+  const abrirMensagemAchada = useCallback(
+    (achada: MensagemAchada) => {
+      setAlvoDaBusca({
+        conversationId: achada.conversationId,
+        messageId: achada.messageId,
+        termo: termoDaBusca,
+        vez: Date.now(),
+      });
+      abrirConversa(achada.conversationId);
+    },
+    [abrirConversa, termoDaBusca],
+  );
 
   useEffect(() => {
     // Atendente não tem permissão de LER as configurações de atendimento, e
@@ -1818,6 +1868,9 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
           onVisiveis={preCarregarVisiveis}
           relogio={relogio}
           saindo={saindoDaLista}
+          mensagensAchadas={mensagensAchadas}
+          termoDaBusca={termoDaBusca}
+          onAbrirMensagem={abrirMensagemAchada}
         />
       </div>
       {/* O outro lado da mesma alternância: sem conversa escolhida, o
@@ -1856,6 +1909,7 @@ export function InboxClient({ inicial }: { inicial: DadosIniciaisDoInbox | null 
         onResolve={handleResolve}
         onReopen={() => handleAction("reopen", "Não deu pra reabrir essa conversa.")}
         onChangePriority={handlePriority}
+        alvoDaBusca={alvoDaBusca?.conversationId === selectedId ? alvoDaBusca : null}
       />
       </div>
       {telaLarga ? (

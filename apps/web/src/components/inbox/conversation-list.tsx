@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquareDashed, Timer, UserRound } from "lucide-react";
+import { MessageSquareDashed, Search, Timer, UserRound } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { AvatarDoCliente } from "@/components/avatar-do-cliente";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -290,6 +290,76 @@ function useMinuto() {
   return minuto;
 }
 
+export interface MensagemAchada {
+  messageId: string;
+  conversationId: string;
+  cliente: string;
+  grupo: boolean;
+  createdAt: string;
+  daEmpresa: boolean;
+  trecho: string;
+}
+
+function realce(texto: string, termo: string) {
+  if (!termo) return texto;
+  const partes = texto.split(new RegExp(`(${termo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"));
+  return partes.map((parte, i) =>
+    parte.toLowerCase() === termo.toLowerCase() ? (
+      <mark key={i} className="rounded-xs bg-amber-300/70 text-inherit dark:bg-amber-400/40">
+        {parte}
+      </mark>
+    ) : (
+      <span key={i}>{parte}</span>
+    ),
+  );
+}
+
+function quandoFoi(iso: string) {
+  const data = new Date(iso);
+  const hoje = new Date();
+  return data.toDateString() === hoje.toDateString()
+    ? data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+/** Os resultados da busca no texto das mensagens, abaixo das conversas. */
+function MensagensAchadas({
+  itens,
+  termo,
+  onAbrir,
+}: {
+  itens: MensagemAchada[];
+  termo: string;
+  onAbrir: (achada: MensagemAchada) => void;
+}) {
+  return (
+    <section className="flex flex-col border-t pt-2">
+      <h3 className="flex items-center gap-1.5 px-4 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        <Search className="size-3" /> Mensagens
+      </h3>
+      {itens.map((achada) => (
+        <button
+          key={achada.messageId}
+          type="button"
+          onClick={() => onAbrir(achada)}
+          className="flex flex-col gap-0.5 px-4 py-2 text-left transition-colors hover:bg-muted"
+        >
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-sm font-medium">{achada.cliente}</span>
+            <span suppressHydrationWarning className="shrink-0 text-[11px] text-muted-foreground">
+              {quandoFoi(achada.createdAt)}
+            </span>
+          </span>
+          <span className="line-clamp-2 text-[13px] text-muted-foreground">
+            {achada.daEmpresa ? "Você: " : ""}
+            {realce(achada.trecho, termo)}
+          </span>
+        </button>
+      ))}
+    </section>
+  );
+}
+
 export function ConversationList({
   conversations,
   selectedId,
@@ -303,8 +373,15 @@ export function ConversationList({
   onVisiveis,
   relogio,
   saindo,
+  mensagensAchadas,
+  termoDaBusca,
+  onAbrirMensagem,
 }: {
   conversations: ConversationSummary[];
+  /** O que a busca achou no TEXTO das mensagens (ver `busca-mensagens`). */
+  mensagensAchadas?: MensagemAchada[];
+  termoDaBusca?: string;
+  onAbrirMensagem?: (achada: MensagemAchada) => void;
   /**
    * A conversa que acabou de ser resolvida e está saindo daqui.
    *
@@ -418,6 +495,21 @@ export function ConversationList({
     );
   }
 
+  const secaoDeMensagens =
+    mensagensAchadas && mensagensAchadas.length > 0 ? (
+      <MensagensAchadas
+        itens={mensagensAchadas}
+        termo={termoDaBusca ?? ""}
+        onAbrir={(achada) => onAbrirMensagem?.(achada)}
+      />
+    ) : null;
+
+  if (conversations.length === 0 && secaoDeMensagens) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto py-1.5">{secaoDeMensagens}</div>
+    );
+  }
+
   if (conversations.length === 0) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -450,6 +542,10 @@ export function ConversationList({
         />
       ))}
       </div>
+
+      {/* As mensagens vêm depois de todas as conversas, como no WhatsApp:
+          quem procura um nome acha a pessoa primeiro. */}
+      {secaoDeMensagens && !hasMore ? secaoDeMensagens : null}
 
       {hasMore ? (
         <div ref={sentinelRef} className="flex justify-center py-3">

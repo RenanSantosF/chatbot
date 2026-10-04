@@ -169,6 +169,21 @@ export class ConversationsController {
     return this.conversationsService.listTemplates();
   }
 
+  /**
+   * Procura uma palavra no TEXTO das mensagens, em todas as conversas que
+   * a pessoa pode ver (a busca da lista só olha nome e telefone).
+   */
+  @Get('busca-mensagens')
+  buscarMensagens(
+    @Query('q') q: string | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.conversationsService.buscarMensagens(q ?? '', {
+      userId: user.userId,
+      role: user.role,
+    });
+  }
+
   @Post('start')
   @RequiresPermission('conversations.send')
   start(@Body() dto: StartConversationDto, @CurrentUser() user: RequestUser) {

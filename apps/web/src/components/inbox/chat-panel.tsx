@@ -231,6 +231,7 @@ export function ChatPanel({
   onEdit,
   onClose,
   podeEnviarEncerrada,
+  alvoDaBusca,
 }: {
   conversation: ConversationDetail | null;
   /** Há conversa escolhida, mas os dados ainda estão vindo. */
@@ -258,6 +259,12 @@ export function ChatPanel({
   onClose?: () => void;
   /** A empresa deixa responder em conversa encerrada (reabrindo)? */
   podeEnviarEncerrada: boolean;
+  /**
+   * Veio da busca no texto das mensagens: abrir já NA mensagem achada,
+   * com o termo realçado. `vez` muda a cada clique, pra o mesmo resultado
+   * clicado de novo voltar a levar até lá.
+   */
+  alvoDaBusca?: { messageId: string; termo: string; vez: number } | null;
 }) {
   const { user } = useSession();
   const { canal } = useRealtime();
@@ -274,6 +281,15 @@ export function ChatPanel({
   const [atalhoDispensado, setAtalhoDispensado] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [needle, setNeedle] = useState("");
+  // A busca da conversa abre com o termo que veio da busca de mensagens.
+  // Ajustado durante o render (e não num efeito): é o jeito do React de
+  // derivar estado de uma prop que mudou, sem um quadro intermediário.
+  const [vezDaBusca, setVezDaBusca] = useState<number | null>(null);
+  if (alvoDaBusca && alvoDaBusca.vez !== vezDaBusca) {
+    setVezDaBusca(alvoDaBusca.vez);
+    setSearchOpen(true);
+    setNeedle(alvoDaBusca.termo);
+  }
   const [matchIndex, setMatchIndex] = useState(0);
   /*
    * Encaminhar é escolher VÁRIAS, como no WhatsApp.
@@ -595,6 +611,14 @@ export function ChatPanel({
     requestAnimationFrame(() => setDestacada(messageId));
     destaqueRef.current = setTimeout(() => setDestacada(null), 1900);
   }, []);
+
+  // Da busca de mensagens: abre a busca da conversa com o termo e leva
+  // até o balão achado, assim que a conversa estiver na tela.
+  const conversaPronta = Boolean(conversation);
+  useEffect(() => {
+    if (!alvoDaBusca || !conversaPronta) return;
+    void irParaMensagem(alvoDaBusca.messageId);
+  }, [alvoDaBusca, conversaPronta, irParaMensagem]);
 
   /*
    * O histórico sobe sozinho quando a rolagem chega no topo.

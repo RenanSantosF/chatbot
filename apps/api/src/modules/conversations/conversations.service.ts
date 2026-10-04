@@ -227,6 +227,19 @@ const OPEN_STATUSES: ConversationStatus[] = [
  */
 const entregasEmAndamento = new Set<string>();
 
+/**
+ * O pedaço do texto em volta do termo achado — a linha da busca não cabe
+ * a mensagem inteira, e o começo dela quase nunca é onde está o termo.
+ */
+export function trechoEmVolta(texto: string, termo: string, raio = 40): string {
+  const limpo = texto.replace(/\s+/g, ' ').trim();
+  const onde = limpo.toLowerCase().indexOf(termo.toLowerCase());
+  if (onde < 0) return limpo.slice(0, raio * 2);
+  const inicio = Math.max(0, onde - raio);
+  const fim = Math.min(limpo.length, onde + termo.length + raio);
+  return `${inicio > 0 ? '…' : ''}${limpo.slice(inicio, fim)}${fim < limpo.length ? '…' : ''}`;
+}
+
 /** Quantas mensagens recentes conferir com o servidor ao abrir a conversa. */
 const MENSAGENS_A_CONFERIR = 60;
 /** Uma conferência por conversa por minuto — abrir e fechar não repete. */
@@ -1468,6 +1481,54 @@ export class ConversationsService {
       `Conversa ${id}: ${count} mensagem(ns) recuperada(s) do WhatsApp.`,
     );
     return { recuperadas: count, atualizadas };
+  }
+
+  /**
+   * Mensagens que contêm o termo, nas conversas que a pessoa pode ver.
+   *
+   * O recorte de visibilidade é o mesmo da lista: quem atende só o próprio
+   * setor não acha, pela busca, o que não conseguiria abrir. Volta um
+   * trecho em volta do termo, que é o que a lista mostra.
+   */
+  async buscarMensagens(termo: string, viewer?: ConversationViewer) {
+    const q = termo.trim();
+    if (q.length < 3) return { itens: [] };
+
+    const recorte = await this.recorteDeVisibilidade(viewer);
+    const achadas = await this.prisma.db.message.findMany({
+      where: {
+        deletedAt: null,
+        senderType: { in: ['CUSTOMER', 'AGENT', 'AI'] },
+        content: { contains: q, mode: 'insensitive' },
+        conversation: recorte,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        conversationId: true,
+        content: true,
+        createdAt: true,
+        senderType: true,
+        conversation: {
+          select: {
+            customer: { select: { name: true, phone: true, isGroup: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      itens: achadas.map((m) => ({
+        messageId: m.id,
+        conversationId: m.conversationId,
+        cliente: m.conversation.customer.name,
+        grupo: m.conversation.customer.isGroup,
+        createdAt: m.createdAt,
+        daEmpresa: m.senderType !== 'CUSTOMER',
+        trecho: trechoEmVolta(m.content, q),
+      })),
+    };
   }
 
   async marcarComoLida(id: string, viewer?: ConversationViewer) {
