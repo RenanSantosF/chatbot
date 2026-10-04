@@ -13,16 +13,17 @@ describe('buscar mensagens guardadas', () => {
     apiKey: 'chave',
     instance: 'inst',
   };
-  let fetchOriginal: typeof fetch;
   let pedido: { url: string; corpo: Record<string, unknown> } | null;
+  let espiao: jest.SpyInstance;
 
   beforeEach(() => {
-    fetchOriginal = global.fetch;
     pedido = null;
-    global.fetch = jest.fn((url: string, init: { body: string }) => {
+    espiao = jest.spyOn(global, 'fetch').mockImplementation((url, init) => {
       pedido = {
-        url,
-        corpo: JSON.parse(init.body) as Record<string, unknown>,
+        url: typeof url === 'string' ? url : '',
+        corpo: JSON.parse(
+          typeof init?.body === 'string' ? init.body : '{}',
+        ) as Record<string, unknown>,
       };
       return Promise.resolve(
         new Response(
@@ -35,12 +36,10 @@ describe('buscar mensagens guardadas', () => {
           { status: 200 },
         ),
       );
-    }) as unknown as typeof fetch;
+    });
   });
 
-  afterEach(() => {
-    global.fetch = fetchOriginal;
-  });
+  afterEach(() => espiao.mockRestore());
 
   it('procura o telefone em remoteJid OU remoteJidAlt', async () => {
     await buscarMensagens(credenciais, '5527996255918@s.whatsapp.net', 60);
