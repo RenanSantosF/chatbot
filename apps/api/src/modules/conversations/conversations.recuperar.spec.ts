@@ -122,6 +122,35 @@ describe('recuperar do WhatsApp o que faltou', () => {
     );
   });
 
+  it('conversa endereçada por @lid: a mensagem guardada com o telefone no campo alternativo também volta', async () => {
+    // É como a Evolution grava nesses contatos: `@lid` em remoteJid, o
+    // telefone em remoteJidAlt.
+    const { service, criadas, id } = montar({
+      guardadas: [
+        {
+          key: {
+            remoteJid: '196158919729321@lid',
+            remoteJidAlt: JID,
+            fromMe: true,
+            id: 'LID1',
+          },
+          message: { conversation: 'Ignora kkk' },
+          messageTimestamp: Math.floor(
+            new Date('2026-10-03T21:26:00Z').getTime() / 1000,
+          ),
+        },
+      ],
+    });
+
+    await service.recuperarDoWhatsapp(id);
+
+    expect(criadas).toHaveLength(1);
+    expect(criadas[0]).toMatchObject({
+      content: 'Ignora kkk',
+      externalId: `${JID}|1|LID1`,
+    });
+  });
+
   it('reconhece o que já está aqui pelo id da mensagem, mesmo com outra grafia', async () => {
     const { service, criadas, id } = montar({
       guardadas: [guardada('A', true, 'Oi', '2026-10-03T21:26:00Z')],

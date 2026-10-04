@@ -752,7 +752,20 @@ export async function buscarMensagens(
     `/chat/findMessages/${credenciais.instance}`,
     {
       method: 'POST',
-      body: { where: { key: { remoteJid } }, page: 1, offset: limite },
+      /*
+       * O telefone nos DOIS campos da chave.
+       *
+       * Nas conversas que o WhatsApp passou a endereçar por `@lid`, a
+       * Evolution GRAVA a mensagem com o `@lid` em `remoteJid` e o telefone
+       * em `remoteJidAlt` — e só troca um pelo outro depois, pra mandar o
+       * webhook. Buscando só por `remoteJid`, nada dessas conversas voltava.
+       * A busca dela junta os dois com OU (ver `fetchMessages` na 2.3.x).
+       */
+      body: {
+        where: { key: { remoteJid, remoteJidAlt: remoteJid } },
+        page: 1,
+        offset: limite,
+      },
       tempoLimiteMs: 15_000,
     },
   );
