@@ -591,7 +591,7 @@ export class CopilotLeituraService {
       : '7dias';
     const { de, ate, rotulo } = intervaloDoPeriodo(periodo, fuso);
 
-    const [mensagens, novas, pessoas] = await Promise.all([
+    const [mensagens, novas, pessoas, notas] = await Promise.all([
       this.prisma.db.message.findMany({
         where: {
           createdAt: { gte: de, lte: ate },
@@ -613,6 +613,10 @@ export class CopilotLeituraService {
         },
       }),
       this.prisma.db.user.findMany({ select: { id: true, name: true } }),
+      this.prisma.db.avaliacaoDeAtendimento.findMany({
+        where: { createdAt: { gte: de, lte: ate } },
+        select: { nota: true },
+      }),
     ]);
     const nomes = new Map(pessoas.map((p) => [p.id, p.name]));
 
@@ -735,6 +739,18 @@ export class CopilotLeituraService {
         : null,
       encerradasPorInatividade: resolvidas.size,
       aindaSemResposta: esperando.size,
+      // Só quando a empresa pede nota ao encerrar (Configurações ›
+      // Atendimento); sem nenhuma, fica nulo pra não parecer "nota zero".
+      avaliacao: notas.length
+        ? {
+            media:
+              Math.round(
+                (notas.reduce((soma, n) => soma + n.nota, 0) / notas.length) *
+                  10,
+              ) / 10,
+            respostas: notas.length,
+          }
+        : null,
     };
   }
 

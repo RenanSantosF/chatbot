@@ -24,6 +24,8 @@ export default function InboxSettingsPage() {
   const [despedida, setDespedida] = useState("");
   const [salvandoDespedida, setSalvandoDespedida] = useState(false);
   const [saudacao, setSaudacao] = useState("");
+  const [pergunta, setPergunta] = useState("");
+  const [salvandoPergunta, setSalvandoPergunta] = useState(false);
   const [salvandoSaudacao, setSalvandoSaudacao] = useState(false);
   // A IA vive noutra tela de configurações — sem isto, dava pra deixar os
   // dois interruptores "ligados" aqui e lá, mesmo sabendo (pela descrição
@@ -40,6 +42,7 @@ export default function InboxSettingsPage() {
         setMessage(result.resolveMessage);
         setDespedida(result.autoCloseMessage);
         setSaudacao(result.greetingMessage);
+        setPergunta(result.avaliacaoMensagem);
         setIaAtiva(ai?.active ?? false);
 
         // Estado que só existia porque a IA foi ligada DEPOIS de a
@@ -83,6 +86,13 @@ export default function InboxSettingsPage() {
     const updated = await patch({ greetingMessage: saudacao.trim() });
     if (updated) toast.success("Mensagem de boas-vindas salva.");
     setSalvandoSaudacao(false);
+  }
+
+  async function salvarPergunta() {
+    setSalvandoPergunta(true);
+    const updated = await patch({ avaliacaoMensagem: pergunta.trim() });
+    if (updated) toast.success("Pergunta da avaliação salva.");
+    setSalvandoPergunta(false);
   }
 
   async function handleSaveMessage() {
@@ -159,6 +169,24 @@ export default function InboxSettingsPage() {
                 onChange={setMessage}
                 salvando={savingMessage}
                 onSalvar={handleSaveMessage}
+              />
+            ) : null}
+          </Opcao>
+
+          <Opcao
+            titulo="Pedir avaliação ao encerrar"
+            descricao="O cliente recebe uma pergunta de nota de 1 a 5. A resposta não reabre a conversa e aparece na Visão geral e no resumo da semana."
+            ligada={settings.avaliacaoAtiva}
+            onChange={(ligada) => patch({ avaliacaoAtiva: ligada })}
+          >
+            {settings.avaliacaoAtiva ? (
+              <CampoDeMensagem
+                id="avaliacao-message"
+                valor={pergunta}
+                salvo={settings.avaliacaoMensagem}
+                onChange={setPergunta}
+                salvando={salvandoPergunta}
+                onSalvar={salvarPergunta}
               />
             ) : null}
           </Opcao>

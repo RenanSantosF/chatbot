@@ -408,6 +408,8 @@ export interface MetricsOverview {
     answered: number;
     unanswered: number;
   };
+  /** Notas que os clientes deram ao encerrar (se a empresa pede). */
+  avaliacoes?: { total: number; media: number | null; porNota: number[] };
 }
 
 export interface WhatsAppSettings {
@@ -500,6 +502,9 @@ export interface InboxSettings {
   autoCloseNotify: boolean;
   autoCloseMessage: string;
   showAgentName: boolean;
+  /** Pedir nota de 1 a 5 ao encerrar (desligado por padrão). */
+  avaliacaoAtiva: boolean;
+  avaliacaoMensagem: string;
   queueVisibility: "ALL" | "OWN_QUEUES";
   /**
    * O que fazer com o áudio do cliente quando quem responde é gente.

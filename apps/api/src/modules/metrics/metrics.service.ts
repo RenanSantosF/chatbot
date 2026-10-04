@@ -43,6 +43,20 @@ function inicioDoDia(
   return meiaNoite(fuso, Number.isNaN(data.getTime()) ? padrao : data);
 }
 
+/** Média e contagem por nota — o que a Visão geral e o resumo mostram. */
+export function resumoDasAvaliacoes(notas: number[]) {
+  const porNota = [1, 2, 3, 4, 5].map(
+    (nota) => notas.filter((n) => n === nota).length,
+  );
+  return {
+    total: notas.length,
+    media: notas.length
+      ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 10) / 10
+      : null,
+    porNota,
+  };
+}
+
 @Injectable()
 export class MetricsService {
   constructor(private readonly prisma: TenantPrismaService) {}
@@ -101,7 +115,7 @@ export class MetricsService {
    * resposta seguinte — fica legível em vez de virar SQL de janela.
    */
   async overview(range: MetricsRange, fuso = 'UTC') {
-    const [conversations, messages] = await Promise.all([
+    const [conversations, messages, avaliacoes] = await Promise.all([
       this.prisma.db.conversation.findMany({
         where: { createdAt: { gte: range.from, lte: range.to } },
         select: {
@@ -120,6 +134,10 @@ export class MetricsService {
         },
         orderBy: { createdAt: 'asc' },
       }),
+      this.prisma.db.avaliacaoDeAtendimento.findMany({
+        where: { createdAt: { gte: range.from, lte: range.to } },
+        select: { nota: true },
+      }),
     ]);
 
     return {
@@ -128,6 +146,7 @@ export class MetricsService {
       byDay: this.buildByDay(range, conversations, messages, fuso),
       byStatus: this.buildByStatus(conversations),
       responseTime: this.buildResponseTime(messages),
+      avaliacoes: resumoDasAvaliacoes(avaliacoes.map((a) => a.nota)),
     };
   }
 

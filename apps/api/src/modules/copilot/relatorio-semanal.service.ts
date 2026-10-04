@@ -175,6 +175,14 @@ export class RelatorioSemanalService implements OnModuleInit, OnModuleDestroy {
             },
           ]
         : []),
+      ...(numeros.avaliacao
+        ? [
+            {
+              rotulo: 'Nota dos clientes',
+              valor: `${numeros.avaliacao.media.toLocaleString('pt-BR')} de 5 (${numeros.avaliacao.respostas} ${numeros.avaliacao.respostas === 1 ? 'avaliação' : 'avaliações'})`,
+            },
+          ]
+        : []),
       ...(numeros.aindaSemResposta > 0
         ? [
             {

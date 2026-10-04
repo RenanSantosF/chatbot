@@ -10,6 +10,7 @@ import { MetricsService } from './metrics.service';
 function servicoCom(dados: {
   conversas?: Record<string, unknown>[];
   mensagens?: Record<string, unknown>[];
+  notas?: number[];
 }) {
   const prisma = {
     tenantId: 'tenant-teste',
@@ -18,6 +19,11 @@ function servicoCom(dados: {
         findMany: jest.fn().mockResolvedValue(dados.conversas ?? []),
       },
       message: { findMany: jest.fn().mockResolvedValue(dados.mensagens ?? []) },
+      avaliacaoDeAtendimento: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue((dados.notas ?? []).map((nota) => ({ nota }))),
+      },
       tenant: {
         findUnique: jest
           .fn()
@@ -146,6 +152,31 @@ describe('o dia no relógio da empresa', () => {
     const { from, to } = await service.periodo('ontem', 'xyz');
 
     expect(to.getTime()).toBeGreaterThan(from.getTime());
+  });
+});
+
+describe('avaliações do atendimento', () => {
+  it('média com uma casa e contagem por nota', async () => {
+    const service = servicoCom({ notas: [5, 5, 4, 3] });
+
+    const { avaliacoes } = await service.overview({
+      from: em('2026-08-01T00:00:00Z'),
+      to: em('2026-08-03T23:59:59Z'),
+    });
+
+    expect(avaliacoes).toEqual({
+      total: 4,
+      media: 4.3,
+      porNota: [0, 0, 1, 1, 2],
+    });
+  });
+
+  it('sem nenhuma nota, a média é nula (e não zero)', async () => {
+    const { avaliacoes } = await servicoCom({}).overview({
+      from: em('2026-08-01T00:00:00Z'),
+      to: em('2026-08-03T23:59:59Z'),
+    });
+    expect(avaliacoes.media).toBeNull();
   });
 });
 

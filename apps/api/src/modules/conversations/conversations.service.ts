@@ -240,6 +240,50 @@ export function trechoEmVolta(texto: string, termo: string, raio = 40): string {
   return `${inicio > 0 ? '…' : ''}${limpo.slice(inicio, fim)}${fim < limpo.length ? '…' : ''}`;
 }
 
+/** Quanto tempo depois de pedida uma resposta ainda conta como nota. */
+const JANELA_DA_AVALIACAO_MS = 24 * 60 * 60 * 1000;
+
+const NOTAS_POR_EXTENSO: Record<string, number> = {
+  um: 1,
+  uma: 1,
+  dois: 2,
+  duas: 2,
+  tres: 3,
+  quatro: 4,
+  cinco: 5,
+};
+
+/**
+ * A nota de 1 a 5 numa resposta curta do cliente — ou `null`.
+ *
+ * Aceita o jeito que as pessoas respondem: "5", "nota 4", "4/5", "5
+ * estrelas", "⭐⭐⭐⭐" e "cinco". Qualquer coisa além disso ("5 minutos e
+ * chego", "1 dúvida") não é nota: a mensagem segue o caminho normal e
+ * reabre a conversa, que é o certo pra quem voltou a falar.
+ */
+export function notaDaAvaliacao(texto: string): number | null {
+  const limpo = texto
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[.!]+$/, '')
+    .trim();
+  if (!limpo || limpo.length > 20) return null;
+
+  const estrelas = limpo.match(/[⭐★🌟]/gu)?.length ?? 0;
+  if (estrelas > 0 && /^[⭐★🌟\s]+$/u.test(limpo)) {
+    return estrelas <= 5 ? estrelas : null;
+  }
+
+  const m =
+    /^(?:nota\s*)?([1-5]|um|uma|dois|duas|tres|quatro|cinco)(?:\s*(?:\/\s*5|de\s*5|estrelas?|⭐+))?$/u.exec(
+      limpo,
+    );
+  if (!m) return null;
+  return /^\d$/.test(m[1]) ? Number(m[1]) : (NOTAS_POR_EXTENSO[m[1]] ?? null);
+}
+
 /** Quantas mensagens recentes conferir com o servidor ao abrir a conversa. */
 const MENSAGENS_A_CONFERIR = 60;
 /** Uma conferência por conversa por minuto — abrir e fechar não repete. */
@@ -1529,6 +1573,119 @@ export class ConversationsService {
         trecho: trechoEmVolta(m.content, q),
       })),
     };
+  }
+
+  /**
+   * Pede ao cliente a nota do atendimento, se a empresa ligou o recurso.
+   *
+   * Sai como mensagem automática: não muda de quem é a vez nem o estado
+   * da conversa (que acabou de ser encerrada). Só no WhatsApp e só com
+   * cliente — grupo não avalia atendimento.
+   */
+  private async pedirAvaliacao(conversationId: string) {
+    const settings = await this.inboxSettings.get();
+    const texto = settings.avaliacaoMensagem?.trim();
+    if (!settings.avaliacaoAtiva || !texto) return;
+
+    const conversa = await this.prisma.db.conversation.findFirst({
+      where: { id: conversationId },
+      select: { channel: true, customer: { select: { isGroup: true } } },
+    });
+    if (!conversa || conversa.channel !== 'WHATSAPP' || conversa.customer.isGroup) {
+      return;
+    }
+
+    await this.persistMessage(conversationId, {
+      senderType: 'AGENT',
+      content: texto,
+      automatica: true,
+    });
+    await this.prisma.db.conversation.update({
+      where: { id: conversationId },
+      data: { avaliacaoPedidaEm: new Date() },
+    });
+  }
+
+  /**
+   * A resposta do cliente à pergunta da nota.
+   *
+   * Se a mensagem é uma nota e há uma conversa encerrada esperando por
+   * ela, a nota é guardada, a mensagem entra nessa conversa SEM reabri-la
+   * (sem IA, sem fila) e o cliente recebe um obrigado. Devolve `null` em
+   * qualquer outro caso — e a mensagem segue o caminho normal.
+   */
+  private async registrarAvaliacao(
+    customerId: string,
+    input: {
+      content: string;
+      messageType?: MessageType;
+      grupo?: boolean;
+      externalId?: string;
+      createdAt?: Date;
+    },
+  ) {
+    if (input.grupo || (input.messageType && input.messageType !== 'TEXT')) {
+      return null;
+    }
+    const nota = notaDaAvaliacao(input.content);
+    if (nota === null) return null;
+
+    const conversa = await this.prisma.db.conversation.findFirst({
+      where: {
+        customerId,
+        status: { in: ['RESOLVED', 'CLOSED'] },
+        avaliacaoPedidaEm: { gt: new Date(Date.now() - JANELA_DA_AVALIACAO_MS) },
+      },
+      orderBy: { avaliacaoPedidaEm: 'desc' },
+      select: { id: true, assignedUserId: true },
+    });
+    if (!conversa) return null;
+
+    // Uma nota por pedido: zerar primeiro (com a condição) impede que duas
+    // respostas seguidas virem duas notas.
+    const { count } = await this.prisma.db.conversation.updateMany({
+      where: { id: conversa.id, avaliacaoPedidaEm: { not: null } },
+      data: { avaliacaoPedidaEm: null },
+    });
+    if (count === 0) return null;
+
+    await this.prisma.db.avaliacaoDeAtendimento.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId: conversa.id,
+        nota,
+        atendenteId: conversa.assignedUserId,
+      },
+    });
+
+    const recebida = await this.prisma.db.message.create({
+      data: {
+        tenantId: this.prisma.tenantId,
+        conversationId: conversa.id,
+        senderType: 'CUSTOMER',
+        messageType: 'TEXT',
+        content: input.content,
+        externalId: input.externalId,
+        status: 'SENT',
+        ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      },
+      include: messageInclude,
+    });
+    await this.emitirParaConversaId(conversa.id, 'message.created', {
+      conversationId: conversa.id,
+      message: recebida,
+    });
+
+    const { conversation } = await this.persistMessage(conversa.id, {
+      senderType: 'AGENT',
+      content:
+        nota >= 4
+          ? 'Muito obrigado pela avaliação! 😊'
+          : 'Obrigado pela avaliação. Vamos usar isso para melhorar.',
+      automatica: true,
+    });
+    this.logger.log(`Conversa ${conversa.id}: avaliação ${nota}.`);
+    return { conversation, message: recebida };
   }
 
   async marcarComoLida(id: string, viewer?: ConversationViewer) {
@@ -3777,6 +3934,7 @@ export class ConversationsService {
         content: settings.resolveMessage.trim(),
       });
     }
+    await this.pedirAvaliacao(conversationId);
 
     const conversation = await this.prisma.db.conversation.update({
       where: { id: conversationId },
@@ -3952,6 +4110,9 @@ export class ConversationsService {
       name: input.customerName,
       grupo: input.grupo,
     });
+
+    const avaliada = await this.registrarAvaliacao(customer.id, input);
+    if (avaliada) return avaliada;
 
     const { conversation: encontrada, conversaNova } = await naVezDoCliente(
       `${this.prisma.tenantId}:${customer.id}`,
@@ -4198,6 +4359,12 @@ export class ConversationsService {
           latestConversation.priority,
         );
         if (travada) latestConversation = travada;
+
+        // A IA se despediu e encerrou nesta mesma resposta: é a hora de
+        // pedir a nota, como no encerramento pelo botão.
+        if (latestConversation.status === 'RESOLVED') {
+          await this.pedirAvaliacao(conversation.id);
+        }
       } else if (resultado.tipo === 'indisponivel') {
         // A IA não pode responder — desligada no meio do atendimento, sem
         // chave, cota estourada, provedor fora. Antes isso virava silêncio:

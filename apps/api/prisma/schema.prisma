@@ -108,6 +108,7 @@ model Tenant {
   historicosGuardados HistoricoGuardado[]
   pushSubscriptions   PushSubscription[]
   pacotesCreditados   PacoteCreditado[]
+  avaliacoes          AvaliacaoDeAtendimento[]
 
   @@map("tenants")
 }
@@ -617,6 +618,10 @@ model InboxSettings {
   // empresa que quer que o cliente saiba com quem falou, e tem empresa que
   // prefere falar como uma voz só.
   showAgentName    Boolean         @default(false)
+  /// Pedir ao cliente uma nota de 1 a 5 ao encerrar o atendimento.
+  /// Desligado por padrão: é a empresa que decide se quer perguntar.
+  avaliacaoAtiva    Boolean @default(false)
+  avaliacaoMensagem String  @default("De 1 a 5, que nota você dá para o nosso atendimento? Responda só com o número.")
   // Quem enxerga o quê no Inbox. ALL: todo mundo vê tudo, que é o certo pra
   // equipe pequena. OWN_QUEUES: cada um vê só os setores de que participa —
   // o financeiro não abre conversa do jurídico. Dono e admin veem tudo nos
@@ -725,6 +730,10 @@ model Conversation {
   // atender não perder contexto, e dados que a IA já coletou do cliente.
   escalationReason  String?
   escalationSummary String?
+  /// Quando a nota do atendimento foi pedida ao cliente; volta a nulo
+  /// quando ele responde. É o que faz um "5" logo depois ser lido como
+  /// nota, e não como uma mensagem nova que reabre a conversa.
+  avaliacaoPedidaEm DateTime?
   collectedData     Json?
   // Não lidas da caixa compartilhada: sobe a cada mensagem do cliente e
   // zera quando alguém abre a conversa. É por conversa e não por usuário
@@ -761,6 +770,8 @@ model Conversation {
   tasks             Task[]
   tags              ConversationTag[]
   historicoGuardado HistoricoGuardado?
+
+  avaliacoes AvaliacaoDeAtendimento[]
 
   @@index([tenantId, status])
   // Ordenação padrão da lista do Inbox (mais recente primeiro) —
@@ -1552,4 +1563,21 @@ model PreviaDeLink {
   buscadaEm DateTime @default(now())
 
   @@map("previas_de_link")
+}
+
+/// A nota que o cliente deu ao atendimento (1 a 5), pedida ao encerrar.
+model AvaliacaoDeAtendimento {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conversationId String
+  nota           Int
+  /// Quem atendeu (o responsável quando encerrou); nulo = só a IA.
+  atendenteId    String?
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("avaliacoes_de_atendimento")
 }

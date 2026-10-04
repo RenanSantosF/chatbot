@@ -16,7 +16,18 @@ describe('busca no texto das mensagens', () => {
     ]);
     const service = new ConversationsService(
       { tenantId: 't1', db: { message: { findMany } } } as never,
-      ...(Array.from({ length: 12 }, () => ({})) as [never]),
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     );
     Object.assign(service as unknown as Record<string, unknown>, {
       recorteDeVisibilidade: jest.fn().mockResolvedValue({ queueId: 'q1' }),

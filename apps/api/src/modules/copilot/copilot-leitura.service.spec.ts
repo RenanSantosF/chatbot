@@ -79,6 +79,9 @@ function montar(dados: {
       queueMember: {
         findMany: jest.fn().mockResolvedValue([{ queueId: 'q1' }]),
       },
+      avaliacaoDeAtendimento: {
+        findMany: jest.fn().mockResolvedValue([{ nota: 5 }, { nota: 4 }]),
+      },
       evolutionSettings: {
         findFirst: jest.fn().mockResolvedValue({ estado: 'CONECTADO' }),
       },

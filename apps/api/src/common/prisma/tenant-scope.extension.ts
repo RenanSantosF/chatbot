@@ -44,6 +44,7 @@ const TENANT_SCOPED_MODELS = new Set([
   // rápidas mostravam as de todas as empresas juntas.
   'Tag',
   'ConversationTag',
+  'AvaliacaoDeAtendimento',
   'QuickReply',
   'HistoricoGuardado',
   // KnowledgeChunk não entra aqui: seu campo de embedding é Unsupported,

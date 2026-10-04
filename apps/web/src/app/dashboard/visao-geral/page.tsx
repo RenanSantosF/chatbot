@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Clock, MessagesSquare, Users } from "lucide-react";
+import { Bot, Clock, MessagesSquare, Star, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -154,6 +154,46 @@ export default function DashboardOverviewPage() {
           loading={loading}
         />
       </div>
+
+      {/* Só aparece pra quem pede nota ao encerrar (Configurações ›
+          Atendimento) e já recebeu alguma no período. */}
+      {metrics?.avaliacoes && metrics.avaliacoes.total > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Star className="size-4" /> Nota dos clientes
+            </CardTitle>
+            <CardDescription>
+              {metrics.avaliacoes.total}{" "}
+              {metrics.avaliacoes.total === 1 ? "avaliação" : "avaliações"} no período
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <p className="text-4xl font-semibold tabular-nums">
+              {metrics.avaliacoes.media?.toLocaleString("pt-BR")}
+              <span className="text-base font-normal text-muted-foreground"> de 5</span>
+            </p>
+            <div className="flex flex-1 flex-col gap-1">
+              {[5, 4, 3, 2, 1].map((nota) => {
+                const quantas = metrics.avaliacoes!.porNota[nota - 1] ?? 0;
+                const parte = quantas / metrics.avaliacoes!.total;
+                return (
+                  <div key={nota} className="flex items-center gap-2 text-xs">
+                    <span className="w-3 tabular-nums text-muted-foreground">{nota}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${Math.round(parte * 100)}%` }}
+                      />
+                    </div>
+                    <span className="w-6 text-right tabular-nums text-muted-foreground">{quantas}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

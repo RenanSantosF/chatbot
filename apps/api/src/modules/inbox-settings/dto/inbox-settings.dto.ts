@@ -156,6 +156,17 @@ export class UpdateInboxSettingsDto {
   @IsBoolean()
   showAgentName?: boolean;
 
+  /** Pedir uma nota de 1 a 5 ao encerrar (ver `pedirAvaliacao`). */
+  @IsOptional()
+  @IsBoolean()
+  avaliacaoAtiva?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  avaliacaoMensagem?: string;
+
   @IsOptional()
   @IsIn(['ALL', 'OWN_QUEUES'])
   queueVisibility?: 'ALL' | 'OWN_QUEUES';
