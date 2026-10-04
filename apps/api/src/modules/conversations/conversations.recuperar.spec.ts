@@ -119,10 +119,11 @@ describe('recuperar do WhatsApp o que faltou', () => {
       'Ignora kkk',
       'Você tá precisando do que?',
     ]);
+    // O cliente escreveu depois ("Kkk", 18:28): chegaram nele.
     expect(criadas[0]).toMatchObject({
       senderType: 'AGENT',
       conversationId: id,
-      status: 'SENT',
+      status: 'DELIVERED',
     });
     // Com a hora em que foi escrita, não a de agora.
     expect(criadas.find((m) => m.content === 'Ignora kkk')?.createdAt).toEqual(
@@ -176,6 +177,16 @@ describe('recuperar do WhatsApp o que faltou', () => {
     await service.recuperarDoWhatsapp(id);
 
     expect(criadas[0]).toMatchObject({ status: 'READ' });
+  });
+
+  it('sem status guardado e sem resposta do cliente depois: um tique', async () => {
+    const { service, criadas, id } = montar({
+      guardadas: [guardada('S1', true, 'Oi?', '2026-10-03T22:00:00Z')],
+    });
+
+    await service.recuperarDoWhatsapp(id);
+
+    expect(criadas[0]).toMatchObject({ status: 'SENT' });
   });
 
   it('a que já estava aqui com o tique atrasado é corrigida', async () => {

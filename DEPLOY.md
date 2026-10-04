@@ -368,6 +368,12 @@ perguntar nada à Evolution. Ou seja, o banco dela só precisa segurar a
 mensagem por segundos — dá para podá-lo periodicamente sem perder anexo
 nenhum.
 
+Recomendada também: `DATABASE_SAVE_MESSAGE_UPDATE` = **`true`**. Com ela a
+Evolution guarda entregue/lida de cada mensagem, e quando o painel recupera
+uma mensagem que tinha se perdido no caminho (ver "recuperar do WhatsApp"
+no código), ela volta com o tique certo. Sem ela, a recuperada aparece com
+dois tiques cinza se o cliente respondeu depois, ou um tique se não.
+
 As outras `DATABASE_SAVE_*` continuam em `false`: contatos, conversas e
 histórico são coisas que já vivem no nosso banco.
 

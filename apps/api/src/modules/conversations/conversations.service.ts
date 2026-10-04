@@ -1348,6 +1348,35 @@ export class ConversationsService {
     if (candidatas.length === 0) return { recuperadas: 0, atualizadas: 0 };
 
     /*
+     * O tique quando o servidor não guardou o status.
+     *
+     * A Evolution só guarda entregue/lida com DATABASE_SAVE_MESSAGE_UPDATE
+     * ligada. Sem isso, um piso honesto: se o cliente escreveu DEPOIS da
+     * mensagem, ela chegou nele — dois tiques. "Lida" não dá pra afirmar:
+     * quem desliga a confirmação de leitura responde sem marcar azul.
+     */
+    const ultimaDoClienteNoPainel = await this.prisma.db.message.findFirst({
+      where: { conversationId: id, senderType: 'CUSTOMER' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const ultimaDoCliente = Math.max(
+      ultimaDoClienteNoPainel?.createdAt.getTime() ?? 0,
+      ...candidatas
+        .filter((m) => !m.mensagem.daEmpresa)
+        .map((m) => m.mensagem.createdAt.getTime()),
+    );
+    for (const m of candidatas) {
+      if (
+        !m.status &&
+        m.mensagem.daEmpresa &&
+        ultimaDoCliente > m.mensagem.createdAt.getTime()
+      ) {
+        m.status = 'DELIVERED';
+      }
+    }
+
+    /*
      * "Já temos" é conferido pelo id da MENSAGEM, além do id externo
      * inteiro: a parte da conversa no id externo muda de forma conforme o
      * evento (sufixo de aparelho, `@lid`), e só a comparação exata deixaria
