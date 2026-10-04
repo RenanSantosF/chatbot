@@ -19,8 +19,11 @@ describe('buscar mensagens guardadas', () => {
   beforeEach(() => {
     fetchOriginal = global.fetch;
     pedido = null;
-    global.fetch = jest.fn((url: string, init: RequestInit) => {
-      pedido = { url, corpo: JSON.parse(String(init.body)) };
+    global.fetch = jest.fn((url: string, init: { body: string }) => {
+      pedido = {
+        url,
+        corpo: JSON.parse(init.body) as Record<string, unknown>,
+      };
       return Promise.resolve(
         new Response(
           JSON.stringify({
