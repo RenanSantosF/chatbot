@@ -38,15 +38,13 @@ describe('saúde das conexões', () => {
         ]),
       },
       message: {
-        groupBy: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              tenantId: 'ok',
-              _max: { createdAt: horasAtras(0.5) },
-              _count: { _all: 40 },
-            },
-          ]),
+        groupBy: jest.fn().mockResolvedValue([
+          {
+            tenantId: 'ok',
+            _max: { createdAt: horasAtras(0.5) },
+            _count: { _all: 40 },
+          },
+        ]),
       },
       eventoDaPlataforma: {
         findMany: jest.fn().mockResolvedValue([
