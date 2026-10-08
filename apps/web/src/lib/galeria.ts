@@ -6,7 +6,7 @@
  * cliente, que é outro componente, em outra coluna. Um evento do
  * navegador liga os dois sem passar estado por quem não tem nada com isso.
  */
-const EVENTO = "inteliwa:abrir-galeria";
+const EVENTO = "bellis:abrir-galeria";
 
 export function abrirGaleria() {
   window.dispatchEvent(new Event(EVENTO));

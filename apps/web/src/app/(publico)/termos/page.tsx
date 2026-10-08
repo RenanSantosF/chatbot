@@ -7,16 +7,16 @@ import {
 } from "@/components/publico/documento-legal";
 
 export const metadata: Metadata = {
-  // Sem "— Inteliwa" no fim: o layout raiz já acrescenta a marca pelo
-  // template de título, e repetir aqui produziria "Termos de uso — Inteliwa ·
-  // Inteliwa" na aba e no resultado de busca.
+  // Sem "— Bellis" no fim: o layout raiz já acrescenta a marca pelo
+  // template de título, e repetir aqui produziria "Termos de uso — Bellis ·
+  // Bellis" na aba e no resultado de busca.
   title: "Termos de uso",
   alternates: { canonical: "/termos" },
   // Card próprio: sem isto o link destes documentos compartilhado
   // num grupo aparecia com a chamada de venda da home.
-  openGraph: { type: "article", locale: "pt_BR", url: "/termos", title: "Termos de uso — Inteliwa" },
+  openGraph: { type: "article", locale: "pt_BR", url: "/termos", title: "Termos de uso — Bellis" },
   description:
-    "Condições de uso da Inteliwa: o que está incluído na assinatura, o papel da inteligência artificial e as responsabilidades de cada parte.",
+    "Condições de uso da Bellis: o que está incluído na assinatura, o papel da inteligência artificial e as responsabilidades de cada parte.",
 };
 
 export default function TermosPage() {
@@ -24,17 +24,17 @@ export default function TermosPage() {
     <DocumentoLegal
       titulo="Termos de uso"
       atualizadoEm="14 de agosto de 2026"
-      resumo="Inteliwa é um painel de atendimento que conecta o WhatsApp da sua empresa a uma inteligência artificial. Este documento diz o que fazemos, o que não fazemos, e o que cabe a cada parte."
+      resumo="Bellis é um painel de atendimento que conecta o WhatsApp da sua empresa a uma inteligência artificial. Este documento diz o que fazemos, o que não fazemos, e o que cabe a cada parte."
     >
-      <Secao titulo="O que a Inteliwa é">
+      <Secao titulo="O que a Bellis é">
         <p>
-          A Inteliwa recebe as mensagens que chegam no WhatsApp da sua empresa, deixa uma
+          A Bellis recebe as mensagens que chegam no WhatsApp da sua empresa, deixa uma
           inteligência artificial responder o que ela conseguir, e passa para uma pessoa da
           sua equipe quando o assunto exigir. Tudo isso acontece num painel único, com
           histórico, filas de atendimento e relatórios.
         </p>
         <p>
-          A Inteliwa é uma <strong>ferramenta</strong>. As respostas enviadas ao seu cliente
+          A Bellis é uma <strong>ferramenta</strong>. As respostas enviadas ao seu cliente
           saem do número da sua empresa e são de responsabilidade dela — inclusive as que a
           IA escrever. Continue lendo: a seção sobre a IA explica por que isso importa.
         </p>
@@ -42,7 +42,7 @@ export default function TermosPage() {
 
       <Secao titulo="O que está incluído na assinatura">
         <p>
-          A inteligência artificial já vem inclusa na sua assinatura da Inteliwa — não existe
+          A inteligência artificial já vem inclusa na sua assinatura da Bellis — não existe
           chave de provedor pra cadastrar nem conta separada pra abrir. Cada plano inclui uma
           quantidade de respostas automáticas por mês; mensagens que a IA não responder (fora
           desse limite, ou fora do horário em que ela está ligada) continuam chegando
@@ -73,7 +73,7 @@ export default function TermosPage() {
               pessoa.
             </>,
             <>
-              A Inteliwa não se responsabiliza por compromisso assumido pela IA em nome da sua
+              A Bellis não se responsabiliza por compromisso assumido pela IA em nome da sua
               empresa. Quem responde pelo número é quem é dono dele.
             </>,
           ]}
@@ -90,7 +90,7 @@ export default function TermosPage() {
             <>
               Não enviar mensagem não solicitada. Denúncia de spam derruba a qualidade do seu
               número e pode levar ao bloqueio dele pelo WhatsApp — e esse bloqueio é da conta, não da
-              Inteliwa.
+              Bellis.
             </>,
             <>
               Manter suas credenciais em segurança, e as de cada pessoa da sua equipe. Cada
@@ -108,7 +108,7 @@ export default function TermosPage() {
         <p>
           Trabalhamos para manter o serviço no ar, mas ele depende de terceiros — o próprio
           WhatsApp, o provedor de IA, a infraestrutura de nuvem. Uma instabilidade em qualquer um
-          deles afeta a Inteliwa, e não temos controle sobre isso. Não há garantia contratual de
+          deles afeta a Bellis, e não temos controle sobre isso. Não há garantia contratual de
           disponibilidade ininterrupta.
         </p>
         <p>

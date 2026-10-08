@@ -5,7 +5,7 @@ import { AiUsageService, extrasQueSobraram } from './ai-usage.service';
  *
  * Existe porque a chave passou a ser da plataforma (ver
  * AiCredentialsResolver): quem paga o Google por cada resposta agora é a
- * Inteliwa, não mais a empresa. Sem teto, um bug de loop do lado do
+ * Bellis, não mais a empresa. Sem teto, um bug de loop do lado do
  * cliente vira custo nosso sem fim.
  */
 function montar(conta: Record<string, unknown> | null) {

@@ -287,7 +287,7 @@ export class VigiaDoWhatsappService implements OnModuleInit, OnModuleDestroy {
           tom: 'alerta',
           saudacao: `Olá, ${nome}!`,
           paragrafos: [
-            `O WhatsApp de ${tenant?.name ?? 'sua empresa'} está desconectado da Inteliwa há mais de 5 minutos (${motivo}).`,
+            `O WhatsApp de ${tenant?.name ?? 'sua empresa'} está desconectado da Bellis há mais de 5 minutos (${motivo}).`,
             'Enquanto ele estiver assim, as mensagens dos clientes não chegam ao painel e a IA não responde ninguém.',
             desvinculado
               ? 'Para voltar, abra a tela de conexão e leia o QR code com o celular do número da empresa.'

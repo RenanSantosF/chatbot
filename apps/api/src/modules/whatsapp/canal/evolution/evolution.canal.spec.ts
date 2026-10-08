@@ -8,7 +8,9 @@ function servidor() {
   const chamadas: { url: string; corpo: unknown }[] = [];
   let resposta: { status: number; corpo: unknown } = {
     status: 200,
-    corpo: { key: { remoteJid: '5511999@s.whatsapp.net', fromMe: true, id: 'EVO1' } },
+    corpo: {
+      key: { remoteJid: '5511999@s.whatsapp.net', fromMe: true, id: 'EVO1' },
+    },
   };
 
   global.fetch = jest.fn(async (url: unknown, init: unknown) => {
@@ -41,7 +43,7 @@ function montar(config: Record<string, unknown> | null) {
           config && {
             baseUrl: 'https://evo.exemplo.com',
             apiKeyEncrypted: 'cifrado',
-            instance: 'inteliwa-1',
+            instance: 'bellis-1',
             estado: 'CONECTADO',
             ...config,
           },
@@ -76,7 +78,7 @@ describe('envio de texto', () => {
     const id = await canal.enviarTexto('+55 (11) 99999', 'bom dia');
 
     expect(id).toBe('5511999@s.whatsapp.net|1|EVO1');
-    expect(rede.chamadas[0].url).toContain('/message/sendText/inteliwa-1');
+    expect(rede.chamadas[0].url).toContain('/message/sendText/bellis-1');
     expect(rede.chamadas[0].corpo).toMatchObject({
       number: '551199999',
       text: 'bom dia',
@@ -142,7 +144,11 @@ describe('envio de texto', () => {
     await canal.enviarTexto(
       '5511999',
       'sobre isso',
-      empacotarId({ remoteJid: '5511999@s.whatsapp.net', fromMe: false, id: 'ANTES' }),
+      empacotarId({
+        remoteJid: '5511999@s.whatsapp.net',
+        fromMe: false,
+        id: 'ANTES',
+      }),
     );
 
     expect(rede.chamadas[0].corpo).toMatchObject({
@@ -165,7 +171,11 @@ describe('reação e leitura', () => {
 
     await canal.enviarReacao(
       '5511999',
-      empacotarId({ remoteJid: '5511999@s.whatsapp.net', fromMe: false, id: 'ALVO' }),
+      empacotarId({
+        remoteJid: '5511999@s.whatsapp.net',
+        fromMe: false,
+        id: 'ALVO',
+      }),
       '👍',
     );
 
@@ -233,7 +243,11 @@ describe('anexo', () => {
     // de volta ao WhatsApp depois.
     const rede = servidor();
     rede.responder(200, {
-      key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: true, id: 'MIDIA1' },
+      key: {
+        remoteJid: '5511999998888@s.whatsapp.net',
+        fromMe: true,
+        id: 'MIDIA1',
+      },
     });
     const canal = montar({});
 

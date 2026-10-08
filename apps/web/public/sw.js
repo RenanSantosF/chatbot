@@ -1,5 +1,5 @@
 /*
- * O service worker do Inteliwa.
+ * O service worker da Bellis.
  *
  * ELE NÃO GUARDA NADA EM CACHE, e isso é uma decisão, não um esquecimento.
  *
@@ -51,7 +51,7 @@ self.addEventListener("push", (evento) => {
   // Avisos que não são de conversa (o WhatsApp que caiu) trazem o próprio
   // endereço e a própria tag.
   const url = aviso.url || "";
-  const tag = aviso.tag || conversationId || "inteliwa";
+  const tag = aviso.tag || conversationId || "bellis";
 
   evento.waitUntil(
     (async () => {

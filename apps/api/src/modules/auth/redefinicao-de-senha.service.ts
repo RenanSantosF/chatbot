@@ -99,11 +99,11 @@ export class RedefinicaoDeSenhaService {
     const nome = user.name.split(' ')[0] || user.name;
     const enviado = await this.email.enviar({
       para: user.email,
-      assunto: 'Redefinir sua senha da Inteliwa',
+      assunto: 'Redefinir sua senha da Bellis',
       texto: [
         `Olá, ${nome}!`,
         '',
-        'Recebemos um pedido pra redefinir a senha da sua conta na Inteliwa.',
+        'Recebemos um pedido pra redefinir a senha da sua conta na Bellis.',
         `Pra criar uma senha nova, abra este link (vale por 30 minutos):`,
         link,
         '',
@@ -112,7 +112,7 @@ export class RedefinicaoDeSenhaService {
       html: `<!doctype html>
 <html lang="pt-BR"><body style="margin:0;background:#f6f7f6;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1f1c">
   <div style="max-width:480px;margin:0 auto;padding:32px 20px">
-    <p style="font-size:18px;font-weight:600;margin:0 0 24px">Inteliwa</p>
+    <p style="font-size:18px;font-weight:600;margin:0 0 24px">Bellis</p>
     <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid #e4e7e5">
       <p style="margin:0 0 12px;font-size:16px">Olá, ${escapar(nome)}!</p>
       <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#4a524d">Recebemos um pedido pra redefinir a senha da sua conta. Clique no botão pra criar uma senha nova — o link vale por 30 minutos.</p>

@@ -27,7 +27,7 @@ function montar() {
   const config = {
     id: 'config-1',
     tenantId: 'tenant-1',
-    instance: 'inteliwa-1',
+    instance: 'bellis-1',
     webhookSecret: SEGREDO,
     // Nulo = nunca pareou. Os testes que precisam de "já pareado"
     // sobrescrevem isto pelo findFirst.
@@ -47,7 +47,11 @@ function montar() {
         findFirst: jest.fn().mockResolvedValue(config),
         update: jest
           .fn()
-          .mockResolvedValue({ ...config, historicoEstado: 'IMPORTANDO', historicoMensagens: 2 }),
+          .mockResolvedValue({
+            ...config,
+            historicoEstado: 'IMPORTANDO',
+            historicoMensagens: 2,
+          }),
       },
     },
   };
@@ -75,13 +79,22 @@ function montar() {
   );
 
   const req = {} as AuthenticatedRequest;
-  return { controller, conversations, prisma, req, realtime, media, customers, evolution };
+  return {
+    controller,
+    conversations,
+    prisma,
+    req,
+    realtime,
+    media,
+    customers,
+    evolution,
+  };
 }
 
 function mensagem(extra: Record<string, unknown> = {}) {
   return {
     event: 'messages.upsert',
-    instance: 'inteliwa-1',
+    instance: 'bellis-1',
     data: {
       key: {
         remoteJid: '5511999999999@s.whatsapp.net',
@@ -163,9 +176,9 @@ describe('porta de entrada', () => {
     // batida de robô vira uma consulta na tabela.
     const { controller, prisma, req } = montar();
 
-    await expect(
-      controller.receber('curto', req, mensagem()),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(controller.receber('curto', req, mensagem())).rejects.toThrow(
+      ForbiddenException,
+    );
     expect(prisma.client.evolutionSettings.findFirst).not.toHaveBeenCalled();
   });
 
@@ -212,11 +225,11 @@ describe('porta de entrada', () => {
     prisma.client.evolutionSettings.findFirst.mockImplementation(
       ({ where }: { where: { instance?: string; webhookSecret?: string } }) =>
         Promise.resolve(
-          where.instance === 'inteliwa-2'
+          where.instance === 'bellis-2'
             ? {
                 id: 'config-2',
                 tenantId: 'tenant-2',
-                instance: 'inteliwa-2',
+                instance: 'bellis-2',
                 webhookSecret: SEGREDO,
                 lastSeenAt: null,
                 estado: 'CONECTADO',
@@ -226,7 +239,7 @@ describe('porta de entrada', () => {
               : {
                   id: 'config-1',
                   tenantId: 'tenant-1',
-                  instance: 'inteliwa-1',
+                  instance: 'bellis-1',
                   webhookSecret: SEGREDO,
                   lastSeenAt: null,
                   estado: 'CONECTADO',
@@ -236,7 +249,7 @@ describe('porta de entrada', () => {
 
     await controller.receber(SEGREDO, req, {
       ...mensagem(),
-      instance: 'inteliwa-2',
+      instance: 'bellis-2',
     });
 
     expect(req.user).toMatchObject({ tenantId: 'tenant-2' });
@@ -251,14 +264,14 @@ describe('porta de entrada', () => {
     prisma.client.evolutionSettings.findFirst.mockResolvedValue({
       id: 'config-2',
       tenantId: 'tenant-2',
-      instance: 'inteliwa-2',
+      instance: 'bellis-2',
       webhookSecret: 'c'.repeat(48),
       lastSeenAt: null,
       estado: 'CONECTADO',
     });
 
     await expect(
-      controller.receber(SEGREDO, req, { ...mensagem(), instance: 'inteliwa-2' }),
+      controller.receber(SEGREDO, req, { ...mensagem(), instance: 'bellis-2' }),
     ).rejects.toThrow(ForbiddenException);
   });
 });
@@ -347,7 +360,9 @@ describe('mensagem que chega', () => {
     await controller.receber(
       SEGREDO,
       req,
-      mensagem({ key: { remoteJid: 'status@broadcast', fromMe: false, id: 'X' } }),
+      mensagem({
+        key: { remoteJid: 'status@broadcast', fromMe: false, id: 'X' },
+      }),
     );
 
     expect(conversations.receiveInbound).not.toHaveBeenCalled();
@@ -368,7 +383,9 @@ describe('mensagem que chega', () => {
     await controller.receber(
       SEGREDO,
       req,
-      mensagem({ key: { remoteJid: '120363000@g.us', fromMe: false, id: 'X' } }),
+      mensagem({
+        key: { remoteJid: '120363000@g.us', fromMe: false, id: 'X' },
+      }),
     );
 
     expect(conversations.receiveInbound).toHaveBeenCalledWith(
@@ -392,7 +409,9 @@ describe('mensagem que chega', () => {
     await controller.receber(
       SEGREDO,
       req,
-      mensagem({ key: { remoteJid: '120363000@g.us', fromMe: false, id: 'X' } }),
+      mensagem({
+        key: { remoteJid: '120363000@g.us', fromMe: false, id: 'X' },
+      }),
     );
 
     expect(conversations.receiveInbound).toHaveBeenCalledWith(
@@ -405,8 +424,18 @@ describe('mensagem que chega', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messages.upsert',
-      instance: 'inteliwa-1',
-      data: [mensagem().data, { ...mensagem().data, key: { remoteJid: '5511888888888@s.whatsapp.net', fromMe: false, id: '3EB0DEF' } }],
+      instance: 'bellis-1',
+      data: [
+        mensagem().data,
+        {
+          ...mensagem().data,
+          key: {
+            remoteJid: '5511888888888@s.whatsapp.net',
+            fromMe: false,
+            id: '3EB0DEF',
+          },
+        },
+      ],
     });
 
     expect(conversations.receiveInbound).toHaveBeenCalledTimes(2);
@@ -487,7 +516,11 @@ describe('reação', () => {
       mensagem({
         message: {
           reactionMessage: {
-            key: { remoteJid: '5511999999999@s.whatsapp.net', fromMe: true, id: 'A' },
+            key: {
+              remoteJid: '5511999999999@s.whatsapp.net',
+              fromMe: true,
+              id: 'A',
+            },
             text: '',
           },
         },
@@ -510,7 +543,7 @@ describe('apagar para todos', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messages.delete',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: {
         remoteJid: '5511999999999@s.whatsapp.net',
         fromMe: true,
@@ -533,7 +566,7 @@ describe('status de entrega', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messages.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: {
         keyId: 'EVO1',
         remoteJid: '5511999999999@s.whatsapp.net',
@@ -553,7 +586,7 @@ describe('status de entrega', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messages.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: {
         keyId: 'EVO1',
         remoteJid: '5511999999999@s.whatsapp.net',
@@ -576,7 +609,7 @@ describe('histórico do aparelho', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messages.set',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       isLatest: true,
       data: [
         {
@@ -604,7 +637,7 @@ describe('estado da conexão', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'connection.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { state: 'open' },
     });
 
@@ -624,7 +657,7 @@ describe('estado da conexão', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'connection.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { state: 'close', statusReason: 515 },
     });
 
@@ -639,7 +672,7 @@ describe('estado da conexão', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'connection.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { state: 'close', statusReason: 401 },
     });
 
@@ -658,7 +691,7 @@ describe('estado da conexão', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'qrcode.updated',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { qrcode: { base64: 'data:image/png;base64,AAA' } },
     });
 
@@ -753,7 +786,7 @@ describe('a tela fica sabendo na hora', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'connection.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { state: 'close', statusReason: 401 },
     });
 
@@ -771,7 +804,7 @@ describe('a tela fica sabendo na hora', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'connection.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { state: 'close', statusReason: 401 },
     });
 
@@ -786,7 +819,7 @@ describe('a tela fica sabendo na hora', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'connection.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { state: 'open' },
     });
 
@@ -805,7 +838,7 @@ describe('a tela fica sabendo na hora', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'qrcode.updated',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { qrcode: { base64: 'data:image/png;base64,AAA' } },
     });
 
@@ -834,7 +867,9 @@ describe('o anexo é guardado enquanto ele existe', () => {
       SEGREDO,
       req,
       mensagem({
-        message: { imageMessage: { mimetype: 'image/jpeg', fileName: 'foto.jpg' } },
+        message: {
+          imageMessage: { mimetype: 'image/jpeg', fileName: 'foto.jpg' },
+        },
       }),
     );
 
@@ -867,7 +902,7 @@ function loteDeHistorico(
 ) {
   return {
     event: 'messaging-history.set',
-    instance: 'inteliwa-1',
+    instance: 'bellis-1',
     data: { messages: mensagens, ...extra },
   };
 }
@@ -960,9 +995,9 @@ describe('as conversas que já estavam no aparelho', () => {
     );
 
     expect(conversations.importarHistorico).toHaveBeenCalledTimes(1);
-    expect(
-      conversations.importarHistorico.mock.calls[0][0].customerPhone,
-    ).toBe('5511999999999');
+    expect(conversations.importarHistorico.mock.calls[0][0].customerPhone).toBe(
+      '5511999999999',
+    );
   });
 
   it('mensagem sem data fica de fora', async () => {
@@ -1067,7 +1102,7 @@ describe('as conversas que já estavam no aparelho', () => {
     prisma.client.evolutionSettings.findFirst.mockResolvedValue({
       id: 'config-1',
       tenantId: 'tenant-1',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       webhookSecret: SEGREDO,
       historicoEstado: 'CONCLUIDO',
     });
@@ -1105,7 +1140,7 @@ describe('as conversas que já estavam no aparelho', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'connection.update',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: { state: 'open' },
     });
 
@@ -1132,7 +1167,7 @@ describe('as conversas que já estavam no aparelho', () => {
 describe('reconexão não derruba sessão de pé', () => {
   const conexao = (state: string) => ({
     event: 'connection.update',
-    instance: 'inteliwa-1',
+    instance: 'bellis-1',
     data: { state },
   });
 
@@ -1141,7 +1176,7 @@ describe('reconexão não derruba sessão de pé', () => {
     prisma.client.evolutionSettings.findFirst.mockResolvedValue({
       id: 'config-1',
       tenantId: 'tenant-1',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       webhookSecret: SEGREDO,
       lastSeenAt: new Date('2026-08-17T04:00:00Z'),
     });
@@ -1173,7 +1208,7 @@ describe('reconexão não derruba sessão de pé', () => {
     prisma.client.evolutionSettings.findFirst.mockResolvedValue({
       id: 'config-1',
       tenantId: 'tenant-1',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       webhookSecret: SEGREDO,
       lastSeenAt: null,
       estado: 'AGUARDANDO_QRCODE',
@@ -1204,7 +1239,7 @@ describe('reconexão não derruba sessão de pé', () => {
     prisma.client.evolutionSettings.findFirst.mockResolvedValue({
       id: 'config-1',
       tenantId: 'tenant-1',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       webhookSecret: SEGREDO,
       lastSeenAt: new Date('2026-08-17T04:00:00Z'),
       estado: 'CONECTADO',
@@ -1212,7 +1247,8 @@ describe('reconexão não derruba sessão de pé', () => {
 
     await controller.receber(SEGREDO, req, conexao('open'));
 
-    const escrito = prisma.client.evolutionSettings.update.mock.calls[0][0].data;
+    const escrito =
+      prisma.client.evolutionSettings.update.mock.calls[0][0].data;
     expect(escrito).toMatchObject({ estado: 'CONECTADO' });
     expect(escrito).not.toHaveProperty('historicoEstado');
     expect(escrito).not.toHaveProperty('historicoMensagens');
@@ -1226,7 +1262,7 @@ describe('reconexão não derruba sessão de pé', () => {
     prisma.client.evolutionSettings.findFirst.mockResolvedValue({
       id: 'config-1',
       tenantId: 'tenant-1',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       webhookSecret: SEGREDO,
       lastSeenAt: new Date('2026-08-17T04:00:00Z'),
     });
@@ -1250,7 +1286,7 @@ describe('estado torto se conserta sozinho', () => {
     prisma.client.evolutionSettings.findFirst.mockResolvedValue({
       id: 'config-1',
       tenantId: 'tenant-1',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       webhookSecret: SEGREDO,
       lastSeenAt: new Date(),
       estado: 'AGUARDANDO_QRCODE',
@@ -1310,7 +1346,7 @@ describe('nome do cliente', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messaging-history.set',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: {
         messages: [
           // A primeira do lote é da empresa — e é aqui que vinha "Você".
@@ -1350,7 +1386,7 @@ describe('a agenda chega ao painel', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'contacts.upsert',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: [
         { remoteJid: '5511999999999@s.whatsapp.net', pushName: 'Richard' },
       ] as never,
@@ -1368,7 +1404,7 @@ describe('a agenda chega ao painel', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messaging-history.set',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: {
         messages: [],
         contacts: [{ id: '5511999999999@s.whatsapp.net', name: 'Richard' }],
@@ -1385,7 +1421,7 @@ describe('a agenda chega ao painel', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'contacts.upsert',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: [] as never,
     });
 
@@ -1509,7 +1545,7 @@ describe('o que muda no celular aparece no painel', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'messages.edited',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       data: {
         key: {
           remoteJid: '5511999999999@s.whatsapp.net',
@@ -1531,7 +1567,7 @@ describe('o que muda no celular aparece no painel', () => {
 
     await controller.receber(SEGREDO, req, {
       event: 'chats.delete',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       // O evento traz só a lista de endereços, não mensagens.
       data: ['5511999999999@s.whatsapp.net', '120363000@g.us'] as never,
     });

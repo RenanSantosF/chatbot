@@ -1,9 +1,9 @@
 # Portfólio
 
 `portfolio-sistemas.pdf` — as duas folhas: Devolução Inteligente (veio pronta,
-não foi tocada) e Inteliwa.
+não foi tocada) e Bellis.
 
-## Como refazer a folha do Inteliwa
+## Como refazer a folha da Bellis
 
 `pagina.html` é a fonte. As posições dela saíram da extração do PDF original
 (pypdf, `extract_text` com visitor pra pegar coordenada e tamanho de cada
@@ -22,7 +22,7 @@ do copiloto, que cobria o canto. O resto é a tela como ela é.
 # 2. capturar o print e montar o PDF
 node /tmp/preview-tools/hero.mjs "$TOKEN"     # -> hero.png
 python3 -c "import base64; ..."               # embute a imagem no HTML
-node /tmp/preview-tools/pdf.mjs               # -> inteliwa.pdf
+node /tmp/preview-tools/pdf.mjs               # -> bellis.pdf
 ```
 
 A junção usa pypdf e reescala a folha nova pros 594,96×841,92pt exatos da

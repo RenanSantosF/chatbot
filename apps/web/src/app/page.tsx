@@ -161,21 +161,21 @@ const PERGUNTAS = [
   {
     pergunta: "Os anexos somem depois de 30 dias?",
     resposta:
-      "Não. A Inteliwa guarda uma cópia própria de fotos, áudios e documentos, que continua abrindo no ano que vem.",
+      "Não. A Bellis guarda uma cópia própria de fotos, áudios e documentos, que continua abrindo no ano que vem.",
   },
 ];
 
 /**
  * A landing fala pelo problema, não pela categoria.
  *
- * O `title` foge do padrão "Inteliwa · Inteliwa" do template porque a home é a
+ * O `title` foge do padrão "Bellis · Bellis" do template porque a home é a
  * única página em que o nome do produto sozinho não diz nada a quem nunca
  * ouviu falar dele — a promessa precisa caber no próprio resultado de
  * busca.
  */
 export const metadata: Metadata = {
   title: {
-    absolute: "Inteliwa — atendimento no WhatsApp com IA para a sua empresa",
+    absolute: "Bellis — atendimento no WhatsApp com IA para a sua empresa",
   },
   description: SITE_DESCRIPTION,
   alternates: { canonical: "/" },

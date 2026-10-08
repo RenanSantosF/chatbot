@@ -236,7 +236,7 @@ export class PreviaDeLinkService {
         signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
         headers: {
           'User-Agent':
-            'Mozilla/5.0 (compatible; InteliwaLinkPreview/1.0; +https://inteliwa.com.br)',
+            'Mozilla/5.0 (compatible; BellisLinkPreview/1.0; +https://usebellis.com.br)',
           Accept: 'text/html,application/xhtml+xml',
           'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.5',
         },

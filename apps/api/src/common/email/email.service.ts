@@ -49,7 +49,7 @@ export class EmailService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: process.env.EMAIL_FROM ?? 'Inteliwa <onboarding@resend.dev>',
+          from: process.env.EMAIL_FROM ?? 'Bellis <onboarding@resend.dev>',
           to: [email.para],
           subject: email.assunto,
           html: email.html,

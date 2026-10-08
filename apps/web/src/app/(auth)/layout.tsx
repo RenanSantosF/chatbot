@@ -17,7 +17,7 @@ import { SITE_NAME } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Entrar ou criar conta",
   description:
-    "Acesse o painel da Inteliwa ou crie a conta da sua empresa para começar a atender no WhatsApp com inteligência artificial.",
+    "Acesse o painel da Bellis ou crie a conta da sua empresa para começar a atender no WhatsApp com inteligência artificial.",
   alternates: { canonical: "/login" },
 };
 
@@ -97,7 +97,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
       <main className="flex flex-1 flex-col items-center justify-center gap-6 px-5 py-12">
         {/* A marca aparece aqui só quando a coluna da esquerda não existe —
-            repetir nas duas deixaria "Inteliwa" duas vezes na mesma tela. */}
+            repetir nas duas deixaria "Bellis" duas vezes na mesma tela. */}
         <Link
           href="/"
           className="flex items-center gap-2 text-lg font-semibold tracking-tight lg:hidden"

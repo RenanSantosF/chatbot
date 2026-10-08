@@ -565,7 +565,7 @@ export function AssistenteDeCadastro() {
                 <form onSubmit={avancar} className="flex flex-col gap-10">
                   <Cabecalho
                     indice={indice}
-                    titulo="Última pergunta: onde conheceu a Inteliwa?"
+                    titulo="Última pergunta: onde conheceu a Bellis?"
                     apoio="Opcional — mas ajuda muito a gente a chegar em mais empresas como a sua."
                   />
                   <div className="flex flex-col gap-4">

@@ -15,7 +15,7 @@ import { EvolutionService } from './evolution.service';
 function montar(config: Record<string, unknown> | null = null) {
   const criado = {
     id: 'evo-1',
-    instance: 'inteliwa-1',
+    instance: 'bellis-1',
     webhookSecret: 'a'.repeat(48),
     ...config,
   };
@@ -180,7 +180,7 @@ describe('endereço do webhook', () => {
     // conectado e silêncio absoluto no painel.
     process.env.API_PUBLIC_URL = 'https://api.exemplo.com';
     const chamadas = servidor({ sessaoJaExiste: true });
-    const { service } = montar({ instance: 'inteliwa-1' });
+    const { service } = montar({ instance: 'bellis-1' });
 
     await service.conectar();
 
@@ -248,7 +248,7 @@ describe('endereço do webhook', () => {
     const chamadas = servidor({ sessaoJaExiste: false });
     const { service, prisma } = montar({
       baseUrl: 'https://evo.exemplo.com',
-      instance: 'inteliwa-velha',
+      instance: 'bellis-velha',
       estado: 'AGUARDANDO_QRCODE',
       pairingCode: 'VENCIDO1',
       updatedAt: new Date(Date.now() - 5 * 60_000),
@@ -257,7 +257,7 @@ describe('endereço do webhook', () => {
     await service.conectar('5527998836017');
 
     const criacao = chamadas.find((c) => c.url.includes('/instance/create'));
-    expect(criacao?.corpo.instanceName).not.toBe('inteliwa-velha');
+    expect(criacao?.corpo.instanceName).not.toBe('bellis-velha');
     expect(prisma.db.evolutionSettings.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ instance: expect.any(String) }),
@@ -272,7 +272,7 @@ describe('endereço do webhook', () => {
     const chamadas = servidor();
     const { service } = montar({
       baseUrl: 'https://evo.exemplo.com',
-      instance: 'inteliwa-1',
+      instance: 'bellis-1',
       estado: 'AGUARDANDO_QRCODE',
       pairingCode: '3Z243KXG',
       updatedAt: new Date(),

@@ -242,7 +242,7 @@ const TEMPO_DE_VIDA_S = 4 * 60 * 60;
  */
 function assunto(): string {
   const bruto = process.env.VAPID_SUBJECT?.trim();
-  if (!bruto) return 'mailto:contato@inteliwa.com.br';
+  if (!bruto) return 'mailto:contato@usebellis.com.br';
   if (/^(mailto:|https?:)/i.test(bruto)) return bruto;
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bruto)) return `mailto:${bruto}`;
   return bruto;

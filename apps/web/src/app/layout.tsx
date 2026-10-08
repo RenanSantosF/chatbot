@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     // A tela diz onde a pessoa está; a marca diz de quem é a tela. Cada
     // página preenche só a primeira parte.
     template: `%s · ${SITE_NAME}`,
-    default: "Inteliwa — atendimento no WhatsApp com inteligência artificial",
+    default: "Bellis — atendimento no WhatsApp com inteligência artificial",
   },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
@@ -62,13 +62,13 @@ export const metadata: Metadata = {
     locale: "pt_BR",
     url: "/",
     siteName: SITE_NAME,
-    title: "Inteliwa — atendimento no WhatsApp com inteligência artificial",
+    title: "Bellis — atendimento no WhatsApp com inteligência artificial",
     description: SITE_DESCRIPTION,
   },
 
   twitter: {
     card: "summary_large_image",
-    title: "Inteliwa — atendimento no WhatsApp com inteligência artificial",
+    title: "Bellis — atendimento no WhatsApp com inteligência artificial",
     description: SITE_DESCRIPTION,
   },
 

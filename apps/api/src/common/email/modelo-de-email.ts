@@ -1,5 +1,5 @@
 /**
- * O e-mail da Inteliwa, num formato só.
+ * O e-mail da Bellis, num formato só.
  *
  * Cliente de e-mail não é navegador: nada de CSS em arquivo, de flex ou de
  * fonte carregada. Estilo em linha e blocos simples é o que aparece igual
@@ -73,7 +73,7 @@ export function montarEmail(conteudo: ConteudoDoEmail): {
   const html = `<!doctype html>
 <html lang="pt-BR"><body style="margin:0;background:#f6f7f6;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1f1c">
   <div style="max-width:520px;margin:0 auto;padding:32px 20px">
-    <p style="font-size:18px;font-weight:600;margin:0 0 24px">Inteliwa</p>
+    <p style="font-size:18px;font-weight:600;margin:0 0 24px">Bellis</p>
     <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid #e4e7e5;border-top:4px solid ${cor}">
       <p style="margin:0 0 12px;font-size:16px;font-weight:600">${escaparHtml(conteudo.saudacao)}</p>
       ${conteudo.paragrafos

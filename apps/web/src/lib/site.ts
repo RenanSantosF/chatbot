@@ -17,13 +17,14 @@ export const SITE_URL = (
 /**
  * O nome da marca, e a ÚNICA definição dele.
  *
- * Já foi outro: o produto nasceu como "Clara" e virou Inteliwa quando a
- * empresa foi aberta. A troca passou por dez arquivos porque o nome estava
+ * Já foi outro, duas vezes: o produto nasceu como "Clara", virou
+ * "Inteliwa" quando a empresa foi aberta, e virou Bellis junto com o
+ * domínio usebellis.com.br. A troca passou por dez arquivos porque o nome estava
  * escrito à mão em cada um — cabeçalho, rodapé, título da aba, imagem de
  * compartilhamento, termos, privacidade. Agora todos importam daqui, e uma
  * eventual próxima troca é esta linha.
  */
-export const SITE_NAME = "Inteliwa";
+export const SITE_NAME = "Bellis";
 
 /**
  * A frase que aparece embaixo do título no Google e no card do WhatsApp.
@@ -33,7 +34,7 @@ export const SITE_NAME = "Inteliwa";
  * com RAG". Cabe nos ~155 caracteres que o Google mostra antes de cortar.
  */
 export const SITE_DESCRIPTION =
-  "A Inteliwa atende no WhatsApp da sua empresa com inteligência artificial: responde sozinha o que é repetitivo e chama sua equipe quando o assunto pede gente.";
+  "A Bellis atende no WhatsApp da sua empresa com inteligência artificial: responde sozinha o que é repetitivo e chama sua equipe quando o assunto pede gente.";
 
 /**
  * Quem é a empresa, juridicamente.

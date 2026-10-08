@@ -232,7 +232,7 @@ export class RelatorioSemanalService implements OnModuleInit, OnModuleDestroy {
       });
       await this.email.enviar({
         para: dono.email,
-        assunto: `Sua semana na Inteliwa: ${numeros.clientesQueEscreveram} ${numeros.clientesQueEscreveram === 1 ? 'cliente atendido' : 'clientes atendidos'}`,
+        assunto: `Sua semana na Bellis: ${numeros.clientesQueEscreveram} ${numeros.clientesQueEscreveram === 1 ? 'cliente atendido' : 'clientes atendidos'}`,
         html,
         texto,
       });

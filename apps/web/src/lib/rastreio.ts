@@ -9,6 +9,10 @@
  * depois — o suficiente pra saber em que passo as pessoas desistem.
  */
 
+// Ainda com o nome antigo da marca, de propósito: a chave não aparece pra
+// ninguém, e trocá-la faria todo visitante que já passou pela landing
+// contar como novo. O mesmo vale pras outras chaves "inteliwa:" guardadas
+// no navegador (tour visto, avisos vistos, dica da correção).
 const CHAVE_DO_VISITANTE = "inteliwa-visitante";
 const CHAVE_DA_CAMPANHA = "inteliwa-utm";
 const CAMPOS_DE_CAMPANHA = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];

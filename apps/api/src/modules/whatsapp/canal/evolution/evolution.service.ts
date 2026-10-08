@@ -209,7 +209,7 @@ export class EvolutionService {
 
     const instance =
       !existente || precisaDeSocketNovo
-        ? `inteliwa-${randomUUID()}`
+        ? `bellis-${randomUUID()}`
         : existente.instance;
     const webhookSecret =
       existente?.webhookSecret ?? randomBytes(24).toString('hex');

@@ -8,7 +8,7 @@
  * uma da outra:
  *
  *   1. o servidor Evolution está de pé e a chave da API é aceita;
- *   2. a API do Inteliwa é alcançável DA INTERNET (não do seu computador);
+ *   2. a API da Bellis é alcançável DA INTERNET (não do seu computador);
  *   3. o endereço do webhook responde a quem bate nele.
  *
  * Uso:
@@ -110,7 +110,7 @@ if (instancias.erro) {
   }
 }
 
-console.log(`\n2. API do Inteliwa — ${api}`);
+console.log(`\n2. API da Bellis — ${api}`);
 
 const raizApi = await pegar(`${api}/api`);
 if (raizApi.erro) {

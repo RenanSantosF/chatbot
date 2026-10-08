@@ -131,7 +131,7 @@ export function marcarTourVisto(userId: string, como: "concluido" | "pulado") {
 }
 
 /** Pede o tour de qualquer lugar do painel (ex.: "Fazer o tour" nos primeiros passos). */
-export const EVENTO_INICIAR_TOUR = "inteliwa:iniciar-tour";
+export const EVENTO_INICIAR_TOUR = "bellis:iniciar-tour";
 
 export function iniciarTour() {
   window.dispatchEvent(new Event(EVENTO_INICIAR_TOUR));

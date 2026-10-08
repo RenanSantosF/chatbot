@@ -75,7 +75,7 @@ function servicoCom(
         }),
     },
     message: {
-      // Por padrão toda conversa foi atendida pelo Inteliwa (IA ou painel);
+      // Por padrão toda conversa foi atendida pela Bellis (IA ou painel);
       // `soPeloCelular` lista as que foram conduzidas só pelo celular.
       groupBy: jest
         .fn()

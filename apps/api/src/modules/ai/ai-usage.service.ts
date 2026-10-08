@@ -39,7 +39,7 @@ export function diaDoCiclo(
  *
  * O PORQUÊ DO LIMITE: a chave de IA agora é da plataforma (ver
  * AiCredentialsResolver) — quem paga o provedor por cada resposta é a
- * Inteliwa, não mais a empresa. Sem um teto, uma conta com um bug de loop
+ * Bellis, não mais a empresa. Sem um teto, uma conta com um bug de loop
  * no lado do cliente (ou alguém testando o limite de propósito) vira
  * custo direto nosso, sem fim.
  *

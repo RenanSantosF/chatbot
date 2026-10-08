@@ -52,7 +52,7 @@ async function montar(extra: { assinatura?: string | null } = {}) {
         findFirst: jest.fn().mockResolvedValue({
           baseUrl: 'https://evo.exemplo.com',
           apiKeyEncrypted: 'cifrada',
-          instance: 'inteliwa-1',
+          instance: 'bellis-1',
         }),
       },
       // Um lote por tabela e acabou: menos que o tamanho do lote é o sinal
@@ -60,10 +60,12 @@ async function montar(extra: { assinatura?: string | null } = {}) {
       $executeRawUnsafe: jest.fn().mockResolvedValue(3),
       // Solta as citações entre mensagens antes dos DELETEs.
       $executeRaw: jest.fn().mockResolvedValue(1),
-      $queryRaw: jest.fn().mockResolvedValue([
-        { chave: 'tenant-1/2026/08/a.jpg' },
-        { chave: 'tenant-1/2026/08/b.ogg' },
-      ]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValue([
+          { chave: 'tenant-1/2026/08/a.jpg' },
+          { chave: 'tenant-1/2026/08/b.ogg' },
+        ]),
     },
   };
 
@@ -88,7 +90,9 @@ async function montar(extra: { assinatura?: string | null } = {}) {
 const pedido = { password: SENHA, confirmacao: 'Padaria do Zé' };
 
 beforeEach(() => {
-  (evolution.desconectar as jest.Mock).mockClear().mockResolvedValue({ ok: true });
+  (evolution.desconectar as jest.Mock)
+    .mockClear()
+    .mockResolvedValue({ ok: true });
   (evolution.apagarInstancia as jest.Mock)
     .mockClear()
     .mockResolvedValue({ ok: true });
@@ -124,7 +128,10 @@ describe('apagar a conta', () => {
     const { service, global } = await montar();
 
     await expect(
-      service.excluir('user-1', { password: 'chute', confirmacao: 'Padaria do Zé' }),
+      service.excluir('user-1', {
+        password: 'chute',
+        confirmacao: 'Padaria do Zé',
+      }),
     ).rejects.toThrow(BadRequestException);
     expect(global.client.tenant.delete).not.toHaveBeenCalled();
   });
@@ -179,7 +186,9 @@ describe('o que o banco não alcança', () => {
     const { service, global } = await montar();
     global.client.$executeRawUnsafe
       .mockRejectedValueOnce(
-        new Error("Raw query failed. Code: `40P01`. Message: `deadlock detected`"),
+        new Error(
+          'Raw query failed. Code: `40P01`. Message: `deadlock detected`',
+        ),
       )
       .mockResolvedValue(3);
 
@@ -191,7 +200,9 @@ describe('o que o banco não alcança', () => {
   it('erro de banco que não é impasse sobe na hora', async () => {
     // Engolir tudo aqui esconderia uma exclusão pela metade.
     const { service, global } = await montar();
-    global.client.$executeRawUnsafe.mockRejectedValue(new Error('banco fora do ar'));
+    global.client.$executeRawUnsafe.mockRejectedValue(
+      new Error('banco fora do ar'),
+    );
 
     await expect(service.excluir('user-1', pedido)).rejects.toThrow(
       'banco fora do ar',
@@ -212,11 +223,17 @@ describe('o que o banco não alcança', () => {
     const tabelas = global.client.$executeRawUnsafe.mock.calls.map(
       ([sql]: [string]) => sql,
     );
-    expect(tabelas.some((sql: string) => sql.includes('"messages"'))).toBe(true);
+    expect(tabelas.some((sql: string) => sql.includes('"messages"'))).toBe(
+      true,
+    );
     // Mensagem antes de conversa: o contrário faria o banco cascatear a
     // tabela grande, que é a instrução gigante que estamos evitando.
-    const primeira = tabelas.findIndex((sql: string) => sql.includes('"messages"'));
-    const depois = tabelas.findIndex((sql: string) => sql.includes('"conversations"'));
+    const primeira = tabelas.findIndex((sql: string) =>
+      sql.includes('"messages"'),
+    );
+    const depois = tabelas.findIndex((sql: string) =>
+      sql.includes('"conversations"'),
+    );
     expect(primeira).toBeLessThan(depois);
     // O tenant só sai depois que as grandes saíram.
     expect(global.client.tenant.delete).toHaveBeenCalled();
@@ -258,7 +275,9 @@ describe('o que o banco não alcança', () => {
     // Sessão órfã é ruim; conta que a pessoa não consegue apagar porque um
     // serviço de fora caiu é pior.
     const { service, global } = await montar();
-    (evolution.desconectar as jest.Mock).mockRejectedValue(new Error('sem resposta'));
+    (evolution.desconectar as jest.Mock).mockRejectedValue(
+      new Error('sem resposta'),
+    );
 
     await expect(service.excluir('user-1', pedido)).resolves.toEqual({
       apagada: true,
@@ -309,7 +328,9 @@ describe('o que o banco não alcança', () => {
       throw new Error('caiu no meio');
     });
 
-    await expect(service.excluir('user-1', pedido)).rejects.toThrow('caiu no meio');
+    await expect(service.excluir('user-1', pedido)).rejects.toThrow(
+      'caiu no meio',
+    );
     await expect(service.excluir('user-1', pedido)).resolves.toEqual({
       apagada: true,
     });

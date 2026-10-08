@@ -225,7 +225,7 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
     if (dentroDaJanela.length === 0) return 0;
 
     /*
-     * Só se despede quem ATENDEU pelo Inteliwa.
+     * Só se despede quem ATENDEU pela Bellis.
      *
      * O número costuma ser também o do celular do dono, e nem toda conversa
      * é atendimento: a que foi conduzida inteira pelo celular — um contato
@@ -248,8 +248,8 @@ export class AutoCloseService implements OnModuleInit, OnModuleDestroy {
         ],
       },
     });
-    const peloInteliwa = new Set(atendidas.map((a) => a.conversationId));
-    const aAvisar = dentroDaJanela.filter((c) => peloInteliwa.has(c.id));
+    const pelaBellis = new Set(atendidas.map((a) => a.conversationId));
+    const aAvisar = dentroDaJanela.filter((c) => pelaBellis.has(c.id));
     if (aAvisar.length === 0) return 0;
 
     /*

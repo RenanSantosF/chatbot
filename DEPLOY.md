@@ -76,7 +76,7 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
    | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT` | **obrigatórias pra guardar fotos, áudios e documentos.** Sem elas NADA é guardado: todo anexo é buscado no WhatsApp na hora, e o WhatsApp apaga o arquivo depois de um tempo — a foto vira "indisponível". Ver seção 9 abaixo |
    | `RESEND_API_KEY` | **obrigatória pra "Esqueci minha senha"**, pro aviso de WhatsApp desconectado e pro resumo da semana — a chave (`re_...`) do Resend. Sem ela nenhum desses e-mails sai — ver seção 7 abaixo |
-   | `EMAIL_FROM` | o remetente dos e-mails, com o domínio verificado no Resend — ex.: `Inteliwa <nao-responda@inteliwa.com.br>` |
+   | `EMAIL_FROM` | o remetente dos e-mails, com o domínio verificado no Resend — ex.: `Bellis <nao-responda@usebellis.com.br>` |
    | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | gere o PAR com `npx web-push generate-vapid-keys` (o mesmo par nas duas variáveis, um valor em cada). Sem elas o aviso com o painel fechado fica desligado — o resto funciona igual |
    | `VAPID_SUBJECT` | um e-mail seu. **O `mailto:` na frente faz parte do valor** (`mailto:voce@seudominio.com`) — a norma pede uma URL, não um e-mail solto. Se você esquecer, o sistema completa sozinho e registra no log |
 
@@ -556,9 +556,9 @@ O sistema manda três tipos de e-mail, todos pelo Resend:
 Sem `RESEND_API_KEY` nada disso sai — e o resumo da semana espera: quando a chave entrar, o da semana corrente ainda é enviado.
 
 1. Crie a conta em [resend.com](https://resend.com) (grátis até 3.000 e-mails por mês).
-2. **Domains → Add Domain**: o seu domínio (ex.: `inteliwa.com.br`). O Resend mostra 3 registros DNS (SPF, DKIM e MX/Return-Path) — cadastre no painel do seu domínio (Registro.br, Cloudflare...) e espere ficar **Verified**. Sem domínio verificado, o Resend só entrega pro e-mail da sua própria conta.
+2. **Domains → Add Domain**: o seu domínio (ex.: `usebellis.com.br`). O Resend mostra 3 registros DNS (SPF, DKIM e MX/Return-Path) — cadastre no painel do seu domínio (Registro.br, Cloudflare...) e espere ficar **Verified**. Sem domínio verificado, o Resend só entrega pro e-mail da sua própria conta.
 3. **API Keys → Create API Key** (permissão "Sending access"). Copie (`re_...`).
-4. No serviço da **API** no Railway: `RESEND_API_KEY` = a chave, e `EMAIL_FROM` = `Inteliwa <nao-responda@seudominio.com.br>` (o domínio tem que ser o verificado).
+4. No serviço da **API** no Railway: `RESEND_API_KEY` = a chave, e `EMAIL_FROM` = `Bellis <nao-responda@seudominio.com.br>` (o domínio tem que ser o verificado).
 5. Teste: em `/login`, clique em **Esqueci minha senha** com o seu e-mail. O link vale 30 minutos e uma vez só; usar derruba as sessões abertas com a senha antiga.
 
 Se o e-mail não chegar, o log da API diz o motivo (`Resend recusou o e-mail ...`) — quase sempre é domínio não verificado ou `EMAIL_FROM` com outro domínio.
@@ -585,11 +585,11 @@ Sem isto, nada é guardado, e a foto de hoje some daqui a algumas semanas.
 O R2 da Cloudflare é o recomendado: 10 GB grátis por mês e **sem cobrança por download** (a AWS cobra cada vez que o painel abre uma foto).
 
 1. Crie a conta em [cloudflare.com](https://dash.cloudflare.com) → menu **R2 Object Storage** → ative (pede cartão, mas os 10 GB são grátis).
-2. **Create bucket** → nome `inteliwa-anexos` (qualquer nome serve) → localização automática.
+2. **Create bucket** → nome `bellis-anexos` (qualquer nome serve) → localização automática.
 3. Em **R2 → Manage API tokens → Create API token**: permissão **Object Read & Write**, só pra esse bucket. Copie o **Access Key ID** e o **Secret Access Key** (o secret só aparece uma vez).
 4. Na mesma tela aparece o endpoint: `https://<ID-DA-CONTA>.r2.cloudflarestorage.com`.
 5. No serviço da **API** no Railway:
-   - `S3_BUCKET` = `inteliwa-anexos`
+   - `S3_BUCKET` = `bellis-anexos`
    - `S3_REGION` = `auto`
    - `S3_ACCESS_KEY_ID` = o Access Key ID
    - `S3_SECRET_ACCESS_KEY` = o Secret
@@ -622,7 +622,7 @@ O botão de escalar horizontalmente no Railway parece inofensivo e não é: hoje
 
 Para escalar de verdade seria preciso, no mínimo, um adaptador de Redis no gateway e mover os dois trabalhos periódicos pra fora do processo web (um serviço próprio, ou um agendador externo chamando uma rota). Enquanto isso não existe: **uma réplica**.
 
-- **Custo do Gemini**: a chave é da PLATAFORMA (`GEMINI_API_KEY`), e quem paga o Google é a Inteliwa. O que segura a conta é o limite de cada empresa: 5.000 respostas de IA por mês no plano (mais os pacotes comprados) e 3.000 correções de texto — ver o comentário em `apps/api/src/modules/ai/ai-usage.service.ts`. Acompanhe o gasto no painel do Google AI Studio e coloque um alerta de orçamento lá.
+- **Custo do Gemini**: a chave é da PLATAFORMA (`GEMINI_API_KEY`), e quem paga o Google é a Bellis. O que segura a conta é o limite de cada empresa: 5.000 respostas de IA por mês no plano (mais os pacotes comprados) e 3.000 correções de texto — ver o comentário em `apps/api/src/modules/ai/ai-usage.service.ts`. Acompanhe o gasto no painel do Google AI Studio e coloque um alerta de orçamento lá.
 - **Números de teste da Meta**: por padrão, um app novo só manda mensagem pra até 5 números cadastrados como testadores, até passar pela revisão do Meta (App Review) pedindo a permissão `whatsapp_business_messaging` pra produção.
 ### ⚠️ O número pode ser bloqueado, e isso não é hipótese remota
 

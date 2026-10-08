@@ -18,7 +18,7 @@ describe("cadastro", () => {
   it("iniciais da empresa pra prévia", () => {
     expect(iniciais("Clínica Sorriso")).toBe("CS");
     expect(iniciais("Padaria Pão de Mel")).toBe("PM");
-    expect(iniciais("Inteliwa")).toBe("IN");
+    expect(iniciais("Bellis")).toBe("BE");
     expect(iniciais("  ")).toBe("");
   });
 
