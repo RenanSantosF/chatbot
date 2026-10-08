@@ -145,7 +145,9 @@ export class ArquivoDeMidiasService implements OnModuleInit, OnModuleDestroy {
 
     const pendentes = linhas.filter((linha) => {
       const metadata = (linha.metadata ?? {}) as Record<string, unknown>;
-      return !metadata.storageKey && !midiaIndisponivel(metadata);
+      return (
+        !metadata.storageKey && !midiaIndisponivel(metadata, agora.getTime())
+      );
     });
     const desta = pendentes.slice(0, POR_PASSADA);
 
