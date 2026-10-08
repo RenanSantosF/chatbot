@@ -5,6 +5,31 @@ import type { MeResponse } from "./types";
 
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:3001";
 
+/** Respostas que são da borda (API reiniciando), e não da API. */
+const FORA_DO_AR = new Set([502, 503, 504]);
+const ESPERA_ENTRE_TENTATIVAS_MS = 1500;
+
+/**
+ * Uma segunda chance quando a API está subindo.
+ *
+ * Num deploy ou reinício, a borda do Railway responde 502 ("Application
+ * failed to respond") por alguns segundos. O layout do painel pergunta
+ * `/auth/me` a cada tela, e esse 502 derrubava a página inteira com o
+ * "This page couldn't load" do Next — mesmo a API voltando um instante
+ * depois. Tenta de novo uma vez, com uma pausa curta; se continuar fora,
+ * aí sim o erro sobe (e a tela de erro do app oferece tentar de novo).
+ */
+async function buscarComNovaTentativa(url: string, init: RequestInit): Promise<Response> {
+  try {
+    const res = await fetch(url, init);
+    if (!FORA_DO_AR.has(res.status)) return res;
+  } catch {
+    // Conexão recusada: o processo da API nem está ouvindo ainda.
+  }
+  await new Promise((resolve) => setTimeout(resolve, ESPERA_ENTRE_TENTATIVAS_MS));
+  return fetch(url, init);
+}
+
 /**
  * Fetch do lado do servidor (Server Components/layouts), chamado direto na
  * API (sem passar pelo rewrite do Next, que só existe pro navegador).
@@ -15,7 +40,7 @@ export async function apiFetchServer<T>(path: string): Promise<T | null> {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  const res = await fetch(`${API_INTERNAL_URL}/api${path}`, {
+  const res = await buscarComNovaTentativa(`${API_INTERNAL_URL}/api${path}`, {
     headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
     cache: "no-store",
   });

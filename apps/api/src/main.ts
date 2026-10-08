@@ -105,7 +105,28 @@ async function bootstrap() {
     );
   }
 }
+
+/**
+ * Uma promessa esquecida não derruba a API inteira.
+ *
+ * Boa parte do trabalho roda em segundo plano, sem `await` (guardar mídia,
+ * varreduras, avisos). No Node atual, uma rejeição que escapa de um desses
+ * caminhos encerra o processo — e com a API fora, o painel inteiro cai
+ * junto ("Application failed to respond"). Registra com a pilha, pra dar
+ * pra achar a origem, e segue atendendo.
+ */
+process.on('unhandledRejection', (motivo) => {
+  console.error(
+    '[processo] Promessa rejeitada sem tratamento:',
+    motivo instanceof Error ? (motivo.stack ?? motivo.message) : motivo,
+  );
+});
+
 // Falha na subida precisa derrubar o processo com código de erro: o
 // Railway reinicia, e um servidor meio inicializado atendendo requisição é
-// pior que um servidor fora do ar.
-void bootstrap();
+// pior que um servidor fora do ar. Explícito, porque o gancho de
+// `unhandledRejection` acima não deixaria mais a rejeição encerrar sozinha.
+bootstrap().catch((erro: unknown) => {
+  console.error('[subida] A API não conseguiu subir:', erro);
+  process.exit(1);
+});
