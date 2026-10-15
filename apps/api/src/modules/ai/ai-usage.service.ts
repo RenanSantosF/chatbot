@@ -7,7 +7,30 @@ import { fusoValido } from '../inbox-settings/horario-comercial';
 export interface UsoDaIa {
   inputTokens: number;
   outputTokens: number;
+  cachedTokens?: number;
 }
+
+/**
+ * Tetos mensais dos usos da IA que não são resposta ao cliente.
+ *
+ * Existem pra o custo de uma conta ter teto, e não pra atrapalhar o uso
+ * normal: uma empresa que recebe dez áudios por dia fica em ~300 no mês, e
+ * quem pergunta ao assistente todo dia útil fica bem abaixo de 150.
+ */
+export const TETO_DE_TRANSCRICOES_POR_MES = 300;
+export const TETO_DO_ASSISTENTE_POR_MES = 150;
+
+type UsoComTeto = 'transcricao' | 'assistente';
+
+const COLUNA_DO_USO = {
+  transcricao: 'aiTranscricoesNoPeriodo',
+  assistente: 'aiCopilotoNoPeriodo',
+} as const;
+
+const TETO_DO_USO: Record<UsoComTeto, number> = {
+  transcricao: TETO_DE_TRANSCRICOES_POR_MES,
+  assistente: TETO_DO_ASSISTENTE_POR_MES,
+};
 
 export interface LimiteDaIa {
   podeResponder: boolean;
@@ -50,13 +73,14 @@ export function diaDoCiclo(
  * histórico recente — e uma resposta curta de WhatsApp fica bem abaixo de
  * 200 de saída: cerca de US$0,0008 por resposta. No pior caso plausível
  * (base de conhecimento grande, histórico cheio, uma chamada de
- * ferramenta no meio) esse custo pode passar de US$0,005. Um teto de 3000
- * respostas por mês (o padrão de `BillingAccount.aiMonthlyMessageLimit`)
- * custa entre ~US$2,40 (caso típico) e ~US$18 (pior caso o mês inteiro,
- * o que não acontece na prática) por conta — pequeno o bastante pra não
- * pesar contra qualquer assinatura, generoso o bastante pra nenhuma
- * empresa de verdade chegar perto no uso normal (100 respostas por dia,
- * todo dia do mês).
+ * ferramenta no meio) esse custo pode passar de US$0,005. Com o começo
+ * do prompt vindo do cache do Google (a um décimo do preço, ver
+ * preco-do-modelo.ts), o típico cai pra perto de US$0,0005. O plano de
+ * R$ 89 inclui 2.500 respostas por mês (o padrão de
+ * `BillingAccount.aiMonthlyMessageLimit`): ~US$1,25 no caso típico e
+ * ~US$12,50 no pior caso o mês inteiro, o que não acontece na prática —
+ * folga larga sobre a assinatura, e ainda umas 80 respostas por dia, todo
+ * dia do mês.
  *
  * O QUE NÃO CONTA: mensagem que o cliente manda, mensagem que um
  * atendente humano responde, e qualquer coisa enquanto a IA está
@@ -152,6 +176,8 @@ export class AiUsageService {
         // com honestidade.
         aiExtraMessagesThisPeriod: extrasQueSobraram(conta),
         aiCorrecoesNoPeriodo: 0,
+        aiTranscricoesNoPeriodo: 0,
+        aiCopilotoNoPeriodo: 0,
       },
     });
     const renovada =
@@ -174,6 +200,21 @@ export class AiUsageService {
       renovaDia: dia,
       renovaEm: ciclo.fim,
     };
+  }
+
+  /** Ainda cabe mais um uso deste tipo no mês? */
+  async cabe(uso: UsoComTeto): Promise<boolean> {
+    const { conta } = await this.linhaDoPeriodoAtual();
+    return conta[COLUNA_DO_USO[uso]] < TETO_DO_USO[uso];
+  }
+
+  /** Conta um uso deste tipo no mês — só depois de ele ter dado certo. */
+  async contar(uso: UsoComTeto): Promise<void> {
+    const { conta } = await this.linhaDoPeriodoAtual();
+    await this.prisma.db.billingAccount.update({
+      where: { id: conta.id },
+      data: { [COLUNA_DO_USO[uso]]: { increment: 1 } },
+    });
   }
 
   /**
@@ -199,7 +240,8 @@ export class AiUsageService {
     // bate com a estimativa acima, sem precisar abrir o banco.
     this.logger.log(
       `Resposta registrada (tenant ${this.prisma.tenantId}): ${uso.inputTokens} tokens de entrada, ` +
-        `${uso.outputTokens} de saída, ~US$${custoEmDolar(uso.inputTokens, uso.outputTokens).toFixed(5)}.`,
+        `${uso.outputTokens} de saída, ${uso.cachedTokens ?? 0} do cache, ` +
+        `~US$${custoEmDolar(uso.inputTokens, uso.outputTokens, uso.cachedTokens).toFixed(5)}.`,
     );
   }
 }

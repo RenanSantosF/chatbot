@@ -20,6 +20,7 @@ function montar(
     permite?: string[];
     iaAtiva?: boolean;
     saudacaoLigada?: boolean;
+    tetoAtingido?: boolean;
   } = {},
 ) {
   const aiSettings =
@@ -41,6 +42,11 @@ function montar(
     .mockImplementation(
       opcoes.provedor ?? (async () => ({ content: 'A fila está tranquila.' })),
     );
+
+  const uso = {
+    cabe: jest.fn().mockResolvedValue(!opcoes.tetoAtingido),
+    contar: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new CopilotService(
     {
@@ -123,9 +129,18 @@ function montar(
     {} as never,
     {} as never,
     conversations as never,
+    uso as never,
   );
 
-  return { service, generateReply, inbox, aiUpdate, instrucoes, conversations };
+  return {
+    service,
+    generateReply,
+    inbox,
+    aiUpdate,
+    instrucoes,
+    conversations,
+    uso,
+  };
 }
 
 const quem = (role: string) =>
@@ -236,6 +251,26 @@ describe('o assistente do painel nunca devolve erro cru', () => {
 
     expect(resposta.content).toBe('A fila está tranquila.');
     expect(resposta.falhou).toBeUndefined();
+  });
+});
+
+describe('o teto de perguntas do mês', () => {
+  it('conta cada pergunta respondida', async () => {
+    const { service, uso } = montar();
+
+    await perguntar(service);
+
+    expect(uso.contar).toHaveBeenCalledWith('assistente');
+  });
+
+  it('com o teto atingido, avisa sem chamar o modelo', async () => {
+    const { service, generateReply } = montar({ tetoAtingido: true });
+
+    const resposta = await perguntar(service);
+
+    expect(resposta.falhou).toBe(true);
+    expect(resposta.content).toMatch(/perguntas ao assistente deste mês/);
+    expect(generateReply).not.toHaveBeenCalled();
   });
 });
 

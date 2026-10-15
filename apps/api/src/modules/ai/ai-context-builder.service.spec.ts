@@ -291,6 +291,19 @@ describe('o que a IA passa a saber', () => {
     expect(systemPrompt).toMatch(/de \w+ de \d{4}/);
   });
 
+  it('o que muda a cada resposta fica DEPOIS do que é fixo da empresa', async () => {
+    // É o que deixa o Google reaproveitar o começo do prompt (cache
+    // implícito, a um décimo do preço) entre respostas e conversas.
+    const { builder } = montar();
+
+    const { systemPrompt } = await builder.build('conversa-1');
+
+    const fixo = systemPrompt.indexOf('Nunca invente dado da empresa');
+    expect(fixo).toBeGreaterThan(-1);
+    expect(systemPrompt.indexOf('Agora é')).toBeGreaterThan(fixo);
+    expect(systemPrompt.indexOf('Ana Souza')).toBeGreaterThan(fixo);
+  });
+
   it('sabe o nome de quem está falando', async () => {
     const { builder } = montar();
 

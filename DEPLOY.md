@@ -72,7 +72,7 @@ E o `engines.node` no `package.json` (raiz e `apps/api`) garante que o Nixpacks 
    | `STRIPE_TOPUP_PRICE_ID` | opcional — o id do preço (`price_...`) do pacote avulso de 1.000 respostas extras de IA. Sem ela, o botão "Comprar mensagens extras" mostra erro; o resto do sistema funciona igual |
    | `STRIPE_PACOTES` | opcional — vários tamanhos de pacote, no formato `quantidade:price_...` separados por vírgula (ex.: `1000:price_a,3000:price_b,10000:price_c`). A tela de compra mostra um cartão por pacote, com o preço lido do Stripe. Convive com `STRIPE_TOPUP_PRICE_ID` (que vira o pacote de 1.000 se ele não estiver na lista) |
    | `PLATFORM_ADMIN_EMAILS` | o(s) e-mail(s) de quem vê o painel da plataforma (receita, funil, origem das contas, erros), separados por vírgula — ex.: `voce@empresa.com`. Sem ela, ninguém vê; o item "Plataforma" só aparece no menu pra esses e-mails. **As empresas desses e-mails usam o sistema de graça, pra sempre** — são as únicas liberadas sem assinatura (fora as que você liberar por alguns dias na aba Contas do painel) |
-   | `PLANO_PRECO_MENSAL` | opcional — o preço do plano em reais, usado só pra estimar a receita mensal (MRR) no painel da plataforma. Padrão `167` |
+   | `PLANO_PRECO_MENSAL` | opcional — o preço do plano em reais, usado só pra estimar a receita mensal (MRR) no painel da plataforma. Padrão `89` |
    | `STRIPE_WEBHOOK_SECRET` | **obrigatória** — o segredo (`whsec_...`) do endpoint de webhook — ver seção 6 abaixo |
    | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT` | **obrigatórias pra guardar fotos, áudios e documentos.** Sem elas NADA é guardado: todo anexo é buscado no WhatsApp na hora, e o WhatsApp apaga o arquivo depois de um tempo — a foto vira "indisponível". Ver seção 9 abaixo |
    | `RESEND_API_KEY` | **obrigatória pra "Esqueci minha senha"**, pro aviso de WhatsApp desconectado e pro resumo da semana — a chave (`re_...`) do Resend. Sem ela nenhum desses e-mails sai — ver seção 7 abaixo |
@@ -494,10 +494,11 @@ confirmada pelo webhook. Sem `STRIPE_SECRET_KEY`/`STRIPE_PRICE_ID`/
 `STRIPE_WEBHOOK_SECRET` configuradas, **ninguém consegue criar conta** —
 essas três variáveis são obrigatórias, não opcionais.
 
-**Preço**: R$ 167/mês (é o que o site e o cadastro anunciam — o preço
-cadastrado no Stripe precisa ser esse), incluindo 5.000 respostas
-automáticas de IA e 20 GB de armazenamento. Pacotes avulsos sugeridos:
-1.000 = R$ 49,90 · 3.000 = R$ 119,90 · 10.000 = R$ 299,90 (ver
+**Preço**: R$ 89/mês (é o que o site e o cadastro anunciam — o preço
+cadastrado no Stripe precisa ser esse), incluindo 2.500 respostas
+automáticas de IA, 300 transcrições de áudio, 150 perguntas ao assistente
+do painel e 20 GB de armazenamento. Pacotes avulsos sugeridos:
+1.000 = R$ 29,90 · 3.000 = R$ 79,90 · 10.000 = R$ 229,90 (ver
 `STRIPE_PACOTES`). Os dois números vêm da margem sobre
 o custo real do provedor de IA — ver o comentário em
 `apps/api/src/modules/ai/ai-usage.service.ts` — e de comparação com o
@@ -514,7 +515,7 @@ valor nenhum fixo.
    (`price_...`) — é o `STRIPE_TOPUP_PRICE_ID`. Pule este passo se não for
    vender pacote avulso agora; o resto do sistema funciona sem ele.
    - Pacotes maiores: crie um **Price** único pra cada tamanho (sugestão:
-     1.000 = R$ 49,90 · 3.000 = R$ 119,90 · 10.000 = R$ 299,90) e liste
+     1.000 = R$ 29,90 · 3.000 = R$ 79,90 · 10.000 = R$ 229,90) e liste
      todos em `STRIPE_PACOTES`, ex.:
      `1000:price_a,3000:price_b,10000:price_c`. O que o cliente compra e
      não usa passa pro mês seguinte.
@@ -622,7 +623,7 @@ O botão de escalar horizontalmente no Railway parece inofensivo e não é: hoje
 
 Para escalar de verdade seria preciso, no mínimo, um adaptador de Redis no gateway e mover os dois trabalhos periódicos pra fora do processo web (um serviço próprio, ou um agendador externo chamando uma rota). Enquanto isso não existe: **uma réplica**.
 
-- **Custo do Gemini**: a chave é da PLATAFORMA (`GEMINI_API_KEY`), e quem paga o Google é a Bellis. O que segura a conta é o limite de cada empresa: 5.000 respostas de IA por mês no plano (mais os pacotes comprados) e 3.000 correções de texto — ver o comentário em `apps/api/src/modules/ai/ai-usage.service.ts`. Acompanhe o gasto no painel do Google AI Studio e coloque um alerta de orçamento lá.
+- **Custo do Gemini**: a chave é da PLATAFORMA (`GEMINI_API_KEY`), e quem paga o Google é a Bellis. O que segura a conta é o limite de cada empresa: 2.500 respostas de IA por mês no plano (mais os pacotes comprados), 300 transcrições de áudio e 150 perguntas ao assistente — ver o comentário em `apps/api/src/modules/ai/ai-usage.service.ts`. Acompanhe o gasto no painel do Google AI Studio e coloque um alerta de orçamento lá.
 - **Números de teste da Meta**: por padrão, um app novo só manda mensagem pra até 5 números cadastrados como testadores, até passar pela revisão do Meta (App Review) pedindo a permissão `whatsapp_business_messaging` pra produção.
 ### ⚠️ O número pode ser bloqueado, e isso não é hipótese remota
 

@@ -12,9 +12,24 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { WhatsappMediaService } from '../whatsapp/whatsapp-media.service';
 import { AiCredentialsResolver } from './providers/ai-credentials.resolver';
 import {
+  AiUsageService,
+  TETO_DE_TRANSCRICOES_POR_MES,
+} from './ai-usage.service';
+import {
   AI_PROVIDER,
   type AiTranscriptionProvider,
 } from './providers/ai-provider.interface';
+
+/**
+ * O maior áudio que a IA transcreve: ~600 KB, uns três a cinco minutos de
+ * mensagem de voz do WhatsApp (Opus a 16–24 kbit/s).
+ *
+ * O Google cobra por segundo de áudio, e um áudio de vinte minutos custa
+ * o mesmo que dezenas de respostas — quase sempre pra um recado que a
+ * equipe vai ouvir de qualquer jeito. Acima disso, o áudio continua no
+ * painel pra ouvir; só não vira texto.
+ */
+export const TAMANHO_MAXIMO_DO_AUDIO = 600 * 1024;
 
 /**
  * O áudio do cliente virando texto.
@@ -46,6 +61,7 @@ export class TranscricaoService {
     private readonly realtime: RealtimeGateway,
     private readonly inboxSettings: InboxSettingsService,
     @Inject(AI_PROVIDER) private readonly provider: AiTranscriptionProvider,
+    private readonly uso: AiUsageService,
   ) {}
 
   /**
@@ -59,6 +75,17 @@ export class TranscricaoService {
    * mesmo áudio, e o que impede o automático de pagar duas vezes.
    */
   async transcrever(messageId: string): Promise<string | null> {
+    return (await this.transcreverComMotivo(messageId)).texto;
+  }
+
+  /**
+   * O mesmo `transcrever`, dizendo por que não deu quando não deu — é o que
+   * o botão do atendente mostra (teto do mês, áudio longo demais).
+   */
+  private async transcreverComMotivo(
+    messageId: string,
+  ): Promise<{ texto: string | null; motivo?: string }> {
+    const nada = { texto: null };
     const mensagem = await this.prisma.db.message.findFirst({
       where: { id: messageId },
       select: {
@@ -72,19 +99,30 @@ export class TranscricaoService {
       },
     });
 
-    if (!mensagem || mensagem.messageType !== 'AUDIO') return null;
+    if (!mensagem || mensagem.messageType !== 'AUDIO') return nada;
     // Apagada não se transcreve: seria recriar em texto o conteúdo que
     // alguém apagou justamente pra ele não ser lido de novo.
-    if (mensagem.deletedAt) return null;
-    if (mensagem.transcricao) return mensagem.transcricao;
-    if (!mensagem.mediaId) return null;
+    if (mensagem.deletedAt) return nada;
+    if (mensagem.transcricao) return { texto: mensagem.transcricao };
+    if (!mensagem.mediaId) return nada;
+
+    // Antes de baixar: o teto do mês barra sem gastar nem o download.
+    if (!(await this.uso.cabe('transcricao'))) {
+      this.logger.log(
+        `Teto de ${TETO_DE_TRANSCRICOES_POR_MES} transcrições no mês atingido; áudio ${mensagem.id} fica sem texto.`,
+      );
+      return {
+        texto: null,
+        motivo: `A empresa já usou as ${TETO_DE_TRANSCRICOES_POR_MES} transcrições de áudio do mês. Elas renovam junto com as respostas da IA.`,
+      };
+    }
 
     const { credentials } = await this.credenciais.resolve();
     if (!credentials) {
       this.logger.warn(
         'Sem chave de IA configurada — o áudio não pôde ser transcrito.',
       );
-      return null;
+      return nada;
     }
 
     let binario: { buffer: Buffer; mimeType: string };
@@ -94,7 +132,15 @@ export class TranscricaoService {
       this.logger.warn(
         `Áudio não baixado pra transcrição: ${erro instanceof Error ? erro.message : erro}`,
       );
-      return null;
+      return nada;
+    }
+
+    if (binario.buffer.length > TAMANHO_MAXIMO_DO_AUDIO) {
+      return {
+        texto: null,
+        motivo:
+          'Este áudio é longo demais pra transcrever. Dá pra ouvir normalmente no painel.',
+      };
     }
 
     const texto = await this.provider.transcribe({
@@ -102,7 +148,10 @@ export class TranscricaoService {
       mimeType: binario.mimeType,
       ...credentials,
     });
-    if (!texto) return null;
+    if (!texto) return nada;
+    await this.uso.contar('transcricao').catch((erro: unknown) => {
+      this.logger.warn(`Transcrição não contada no mês: ${String(erro)}`);
+    });
 
     await this.prisma.db.message.update({
       where: { id: mensagem.id },
@@ -130,7 +179,7 @@ export class TranscricaoService {
       });
     }
 
-    return texto;
+    return { texto };
   }
 
   /**
@@ -186,13 +235,15 @@ export class TranscricaoService {
       throw new NotFoundException('Mensagem não encontrada nesta conversa.');
     }
 
-    const transcricao = await this.transcrever(messageId);
+    const { texto: transcricao, motivo } =
+      await this.transcreverComMotivo(messageId);
     return {
       transcricao,
       ...(transcricao
         ? {}
         : {
             motivo:
+              motivo ??
               'Não foi possível transcrever este áudio. Tente de novo em alguns instantes.',
           }),
     };

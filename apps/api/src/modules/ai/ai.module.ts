@@ -18,8 +18,6 @@ import { AiTestController } from './ai-test.controller';
 import { AiProviderModule } from './providers/ai-provider.module';
 import { AiToolsController } from './tools/ai-tools.controller';
 import { AiToolsService } from './tools/ai-tools.service';
-import { CorrecaoDeTextoController } from './correcao-de-texto.controller';
-import { CorrecaoDeTextoService } from './correcao-de-texto.service';
 
 @Module({
   imports: [
@@ -37,7 +35,6 @@ import { CorrecaoDeTextoService } from './correcao-de-texto.service';
     AiInstructionsController,
     AiTestController,
     AiToolsController,
-    CorrecaoDeTextoController,
   ],
   providers: [
     AiContextBuilder,
@@ -47,7 +44,6 @@ import { CorrecaoDeTextoService } from './correcao-de-texto.service';
     AiSettingsService,
     AiInstructionsService,
     AiToolsService,
-    CorrecaoDeTextoService,
   ],
   exports: [
     AiEngineService,

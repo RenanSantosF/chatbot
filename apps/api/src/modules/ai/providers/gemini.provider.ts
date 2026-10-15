@@ -187,10 +187,12 @@ function usoAcumulado(consumo: {
   entrada: number;
   saida: number;
   raciocinio: number;
+  cacheados: number;
 }) {
   return {
     inputTokens: consumo.entrada,
     outputTokens: consumo.saida + consumo.raciocinio,
+    cachedTokens: consumo.cacheados,
   };
 }
 
@@ -277,7 +279,7 @@ export class GeminiProvider
     // chama transferToQueue custa duas chamadas ao modelo, e o número que
     // interessa pra conta do fim do mês é o total da resposta, não o de
     // cada pedaço.
-    const consumo = { entrada: 0, saida: 0, raciocinio: 0 };
+    const consumo = { entrada: 0, saida: 0, raciocinio: 0, cacheados: 0 };
     // Alguma ferramenta já rodou nesta resposta? Muda o que fazer com um
     // texto vazio no fim: sem ferramenta é falha; COM ferramenta o mundo
     // já mudou, e derrubar tudo com uma exceção apagaria a única coisa que
@@ -306,6 +308,9 @@ export class GeminiProvider
         consumo.entrada += uso?.promptTokenCount ?? 0;
         consumo.saida += uso?.candidatesTokenCount ?? 0;
         consumo.raciocinio += uso?.thoughtsTokenCount ?? 0;
+        // Parte da entrada que o Google reaproveitou do cache implícito —
+        // já incluída em `promptTokenCount`, mas cobrada a um décimo.
+        consumo.cacheados += uso?.cachedContentTokenCount ?? 0;
 
         const calls = response.functionCalls;
 
@@ -341,7 +346,8 @@ export class GeminiProvider
           // demais), a resposta, ou o raciocínio invisível do modelo.
           this.logger.log(
             `Resposta gerada (${resolvedModel}): ${consumo.entrada} tokens de entrada, ` +
-              `${consumo.saida} de saída, ${consumo.raciocinio} de raciocínio.`,
+              `${consumo.saida} de saída, ${consumo.raciocinio} de raciocínio, ` +
+              `${consumo.cacheados} da entrada vindos do cache.`,
           );
           return { content: text, usage: usoAcumulado(consumo) };
         }

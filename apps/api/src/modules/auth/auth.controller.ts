@@ -198,7 +198,6 @@ export class AuthController {
             name: true,
             mustChangePassword: true,
             tourVistoEm: true,
-            usouCorrecaoEm: true,
           },
         }),
         // O estado do WhatsApp vem JUNTO com a sessão, e não só por evento
@@ -236,8 +235,6 @@ export class AuthController {
         role: user.role,
         mustChangePassword: account.mustChangePassword,
         tourVisto: account.tourVistoEm !== null,
-        // Já usou a correção por IA: a dica do atalho não aparece mais.
-        usouCorrecao: account.usouCorrecaoEm !== null,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       canal,

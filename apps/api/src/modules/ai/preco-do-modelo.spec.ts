@@ -13,4 +13,11 @@ describe('custoEmDolar', () => {
     // AiUsageService.
     expect(custoEmDolar(2500, 120)).toBeLessThan(0.001);
   });
+
+  it('a entrada que veio do cache sai a um décimo do preço', () => {
+    expect(custoEmDolar(1_000_000, 0, 1_000_000)).toBeCloseTo(0.025);
+    expect(custoEmDolar(1_000_000, 0, 600_000)).toBeCloseTo(0.1 + 0.015);
+    // Cache maior que a entrada (dado incoerente) não vira custo negativo.
+    expect(custoEmDolar(1000, 0, 5000)).toBeGreaterThan(0);
+  });
 });

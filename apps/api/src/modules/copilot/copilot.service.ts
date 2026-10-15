@@ -18,7 +18,12 @@ import { LIMITE_DAS_INSTRUCOES_GERAIS } from '../ai/ai-context';
 import { PermissionsService } from '../permissions/permissions.service';
 import type { PermissionKey } from '../permissions/permissions.constants';
 import type { Prisma, UserRole } from '../../../generated/prisma/client';
-import { diaDoCiclo, extrasQueSobraram } from '../ai/ai-usage.service';
+import {
+  AiUsageService,
+  TETO_DO_ASSISTENTE_POR_MES,
+  diaDoCiclo,
+  extrasQueSobraram,
+} from '../ai/ai-usage.service';
 import { cicloMensal } from '../../common/utils/fuso';
 import { fusoValido } from '../inbox-settings/horario-comercial';
 import {
@@ -183,6 +188,7 @@ export class CopilotService {
     private readonly etiquetas: TagsService,
     private readonly setores: QueuesService,
     private readonly conversations: ConversationsService,
+    private readonly uso: AiUsageService,
   ) {}
 
   private readonly tools: AiToolDeclaration[] = [
@@ -1122,7 +1128,7 @@ export class CopilotService {
     const inicio = conta?.aiUsagePeriodStart;
     const mesmoMes =
       !!inicio && !!ciclo && inicio.getTime() >= ciclo.inicio.getTime();
-    const plano = conta?.aiMonthlyMessageLimit ?? 5000;
+    const plano = conta?.aiMonthlyMessageLimit ?? 2500;
     const extras = !conta
       ? 0
       : mesmoMes
@@ -1176,6 +1182,15 @@ export class CopilotService {
       throw new BadRequestException(
         'A IA da plataforma está temporariamente indisponível — não dá pra usar o assistente agora.',
       );
+    }
+
+    // Antes de montar qualquer coisa: cada pergunta aqui custa bem mais
+    // que uma resposta ao cliente (ver TETO_DO_ASSISTENTE_POR_MES).
+    if (!(await this.uso.cabe('assistente'))) {
+      return {
+        content: `A empresa já fez as ${TETO_DO_ASSISTENTE_POR_MES} perguntas ao assistente deste mês. Elas renovam junto com as respostas da IA. As telas do painel continuam funcionando normalmente.`,
+        falhou: true,
+      };
     }
 
     const permitidas = new Set<string>();
@@ -1238,6 +1253,10 @@ export class CopilotService {
             return { error: 'Não deu pra executar essa ação agora.' };
           }
         },
+      });
+
+      await this.uso.contar('assistente').catch((erro: unknown) => {
+        this.logger.warn(`Pergunta ao assistente não contada: ${String(erro)}`);
       });
 
       const conteudo = result.content.trim();

@@ -124,10 +124,6 @@ export class AiContextBuilder {
   }): string {
     const lines = [
       `Você é ${params.aiName}, a assistente de atendimento da empresa "${params.tenantName}".`,
-      // A IA não tem relógio próprio. Sem esta linha ela falava em "hoje" e
-      // "amanhã" sem saber que dia era, e marcava coisa pra domingo numa
-      // empresa que atende de segunda a sexta.
-      `Agora é ${params.agora} (fuso da empresa). Use isto pra qualquer conta de data ou horário.`,
       `Fale em português do Brasil, em tom ${TONE_DESCRIPTION[params.tone]}.`,
       'Escreva como quem manda mensagem de WhatsApp: direto, parágrafos curtos, no máximo umas quatro linhas. Se a resposta for longa, mande o essencial e ofereça o resto.',
       // A lista é literal porque a versão genérica ("não invente") não
@@ -168,20 +164,6 @@ export class AiContextBuilder {
       lines.push(
         'Nos dias que não estão nesta lista a empresa não atende. Responda sobre horário usando SÓ o que está aqui.',
       );
-
-      if (!params.expediente.aberto) {
-        lines.push(
-          params.expediente.volta
-            ? `AGORA a empresa está FORA do horário de atendimento — a equipe volta ${params.expediente.volta}. Não diga que alguém vai responder "em instantes" nem "ainda hoje": diga quando a equipe volta. Se precisar de uma pessoa, transfira do mesmo jeito (a conversa fica na fila) e explique que alguém responde ${params.expediente.volta}.`
-            : 'AGORA a empresa está FORA do horário de atendimento. Não prometa resposta imediata de uma pessoa.',
-        );
-      }
-    }
-
-    if (params.customerName) {
-      lines.push(
-        `Você está falando com ${params.customerName}. Use o nome com naturalidade, sem repetir a cada frase.`,
-      );
     }
 
     if (params.customInstructions) {
@@ -208,6 +190,41 @@ export class AiContextBuilder {
       for (const instruction of regras) {
         lines.push(`- ${instruction.title}: ${instruction.content}`);
       }
+    }
+
+    /*
+     * Daqui pra baixo, só o que muda de uma resposta pra outra.
+     *
+     * A ordem é o que paga a conta. O Google cobra cerca de um décimo do
+     * preço pela parte do começo do prompt que já viu há pouco (o cache
+     * implícito do Gemini) — mas só enquanto o começo é IDÊNTICO, caractere
+     * por caractere. O relógio ficava na segunda linha: mudava a cada
+     * minuto e fazia toda resposta pagar o prompt inteiro de novo. Com o
+     * que é fixo da empresa em cima (identidade, regras, expediente,
+     * instruções) e o que varia embaixo (hora, cliente, coleta, memória,
+     * trechos da base), todas as conversas da empresa reaproveitam o
+     * mesmo começo.
+     */
+    lines.push(
+      '',
+      // A IA não tem relógio próprio. Sem esta linha ela falava em "hoje" e
+      // "amanhã" sem saber que dia era, e marcava coisa pra domingo numa
+      // empresa que atende de segunda a sexta.
+      `Agora é ${params.agora} (fuso da empresa). Use isto pra qualquer conta de data ou horário.`,
+    );
+
+    if (params.expediente.semana.length > 0 && !params.expediente.aberto) {
+      lines.push(
+        params.expediente.volta
+          ? `AGORA a empresa está FORA do horário de atendimento — a equipe volta ${params.expediente.volta}. Não diga que alguém vai responder "em instantes" nem "ainda hoje": diga quando a equipe volta. Se precisar de uma pessoa, transfira do mesmo jeito (a conversa fica na fila) e explique que alguém responde ${params.expediente.volta}.`
+          : 'AGORA a empresa está FORA do horário de atendimento. Não prometa resposta imediata de uma pessoa.',
+      );
+    }
+
+    if (params.customerName) {
+      lines.push(
+        `Você está falando com ${params.customerName}. Use o nome com naturalidade, sem repetir a cada frase.`,
+      );
     }
 
     if (params.pendingFields.length > 0) {

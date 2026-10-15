@@ -15,10 +15,16 @@ import type { MessageType } from '../../../generated/prisma/client';
  *
  * Era 20. O histórico é a maior parte do custo de cada resposta — ele vai
  * inteiro, de novo, em toda mensagem —, e um atendimento de WhatsApp raramente
- * depende do que foi dito quinze mensagens atrás. Catorze mantêm o fio da
- * conversa e cortam um terço do pior caso.
+ * depende do que foi dito quinze mensagens atrás. Catorze mantinham o fio
+ * da conversa e cortavam um terço do pior caso.
+ *
+ * Dez, junto com a redução do preço do plano: o histórico é a única parte
+ * grande do prompt que o cache do Google não reaproveita (ela muda a cada
+ * mensagem), então é ela que pesa no custo. Dez mensagens ainda cobrem
+ * a conversa corrente, e o que a IA precisa lembrar de antes fica na
+ * memória do cliente.
  */
-export const LIMITE_DO_HISTORICO = 14;
+export const LIMITE_DO_HISTORICO = 10;
 
 /**
  * Teto por mensagem do histórico.

@@ -414,6 +414,23 @@ const RESUMO_DE_MIDIA: Partial<Record<MessageType, string>> = {
  */
 const TETO_DE_ABORDAGENS_POR_DIA = 30;
 
+/**
+ * Quanto a IA espera o cliente terminar de digitar antes de responder.
+ *
+ * Quem escreve no WhatsApp manda em pedaços: "oi", "tudo bem?", "queria
+ * saber o horário", com um ou dois segundos entre eles. A IA respondia o
+ * primeiro na hora e, quando o segundo chegava enquanto ela pensava,
+ * descartava a resposta (ver `chegouOutraDepois`) — mas a chamada ao
+ * modelo já estava paga e já tinha contado na cota da empresa. Numa rajada
+ * de três mensagens eram três chamadas pra uma resposta só.
+ *
+ * Esperando um pouco antes de chamar, as mensagens da rajada chegam
+ * primeiro e só a última gera resposta. Três segundos somam pouco ao
+ * tempo que o cliente já espera (o envio ainda tem a pausa e o "digitando"
+ * da cadência anti-bloqueio). Nos testes não há espera.
+ */
+const ESPERA_DA_RAJADA_MS = process.env.NODE_ENV === 'test' ? 0 : 3_000;
+
 const conversationInclude = {
   customer: true,
   assignedUser: { select: { id: true, name: true, email: true, avatar: true } },
@@ -4326,6 +4343,10 @@ export class ConversationsService {
         data: { aiMode: 'HUMAN_ACTIVE' },
       });
       conversation = { ...conversation, aiMode: 'HUMAN_ACTIVE' };
+    }
+
+    if (conversation.aiMode === 'AI_ACTIVE' && ESPERA_DA_RAJADA_MS > 0) {
+      await new Promise((pronto) => setTimeout(pronto, ESPERA_DA_RAJADA_MS));
     }
 
     if (

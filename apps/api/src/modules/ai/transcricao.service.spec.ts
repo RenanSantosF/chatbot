@@ -1,5 +1,8 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { TranscricaoService } from './transcricao.service';
+import {
+  TAMANHO_MAXIMO_DO_AUDIO,
+  TranscricaoService,
+} from './transcricao.service';
 
 /**
  * O que se testa aqui é dinheiro e privacidade, nesta ordem.
@@ -16,8 +19,14 @@ function montar(
     texto?: string | null;
     semChave?: boolean;
     downloadFalha?: boolean;
+    tetoAtingido?: boolean;
+    bytes?: number;
   } = {},
 ) {
+  const uso = {
+    cabe: jest.fn().mockResolvedValue(!opcoes.tetoAtingido),
+    contar: jest.fn().mockResolvedValue(undefined),
+  };
   const update = jest.fn().mockResolvedValue({});
   const transcribe = jest
     .fn()
@@ -30,7 +39,9 @@ function montar(
   const download = opcoes.downloadFalha
     ? jest.fn().mockRejectedValue(new Error('404'))
     : jest.fn().mockResolvedValue({
-        buffer: Buffer.from('audio'),
+        buffer: opcoes.bytes
+          ? Buffer.alloc(opcoes.bytes)
+          : Buffer.from('audio'),
         mimeType: 'audio/ogg',
       });
 
@@ -106,9 +117,10 @@ function montar(
     { emitToUsers } as never,
     inboxSettings as never,
     { transcribe },
+    uso as never,
   );
 
-  return { service, transcribe, update, emitToUsers, download };
+  return { service, transcribe, update, emitToUsers, download, uso };
 }
 
 describe('transcrição de áudio', () => {
@@ -186,6 +198,43 @@ describe('transcrição de áudio', () => {
     await expect(service.transcrever('msg-1')).resolves.toBeNull();
     expect(update).not.toHaveBeenCalled();
     expect(emitToUsers).not.toHaveBeenCalled();
+  });
+});
+
+describe('o teto de custo', () => {
+  it('conta no mês cada áudio transcrito', async () => {
+    const { service, uso } = montar();
+
+    await service.transcrever('msg-1');
+
+    expect(uso.contar).toHaveBeenCalledWith('transcricao');
+  });
+
+  it('com o teto do mês atingido, não chama o modelo nem baixa o áudio', async () => {
+    const { service, transcribe, download } = montar({ tetoAtingido: true });
+
+    await expect(service.transcrever('msg-1')).resolves.toBeNull();
+    expect(download).not.toHaveBeenCalled();
+    expect(transcribe).not.toHaveBeenCalled();
+  });
+
+  it('áudio longo demais não vai pro modelo, e não conta', async () => {
+    const { service, transcribe, uso } = montar({
+      bytes: TAMANHO_MAXIMO_DO_AUDIO + 1,
+    });
+
+    await expect(service.transcrever('msg-1')).resolves.toBeNull();
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(uso.contar).not.toHaveBeenCalled();
+  });
+
+  it('a pedido, explica que o teto acabou', async () => {
+    const { service } = montar({ tetoAtingido: true });
+
+    const resultado = await service.transcreverAPedido('conversa-1', 'msg-1');
+
+    expect(resultado.transcricao).toBeNull();
+    expect(resultado.motivo).toMatch(/transcrições de áudio do mês/);
   });
 });
 

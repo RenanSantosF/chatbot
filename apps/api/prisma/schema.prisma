@@ -1344,7 +1344,7 @@ model BillingAccount {
   /// calcula esse número a partir do preço real do modelo). Um valor por
   /// conta, e não uma constante fixa no código, porque planos diferentes
   /// (quando o Stripe entrar) vão incluir quantidades diferentes.
-  aiMonthlyMessageLimit     Int       @default(5000)
+  aiMonthlyMessageLimit     Int       @default(2500)
   /// Respostas da IA já contadas no período corrente.
   aiRepliesUsed             Int       @default(0)
   /// Somados só pra visibilidade/depuração de custo — a trava usa
@@ -1366,6 +1366,13 @@ model BillingAccount {
   /// descontá-las das respostas do plano puniria quem escreve com cuidado.
   /// O teto existe só contra abuso (ver CorrecaoDeTextoService).
   aiCorrecoesNoPeriodo      Int       @default(0)
+  /// Áudios transcritos pela IA no período (pra ela ouvir ou a pedido da
+  /// equipe). Teto próprio, à parte das respostas (ver AiUsageService).
+  aiTranscricoesNoPeriodo   Int       @default(0)
+  /// Perguntas feitas ao assistente do painel (✨) no período. Cada uma é
+  /// bem mais cara que uma resposta ao cliente — prompt grande, ferramentas
+  /// e dados das conversas —, e não tinham teto nenhum.
+  aiCopilotoNoPeriodo       Int       @default(0)
   /// O dia do mês (1–31) em que as respostas de IA renovam — o dia em que
   /// a assinatura começou a cobrar, no fuso da empresa. Quem assinou dia 15
   /// renova todo dia 15, junto com a fatura. Nulo: vale o dia em que a

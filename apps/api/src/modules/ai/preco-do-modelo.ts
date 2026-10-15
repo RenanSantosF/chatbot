@@ -15,13 +15,24 @@
 export const PRECO_ENTRADA_USD_POR_TOKEN = 0.25 / 1_000_000;
 export const PRECO_SAIDA_USD_POR_TOKEN = 1.5 / 1_000_000;
 
-/** Custo de uma chamada, em dólar. */
+/**
+ * A entrada que o Google reaproveita do cache implícito (o mesmo começo de
+ * prompt visto há pouco) sai a um décimo do preço normal. É por isso que o
+ * prompt do atendimento põe o que é fixo da empresa em cima e o que muda a
+ * cada resposta embaixo (ver AiContextBuilder.buildSystemPrompt).
+ */
+export const DESCONTO_DO_CACHE = 0.1;
+
+/** Custo de uma chamada, em dólar. `tokensDoCache` já estão em `tokensDeEntrada`. */
 export function custoEmDolar(
   tokensDeEntrada: number,
   tokensDeSaida: number,
+  tokensDoCache = 0,
 ): number {
+  const doCache = Math.min(tokensDoCache, tokensDeEntrada);
   return (
-    tokensDeEntrada * PRECO_ENTRADA_USD_POR_TOKEN +
+    (tokensDeEntrada - doCache) * PRECO_ENTRADA_USD_POR_TOKEN +
+    doCache * PRECO_ENTRADA_USD_POR_TOKEN * DESCONTO_DO_CACHE +
     tokensDeSaida * PRECO_SAIDA_USD_POR_TOKEN
   );
 }

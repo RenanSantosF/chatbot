@@ -56,7 +56,12 @@ export interface AiGenerateResult {
    * provedor não souber informar; quem consome trata a ausência como zero,
    * nunca como erro (ver AiUsageService.registrar).
    */
-  usage?: { inputTokens: number; outputTokens: number };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    /** Quantos dos `inputTokens` vieram do cache do provedor (mais baratos). */
+    cachedTokens?: number;
+  };
 }
 
 /**
